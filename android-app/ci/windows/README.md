@@ -39,6 +39,44 @@ ensuite la preuve de signature, les empreintes des paquets et le commit exact.
 La signature ne lève pas le gel de publication et ne garantit pas l'absence
 de toute alerte SmartScreen, qui dépend aussi de la réputation.
 
+## Blocage Windows 4551 : politique de contrôle des applications
+
+Si l'installation réussit mais que Windows refuse de lancer
+`C:\Program Files\Zuno\tv_king.exe` avec « CreateProcess a échoué :
+code 4551 », c'est la politique locale de contrôle des applications qui
+a bloqué le processus (Smart App Control, App Control for Business ou une
+autre règle), pas une erreur Flutter ou une DLL nécessairement manquante.
+
+**Un code source ne peut pas neutraliser cette décision de Windows.**
+L'installeur de revue non signé avertit maintenant explicitement l'utilisateur
+et ne propose plus le lancement immédiat de l'application après installation.
+Il reste destiné aux tests ; il peut être bloqué lors d'un lancement manuel.
+L'installateur officiel ne doit être diffusé qu'après signature Authenticode
+vérifiée de l'EXE, des DLL, du Setup et du désinstalleur. Le workflow de
+publication échoue déjà si le certificat manque.
+
+Diagnostic en lecture seule sur le PC concerné :
+
+```powershell
+Get-AuthenticodeSignature 'C:\Program Files\Zuno\tv_king.exe' |
+    Format-List Status,StatusMessage,SignerCertificate
+
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Microsoft-Windows-CodeIntegrity/Operational'
+    Id = 3077
+} -MaxEvents 20 | Select-Object TimeCreated,Id,Message
+```
+
+Vérifier que l'événement concerne réellement Zuno ; l'identifiant 3077
+désigne un blocage App Control imposé. L'événement 3089 associé donne les
+informations de signature. Si l'appareil est administré par une organisation,
+l'administrateur doit vérifier les règles avant de distribuer l'application.
+
+Ne pas désactiver Smart App Control, AppLocker, Defender ou les politiques
+d'entreprise pour « corriger » le problème ; ne pas autosigner puis importer
+un certificat racine local pour contourner la protection. Une signature
+valide ne garantit pas l'absence de blocage par une autre règle.
+
 ## Vérification Windows
 
 Après création des vrais paquets, `verify-package.ps1` :

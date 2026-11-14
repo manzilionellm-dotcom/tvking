@@ -24,6 +24,7 @@
 //  (journal local + Crashlytics si configuré) — sans jamais bloquer.
 // =========================================================
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
@@ -40,7 +41,11 @@ import '../theme/bundled_fonts.dart';
 /// `void` et non `Future` : on ne veut PAS que l'appelant `await` — la zone
 /// vit aussi longtemps que l'app. Les points d'entrée se contentent de
 /// `runGuarded(() async { … });`.
-void runGuarded(Future<void> Function() body) {
+void runGuarded(Future<void> Function() body, {
+  Widget? startupWidget,
+  void Function(Object error, StackTrace? stack)? onStartupError,
+  void Function(String context, Object error, StackTrace? stack)? onUnhandledError,
+}) {
   // 1) Un sous-arbre qui plante ne casse pas tout l'écran : fond Maison Noir.
   //    NB : on utilise volontairement une couleur LITTÉRALE ici (et non
   //    AppColors) — ce widget de secours ne doit dépendre de RIEN qui
@@ -48,6 +53,13 @@ void runGuarded(Future<void> Function() body) {
   ErrorWidget.builder = (FlutterErrorDetails details) {
     CrashReporting.instance
         .recordError(details.exception, details.stack, context: 'ErrorWidget');
+    if (Platform.isWindows) {
+      return const ColoredBox(color: Color(0xFF070707), child: Center(
+        child: Text('ZUNO — Affichage indisponible. Fermez puis relancez.',
+          textDirection: TextDirection.ltr,
+          style: TextStyle(color: Color(0xFFF0EDE9))),
+      ));
+    }
     return const ColoredBox(color: Color(0xFF070707));
   };
 
@@ -76,7 +88,11 @@ void runGuarded(Future<void> Function() body) {
       // RAM ⇒ élargit. Best-effort, ne retarde jamais le démarrage.
       // Les seuils vivent dans BoxMemoryBudget (même arithmétique qu'ici
       // avant) : le focus et les logos lisent le même palier.
-      unawaited(BoxMemoryBudget.load());
+      if (Platform.isAndroid) {
+        unawaited(BoxMemoryBudget.load());
+      } else {
+        BoxMemoryBudget.useDesktop();
+      }
 
       // 2) Erreurs Flutter (build/layout/paint).
       final FlutterExceptionHandler? presentError = FlutterError.onError;
@@ -88,22 +104,58 @@ void runGuarded(Future<void> Function() body) {
         }
         CrashReporting.instance.recordError(details.exception, details.stack,
             context: 'FlutterError');
+        // Journalisé seulement : une erreur d'affichage isolée (logo, image,
+        // widget) ne doit JAMAIS transformer le démarrage en écran d'erreur.
+        onUnhandledError?.call('FlutterError', details.exception, details.stack);
       };
 
       // 3) Erreurs async/plateforme non rattrapées → « gérées », pas de crash.
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
         CrashReporting.instance
             .recordError(error, stack, context: 'PlatformDispatcher');
+        onUnhandledError?.call('PlatformDispatcher', error, stack);
         return true;
       };
 
       // Collecteur local prêt AVANT le boot. Firebase sera attaché après la
       // première image rasterisée, sans attendre sa réponse pour lancer l'UI.
-      await startWithLocalCrashReporting(body);
+      if (startupWidget == null) {
+        await startWithLocalCrashReporting(body);
+      } else {
+        // Windows doit dessiner AVANT SQLite, libmpv, plugins ou réseau.
+        runApp(startupWidget);
+        try {
+          await WidgetsBinding.instance.waitUntilFirstFrameRasterized
+              .timeout(const Duration(seconds: 5));
+        } on TimeoutException {
+          StartupTrace.mark('startupScreen.frame.timeout (continue)');
+        }
+        // Aucun délai ne rend le démarrage fatal : le bootstrap continue et
+        // remplace l'écran dès qu'il appelle runApp. Seul un VRAI échec du
+        // bootstrap (exception) affiche l'écran d'erreur ; au-delà de 45 s
+        // sans interface, on propose Réessayer/Fermer sans tuer le démarrage.
+        bool settled = false;
+        Timer(const Duration(seconds: 45), () {
+          if (settled) return;
+          StartupTrace.mark('bootstrap.slow 45s');
+          onStartupError?.call(
+              TimeoutException('Démarrage plus long que 45 s'), null);
+        });
+        try {
+          await startWithLocalCrashReporting(body);
+          settled = true;
+        } catch (error, stack) {
+          settled = true;
+          StartupTrace.mark('bootstrap.failed ${error.runtimeType}');
+          CrashReporting.instance.recordError(error, stack, context: 'Bootstrap');
+          onStartupError?.call(error, stack);
+        }
+      }
     },
     // 4) Filet ultime.
     (Object error, StackTrace stack) {
       CrashReporting.instance.recordError(error, stack, context: 'Zone');
+      onUnhandledError?.call('Zone', error, stack);
     },
   );
 }

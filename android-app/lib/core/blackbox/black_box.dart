@@ -193,6 +193,11 @@ class BlackBox {
     );
   }
 
+  Future<T?> _androidDevice<T>(String method) async {
+    if (!Platform.isAndroid) return null;
+    return _device.invokeMethod<T>(method);
+  }
+
   Future<BlackBoxLastExit?> _analysePreviousSession() async {
     bool hadSession = false;
     bool clean = true;
@@ -222,7 +227,7 @@ class BlackBox {
     int rss = 0;
     String deviceLabel = '';
     try {
-      final Object? info = await _device.invokeMethod<Object?>('getDeviceInfo');
+      final Object? info = await _androidDevice<Object?>('getDeviceInfo');
       if (info is Map) {
         deviceLabel = crashDeviceLabel(
           manufacturer: '${info['manufacturer'] ?? ''}',
@@ -232,7 +237,7 @@ class BlackBox {
       }
     } catch (_) {}
     try {
-      final Object? raw = await _device.invokeMethod<Object?>('getLastExitInfo');
+      final Object? raw = await _androidDevice<Object?>('getLastExitInfo');
       if (raw is List && raw.isNotEmpty) {
         // La plus récente en premier (ordre Android).
         final Map<Object?, Object?> m = raw.first as Map<Object?, Object?>;
@@ -259,8 +264,8 @@ class BlackBox {
 
   Future<void> _logDevice() async {
     try {
-      final Object? d = await _device.invokeMethod<Object?>('getDeviceInfo');
-      final Object? m = await _device.invokeMethod<Object?>('getMemoryInfo');
+      final Object? d = await _androidDevice<Object?>('getDeviceInfo');
+      final Object? m = await _androidDevice<Object?>('getMemoryInfo');
       if (d is Map) {
         _line(BbLevel.info, 'DEVICE',
             '${d['manufacturer']} ${d['model']} · Android ${d['release']} (API ${d['sdk']})'
@@ -304,7 +309,7 @@ class BlackBox {
   Future<void> logMemory(String context) async {
     if (!_ready) return;
     try {
-      final Object? raw = await _device.invokeMethod<Object?>('getProcessMemory');
+      final Object? raw = await _androidDevice<Object?>('getProcessMemory');
       final int rss = ProcessInfo.currentRss ~/ (1024 * 1024);
       if (raw is Map) {
         final bool low = raw['lowMemory'] == true;

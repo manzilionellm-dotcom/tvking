@@ -14,11 +14,14 @@
 //  migrations.
 // =========================================================
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../../core/blackbox/black_box.dart';
+
+import '../../../core/storage/zuno_data_dir.dart';
 
 class PlaylistDatabase {
   PlaylistDatabase._();
@@ -54,8 +57,12 @@ class PlaylistDatabase {
 
   Future<Database> _open() async {
     final String? forced = debugFilePath;
-    final String dbPath = forced ??
-        p.join((await getApplicationDocumentsDirectory()).path, _kDbFileName);
+    String? dbPath = forced;
+    if (dbPath == null) {
+      final Directory dir = await zunoDataDirectory();
+      await migrateWindowsDocumentsFile(_kDbFileName, dir);
+      dbPath = p.join(dir.path, _kDbFileName);
+    }
 
     if (kDebugMode) {
       debugPrint('[DB] Ouverture de la base SQLite : $dbPath');

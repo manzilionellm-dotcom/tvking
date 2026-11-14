@@ -1,0 +1,220 @@
+# Review artifact only. No signing, release creation or publication.
+name: Test ZUNO Windows Cast
+on:
+  pull_request:
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/test-zuno-windows-cast.yml'
+permissions:
+  contents: read
+concurrency:
+  group: zuno-windows-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+defaults:
+  run:
+    working-directory: android-app
+jobs:
+  windows-review:
+    if: github.head_ref == 'zuno-windows-cast'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.47.7'
+          channel: 'stable'
+          cache: true
+
+      - name: Activer le bureau Windows + générer le dossier windows/
+        shell: bash
+        run: |
+          set -e
+          flutter config --enable-windows-desktop
+          flutter create . --platforms=windows --org com.sevenmotion --project-name tv_king
+          rm -f test/widget_test.dart   # test par défaut ajouté par flutter create
+          test -f windows/runner/Runner.rc && test -f windows/runner/main.cpp
+
+      - name: Identité Zuno (nom, titre de fenêtre, icône)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rc = 'windows/runner/Runner.rc'
+          $t = Get-Content $rc -Raw -Encoding UTF8
+          $t = $t -replace '(VALUE\s+"CompanyName",\s*)"[^"]*"',     '$1"Zuno"'
+          $t = $t -replace '(VALUE\s+"ProductName",\s*)"[^"]*"',     '$1"Zuno"'
+          $t = $t -replace '(VALUE\s+"FileDescription",\s*)"[^"]*"', '$1"Zuno"'
+          $t = $t -replace '(VALUE\s+"LegalCopyright",\s*)"[^"]*"',  '$1"Copyright (C) 2026 Zuno. All rights reserved."'
+          Set-Content $rc -Value $t -Encoding UTF8
+          foreach ($k in 'CompanyName','ProductName','FileDescription') {
+            if (-not (Select-String -Path $rc -Pattern "VALUE\s+`"$k`",\s*`"Zuno`"" -Quiet)) { throw "$k non réécrit" }
+          }
+          $main = 'windows/runner/main.cpp'
+          $m = Get-Content $main -Raw -Encoding UTF8
+          $m = $m -replace 'L"tv_king"', 'L"Zuno"'
+          Set-Content $main -Value $m -Encoding UTF8
+          if (-not (Select-String -Path $main -Pattern 'L"Zuno"' -Quiet)) { throw "titre de fenêtre non réécrit" }
+          Copy-Item ci/windows/app_icon.ico windows/runner/resources/app_icon.ico -Force
+          Write-Host "✓ Zuno : Runner.rc, titre, icône"
+
+      # Firebase n'est pas configuré pour Windows (inutile sur PC) : retiré du
+      # build PC + module de remontée de crash remplacé par un stub (même
+      # signature, ne fait rien). La box, elle, garde Firebase.
+      - name: Exclure Firebase (PC)
+        shell: bash
+        run: |
+          set -e
+          python - <<'PYEOF'
+          import re
+          f = "pubspec.yaml"
+          lines = open(f, encoding="utf-8").read().splitlines(keepends=True)
+          out = [l for l in lines if not re.match(r'\s*(firebase_core|firebase_crashlytics)\s*:', l)]
+          open(f, "w", encoding="utf-8").write("".join(out))
+          print("firebase retiré :", len(lines) - len(out), "ligne(s)")
+          PYEOF
+          cat > lib/core/crash/crash_reporting_firebase.dart <<'DARTEOF'
+          // STUB PC — Firebase exclu du build Windows (build-zuno-windows.yml).
+          Future<bool> attachCrashlytics() async => false;
+          DARTEOF
+
+      - name: Flutter pub get + traductions
+        shell: bash
+        run: |
+          set -e
+          flutter pub get
+          flutter gen-l10n
+
+      - name: Contrôler le Cast avant l’exécutable
+        shell: bash
+        run: |
+          set -e
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test test/features/cast test/features/tv/desktop test/core/update test/core/storage --reporter expanded
+
+      - name: Version de revue (source Android 113)
+        shell: bash
+        run: |
+          # Candidat de la release zuno-windows-113.0.3 (après 113.0.2, code 2).
+          echo "WIN_VERSION=113.0.3" >> "$GITHUB_ENV"
+          echo "WIN_BUILD=3" >> "$GITHUB_ENV"
+
+      # PowerShell (PAS bash) : sous Git Bash, la valeur « /D_SILENCE… » de
+      # CL était convertie en chemin Windows (conversion POSIX de MSYS) →
+      # cl.exe recevait un faux fichier source → CMake : « No
+      # CMAKE_CXX_COMPILER could be found » (builds 1 et 2).
+      - name: Build Zuno Windows (release, target main_windows)
+        shell: pwsh
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        run: |
+          $ErrorActionPreference = 'Stop'
+          flutter build windows --release `
+            --build-name="$env:WIN_VERSION" --build-number="$env:WIN_BUILD" `
+            --dart-define=GIT_SHA=${{ github.sha }} `
+            --dart-define=ZUNO_WIN_BUILD="$env:WIN_BUILD" `
+            --target=lib/main_windows.dart
+          if ($LASTEXITCODE -ne 0) { throw "flutter build windows a échoué ($LASTEXITCODE)" }
+
+      - name: Vérifier le binaire (exe, moteur, lecteur vidéo)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $rel = 'build/windows/x64/runner/Release'
+          Get-ChildItem $rel | Select-Object Name, Length | Format-Table -AutoSize
+          foreach ($f in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so') {
+            if (!(Test-Path "$rel/$f")) { throw "manquant : $f" }
+          }
+          $mpv = Get-ChildItem $rel -Filter '*mpv*.dll'
+          if (-not $mpv) { throw "libmpv absente : pas de lecture vidéo sur PC" }
+          $vi = (Get-Item "$rel/tv_king.exe").VersionInfo
+          Write-Host "ProductName=$($vi.ProductName) FileVersion=$($vi.FileVersion)"
+          if (($vi.ProductName -as [string]).Trim() -ne 'Zuno') { throw "ProductName ≠ Zuno" }
+          Write-Host "✓ binaire complet (exe + moteur + libmpv : $($mpv.Name -join ', '))"
+
+      - name: Paquets complets et signature Authenticode si configurée
+        shell: pwsh
+        env:
+          PUBLISH_REQUESTED: 'false'
+        run: |
+          ./ci/windows/package.ps1 -Version $env:WIN_VERSION -Build $env:WIN_BUILD `
+            -Commit '${{ github.sha }}' -RequireSignature:($env:PUBLISH_REQUESTED -eq 'true')
+
+      - name: Smoke Windows hors réseau (vrai EXE, première image et fenêtre 20 s)
+        shell: pwsh
+        run: ./ci/windows/smoke.ps1
+
+      - name: Vérifier, installer, smoke hors réseau depuis installation puis désinstaller
+        shell: pwsh
+        run: ./ci/windows/verify-package.ps1 -Commit '${{ github.sha }}'
+
+      - name: Smoke EN LIGNE (installeur par défaut, mise à jour 113.0.2 et 106)
+        shell: pwsh
+        run: ./ci/windows/online-smoke.ps1
+
+      # MICROSOFT STORE. TODO(Partner Center) : définir les variables du dépôt
+      # ZUNO_MSIX_IDENTITY_NAME, ZUNO_MSIX_PUBLISHER, ZUNO_MSIX_PUBLISHER_DISPLAY_NAME
+      # (Identité du produit après réservation du nom). Paquet NON signé :
+      # le Store le signe lui-même.
+      - name: MSIX Store (non signé, prêt pour Partner Center)
+        shell: pwsh
+        env:
+          MSIX_IDENTITY: ${{ vars.ZUNO_MSIX_IDENTITY_NAME || 'ZUNO.PLACEHOLDER' }}
+          MSIX_PUBLISHER: ${{ vars.ZUNO_MSIX_PUBLISHER || 'CN=00000000-0000-0000-0000-000000000000' }}
+          MSIX_PUBLISHER_NAME: ${{ vars.ZUNO_MSIX_PUBLISHER_DISPLAY_NAME || 'ZUNO (editeur a definir)' }}
+        run: |
+          ./ci/windows/msix.ps1 -OutFile dist/msix/ZUNO-Store.msix -Version "$env:WIN_VERSION.0" `
+            -IdentityName $env:MSIX_IDENTITY -Publisher $env:MSIX_PUBLISHER -PublisherDisplayName $env:MSIX_PUBLISHER_NAME
+
+      - name: MSIX de test signé (certificat auto-signé de ce runner)
+        shell: pwsh
+        run: |
+          ./ci/windows/msix.ps1 -OutFile dist/msix-test/ZUNO-Test.msix -Version "$env:WIN_VERSION.0" `
+            -IdentityName 'ZUNO.TestCI' -Publisher 'CN=ZUNO Test CI' -PublisherDisplayName 'ZUNO Test CI' -TestSign
+
+      - name: MSIX installé (Add-AppxPackage) + smoke EN LIGNE 20 s + captures Store
+        # Windows PowerShell 5.1 : le module Appx ne se charge pas sous pwsh 7.
+        shell: powershell
+        run: ./ci/windows/msix-smoke.ps1 -Msix dist/msix-test/ZUNO-Test.msix
+
+      - name: Windows App Certification Kit (si présent)
+        continue-on-error: true
+        timeout-minutes: 30
+        shell: pwsh
+        run: ./ci/windows/wack.ps1 -Msix dist/msix-test/ZUNO-Test.msix
+
+      - name: Artefacts MSIX, captures et WACK
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-msix-review-${{ github.sha }}
+          path: |
+            android-app/dist/msix
+            android-app/dist/msix-test
+            ${{ runner.temp }}/zuno-store-shots
+            ${{ runner.temp }}/zuno-wack
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Résultat de la compilation Windows
+        shell: pwsh
+        run: |
+          $state = if ($env:WINDOWS_SIGNED -eq 'true') { 'Authenticode vérifié (app et installeur)' } else { 'NON SIGNÉ — artefact de revue, non publiable' }
+          @("Zuno Windows $env:WIN_VERSION", '', "Commit : ${{ github.sha }}", "Signature : $state", "SHA-256 : $env:SETUP_SHA", '', 'Aucun essai physique PC ou Cast réalisé par ce workflow.') |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Artefact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zuno-windows-review-${{ github.sha }}
+          path: |
+            android-app/dist/Zuno-Setup.exe
+            android-app/dist/zuno-windows.zip
+            android-app/dist/version.json
+            android-app/dist/build-manifest.json
+            android-app/dist/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error

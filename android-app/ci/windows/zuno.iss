@@ -74,6 +74,12 @@ SignedUninstaller=no
 Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[CustomMessages]
+; Paquet de revue uniquement : l'application non signée peut être rejetée
+; par une stratégie App Control sans que l'installeur soit défectueux.
+french.UnsignedReviewWarning=ZUNO Windows - VERSION DE TEST NON SIGNÉE. Windows peut bloquer tv_king.exe (code 4551) selon sa politique de sécurité. Ce paquet ne lancera pas l'application automatiquement. Pour une distribution normale, utilisez une version officiellement signée. Ne désactivez pas les protections Windows.
+english.UnsignedReviewWarning=ZUNO Windows - UNSIGNED TEST BUILD. Windows may block tv_king.exe (error 4551) under its application-control policy. This package will not launch the app automatically. Use an officially signed build for normal distribution. Do not disable Windows security protections.
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
@@ -87,14 +93,27 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
+; L'auto-lancement est réservé à la livraison signée. Une version non signée
+; peut échouer avec CreateProcess 4551 avant même d'ouvrir sa fenêtre.
+#ifdef UseAuthenticode
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
-; Mise à jour lancée par l'app (/SILENT) : Zuno revient tout seul après l'installation.
 Filename: "{app}\{#AppExeName}"; Flags: nowait runasoriginaluser; Check: ShouldLaunchAfterUpdate
+#endif
 
 [Code]
+#ifndef UseAuthenticode
+function InitializeSetup: Boolean;
+begin
+  { SuppressibleMsgBox n'affiche rien avec /VERYSILENT ; aucun bypass Windows. }
+  SuppressibleMsgBox(ExpandConstant('{cm:UnsignedReviewWarning}'), mbInformation, MB_OK, IDOK);
+  Result := True;
+end;
+#endif
+
+#ifdef UseAuthenticode
 function ShouldLaunchAfterUpdate: Boolean;
 begin
-  { Le test d'installation CI utilise /LAUNCHAFTERUPDATE=0 pour ne pas joindre
-    le panel. Par défaut une vraie mise à jour relance Zuno comme auparavant. }
+  { Le test CI utilise /LAUNCHAFTERUPDATE=0 pour éviter toute connexion. }
   Result := WizardSilent and (ExpandConstant('{param:LAUNCHAFTERUPDATE|1}') <> '0');
 end;
+#endif

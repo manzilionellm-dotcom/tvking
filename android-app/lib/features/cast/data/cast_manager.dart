@@ -33,6 +33,7 @@ import 'cast_platform.dart';
 import 'cast_url_resolver.dart';
 import 'cast_session_diagnostic.dart';
 import 'cast_transport.dart';
+import 'cast_v2_transport.dart';
 import 'google_cast_transport.dart';
 import 'dlna_capabilities.dart';
 import 'dlna_profiles.dart';
@@ -557,9 +558,7 @@ class CastManager extends ChangeNotifier {
         SsdpDiscovery.instance.discover(timeout: timeout).listen(onDevice);
 
     // mDNS en parallèle (Chromecast / Google TV)
-    if (!CastPlatform.isWindows) {
-      _mdnsSub = MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
-    }
+    _mdnsSub = MdnsDiscovery.instance.discover(timeout: timeout).listen(onDevice);
 
     _discoveryTimer = Timer(timeout, () {
       // On COUPE aussi les abonnements au timeout, pas seulement l'état.
@@ -872,6 +871,9 @@ class CastManager extends ChangeNotifier {
     // la TV a ~toute la durée du pré-vol pour se libérer → moins de
     // 701 « Transition not available » au SetAVTransportURI suivant.
     final Object? prevTransport = _transport;
+    if (prevTransport is CastV2Transport) {
+      await prevTransport.stop(); // Libérer la session PC avant le pré-vol.
+    }
     if (prevTransport is UpnpAvTransport) {
       try {
         await prevTransport.stop().timeout(const Duration(seconds: 3));
@@ -1023,6 +1025,28 @@ class CastManager extends ChangeNotifier {
           (myTransport as GoogleCastTransport).originalUpstreamUrl =
               probe.originalUrl;
         }
+        if (myTransport is CastV2Transport) {
+          final CastV2Transport desktop = myTransport;
+          desktop.originalUpstreamUrl = probe.originalUrl;
+          desktop.contentType = probe.mime;
+          desktop.onPlayerState = (String state) {
+            if (mySeq != _sessionSeq || !identical(desktop, _transport)) return;
+            final CastNativePlayerState nativeState = switch (state) {
+              'PLAYING' => CastNativePlayerState.playing,
+              'PAUSED' => CastNativePlayerState.paused,
+              'IDLE' => CastNativePlayerState.idle,
+              _ => CastNativePlayerState.buffering,
+            };
+            _onNativeMediaState(CastNativeMediaState(playerState: nativeState,
+              isPlaying: state == 'PLAYING', isPaused: state == 'PAUSED',
+              isBuffering: state == 'BUFFERING'));
+          };
+          desktop.onDisconnected = () {
+            if (mySeq == _sessionSeq && identical(desktop, _transport) && isCasting) {
+              unawaited(disconnect());
+            }
+          };
+        }
         final Stopwatch sw = Stopwatch()..start();
         try {
           await myTransport!.playStream(
@@ -1118,6 +1142,7 @@ class CastManager extends ChangeNotifier {
       // échouait tardivement : il effaçait le relais de la session EN
       // COURS (cast qui meurt en 404) et laissait fuir le sien.
       final CastTransport? leakedTransport = myTransport;
+      if (leakedTransport is CastV2Transport) await leakedTransport.stop();
       final GoogleCastTransport? gctLeak =
           leakedTransport is GoogleCastTransport ? leakedTransport : null;
       final String? leakedRelay = gctLeak?.lastRelayUrl;

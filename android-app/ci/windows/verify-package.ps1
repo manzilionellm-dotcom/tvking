@@ -55,7 +55,7 @@ try {
 
     New-Item -ItemType Directory -Force -Path $portable | Out-Null
     Expand-Archive "$dist/zuno-windows.zip" $portable
-    foreach ($file in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat',
+    foreach ($file in 'tv_king.exe', 'flutter_windows.dll', 'data/app.so', 'data/icudtl.dat', 'sqlite3.dll',
         'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
         if (!(Test-Path (Join-Path $portable $file))) { throw "Paquet portable incomplet : $file" }
     }
@@ -71,6 +71,18 @@ try {
             Sort-Object FullName -Descending | Select-Object -First 1).FullName
         Assert-TrustedSignature $setup
         Assert-TrustedSignature "$portable/tv_king.exe"
+        # Une signature valide du lanceur ne protège pas une DLL non signée.
+        # Chaque PE livré doit être approuvé par la chaîne de confiance Windows.
+        $peFiles = @(Get-ChildItem $portable -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll' })
+        if (!$peFiles) { throw 'Aucun module PE dans le paquet Windows.' }
+        foreach ($file in $peFiles) {
+            & $signtool verify /pa /all /tw $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "Module Windows non signé ou non fiable : $($file.Name)" }
+            $signature = Get-AuthenticodeSignature -FilePath $file.FullName
+            if ($signature.Status -ne 'Valid' -or $null -eq $signature.TimeStamperCertificate) {
+                throw "Signature Windows invalide ou non horodatée : $($file.Name)"
+            }
+        }
         # Contrôle négatif réel : un octet de code altéré doit invalider la signature.
         $altered = Join-Path $temp 'altered.exe'
         Copy-Item "$portable/tv_king.exe" $altered
@@ -86,8 +98,8 @@ try {
         if ($LASTEXITCODE -eq 0) { throw 'Un exécutable altéré a été accepté.' }
     }
 
-    # Installer les vrais fichiers en mode utilisateur sans lancer Zuno :
-    # le test ne crée ni appareil ni session sur le panel de production.
+    # Installer puis lancer les vrais fichiers en mode smoke hors réseau :
+    # aucune inscription ni session sur le panel de production.
     $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
         '/LAUNCHAFTERUPDATE=0', '/TASKS=""', "/DIR=`"$install`"")
     $process = Start-Process $setup -ArgumentList $arguments -PassThru
@@ -100,6 +112,8 @@ try {
         $relative = [IO.Path]::GetRelativePath($portable, $file.FullName)
         Assert-FileHash (Join-Path $install $relative) (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }
+    # Lancer les VRAIS fichiers installés, et non le répertoire de build.
+    & "$PSScriptRoot/smoke.ps1" -ExePath (Join-Path $install 'tv_king.exe')
     $uninstaller = Join-Path $install 'unins000.exe'
     if (!(Test-Path $uninstaller)) { throw 'Désinstalleur absent.' }
     if ($proof.signed) { Assert-TrustedSignature $uninstaller }

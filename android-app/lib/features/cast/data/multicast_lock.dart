@@ -34,6 +34,8 @@
 //  certains environnements qui ne filtrent pas le multicast).
 // =========================================================
 
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -50,6 +52,7 @@ class MulticastLock {
   /// permission absente). On NE lève PAS : l'appelant continue la
   /// découverte de toute façon.
   Future<bool> acquire() async {
+    if (!Platform.isAndroid) return false;
     try {
       final bool? ok = await _channel.invokeMethod<bool>('acquire');
       return ok ?? false;
@@ -69,6 +72,7 @@ class MulticastLock {
   /// utile si ça échoue, et un lock orphelin sera de toute façon
   /// nettoyé quand le process meurt.
   Future<void> release() async {
+    if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod<void>('release');
     } on MissingPluginException {

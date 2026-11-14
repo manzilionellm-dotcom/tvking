@@ -108,11 +108,11 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Les titres TV utilisent Inter, pas Oswald (chasse trop étroite à 3 m).
   // Posé avant toute UI : les polices de la première ouverture ne dépendent
   // plus du réseau, même si aucun cache n'existe encore sur l'appareil.
-  configureTvFontLoading();
+  StartupTrace.bootSync('fonts', configureTvFontLoading);
 
   // RETOUR « UN À UN » : un appui Retour ne recule que d'UN écran (voir
   // tv_back_guard.dart). Inscrit avant runApp → consulté avant le Navigator.
-  TvBackGuard.install();
+  StartupTrace.bootSync('backGuard', TvBackGuard.install);
 
   // Flavor explicite (un seul produit pour l'instant : The Few).
   FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
@@ -126,22 +126,25 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // occupe encore le canal.
   PlaylistRepository.mergeAllPlaylists = true;
   StartupTrace.mark('playlists.begin');
-  final Future<void> playlistsReady = PlaylistRepository.instance
-      .initialize()
-      .timeout(const Duration(seconds: 6), onTimeout: () {});
+  final Future<void> playlistsReady = StartupTrace.tolerant
+      ? StartupTrace.soft('playlists', PlaylistRepository.instance.initialize,
+          timeout: const Duration(seconds: 6))
+      : PlaylistRepository.instance
+          .initialize()
+          .timeout(const Duration(seconds: 6), onTimeout: () {});
 
   // DISJONCTEUR anti-boucle de redémarrage : si la TV s'est relancée
   // plusieurs fois de suite (crash natif type mémoire en ré-important une
   // grosse source), on passe en MODE SANS ÉCHEC et on saute le ré-import
   // distant plus bas → la boucle est cassée. Voir core/app/boot_guard.dart.
-  await StartupTrace.step('bootGuard', BootGuard.instance.beginBoot);
+  await StartupTrace.boot('bootGuard', BootGuard.instance.beginBoot);
 
   // RAM de la box AVANT le premier écran : le focus, les logos et le
   // fond lisent ce palier. 300 ms maximum — un binder lent ne retient
   // pas le démarrage (on reste alors au palier prudent). Le PC n'a pas
   // le plugin : palier large, comme l'index Cinéma.
   if (Platform.isAndroid) {
-    await StartupTrace.step(
+    await StartupTrace.boot(
       'memoryBudget',
       () => BoxMemoryBudget.load().timeout(
         const Duration(milliseconds: 300),
@@ -156,8 +159,9 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Le paquet ZUNO est également distribué sur téléphone. On distingue
   // le matériel AVANT les services et le diagnostic, sans changer la MAC,
   // la licence ni le namespace historique « tv » de ZUNO dans le panel.
-  await StartupTrace.step('castPlatform', CastPlatform.initializeZuno);
-  AppPlatform.configureZuno(isAndroidHandset: CastPlatform.isAndroidHandset);
+  await StartupTrace.boot('castPlatform', CastPlatform.initializeZuno);
+  StartupTrace.bootSync('appPlatform',
+      () => AppPlatform.configureZuno(isAndroidHandset: CastPlatform.isAndroidHandset));
 
   // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
   // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de
@@ -178,14 +182,14 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // BOÎTE NOIRE (enregistreur de vol) : le plus tôt possible, pour que tout le
   // démarrage soit journalisé et que la raison de la DERNIÈRE fermeture soit
   // lue (Android 11+). Best-effort : ne bloque jamais le boot.
-  await StartupTrace.step(
+  await StartupTrace.boot(
     'blackBox',
     () => BlackBox.instance.initialize(flavor: AppPlatform.zunoEditionName),
   );
-  _wireAudioDiagnostic();
+  StartupTrace.bootSync('audioDiagnostic', _wireAudioDiagnostic);
   // Le journal part vers le panel (même Worker, même MAC). L'envoi
   // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.
-  BlackBoxUpload.instance.start();
+  StartupTrace.bootSync('blackBoxUpload', BlackBoxUpload.instance.start);
   if (BootGuard.instance.safeMode) {
     BlackBox.instance.warn(
       'BOOT',
@@ -206,12 +210,12 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // attend le plus lent, pas la somme.
   // https://docs.flutter.dev/perf/best-practices
   await Future.wait<void>(<Future<void>>[
-    StartupTrace.step('audioPreferences', AudioDiagPrefs.load),
-    StartupTrace.step('imagePreferences', ImagePrefs.load),
-    StartupTrace.step('repairFlags', RepairFlags.load),
+    StartupTrace.boot('audioPreferences', AudioDiagPrefs.load),
+    StartupTrace.boot('imagePreferences', ImagePrefs.load),
+    StartupTrace.boot('repairFlags', RepairFlags.load),
     // Langue : bloquant, mais en parallèle du reste. Le 1er rendu
     // est déjà dans la bonne langue (pas de flash en français).
-    StartupTrace.step('locale', LocaleRepository.instance.initialize),
+    StartupTrace.boot('locale', LocaleRepository.instance.initialize),
     // La TV est TOUJOURS en paysage (sur PC la fenêtre est libre).
     if (Platform.isAndroid)
       SystemChrome.setPreferredOrientations(<DeviceOrientation>[
@@ -223,25 +227,32 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   StartupTrace.mark('playlists.end');
   // Palette confort : préférence locale (soir par défaut). Lecture
   // disque seulement, avant le premier cadre, pour éviter un flash.
-  await StartupTrace.step('comfort', TvComfortSchedule.instance.load);
-  await StartupTrace.step('ambient', TvAmbientDirector.instance.load);
+  await StartupTrace.boot('comfort', TvComfortSchedule.instance.load);
+  await StartupTrace.boot('ambient', TvAmbientDirector.instance.load);
   // Flou du verre : seulement si la box a de la RAM. Sinon le voile
   // translucide suffit (pas de BackdropFilter).
-  await StartupTrace.step('glass', TvGlassPolicy.load);
-  await StartupTrace.step('look', TvLook.instance.load);
+  await StartupTrace.boot('glass', TvGlassPolicy.load);
+  await StartupTrace.boot('look', TvLook.instance.load);
   // Profil : après le boot, le canal des préférences est libre.
   // Plafond 500 ms, comme avant. Défaut synchrone = profil 1.
   StartupTrace.mark('profile.begin');
-  await ProfileRepository.instance.load().timeout(
-        const Duration(milliseconds: 500),
-        onTimeout: () {},
-      );
+  if (StartupTrace.tolerant) {
+    await StartupTrace.soft('profileLoad', ProfileRepository.instance.load,
+        timeout: const Duration(milliseconds: 500));
+  } else {
+    await ProfileRepository.instance.load().timeout(
+          const Duration(milliseconds: 500),
+          onTimeout: () {},
+        );
+  }
   StartupTrace.mark('profile.end');
   // Langue des pistes audio (direct, aperçu, film). On la relit si
   // la personne change la langue dans Réglages : le prochain zap
   // prend la nouvelle, sans rouvrir la chaîne en cours.
-  _syncPlayerLanguage();
-  LocaleRepository.instance.addListener(_syncPlayerLanguage);
+  StartupTrace.bootSync('playerLanguage', () {
+    _syncPlayerLanguage();
+    LocaleRepository.instance.addListener(_syncPlayerLanguage);
+  });
 
   // --- Briques PARTAGÉES avec le mobile (non bloquant) ---
   // 1) Identité stable (MAC) → le panel reconnaît l'appareil TV.
@@ -278,8 +289,11 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // que si le panel a changé
   // la source. En mode sans échec on lit quand même la licence,
   // mais on ne retélécharge pas une grosse liste.
-  RemoteActivationWatch.instance.start(
-    allowSourceImport: !BootGuard.instance.safeMode,
+  StartupTrace.bootSync(
+    'activationWatch',
+    () => RemoteActivationWatch.instance.start(
+      allowSourceImport: !BootGuard.instance.safeMode,
+    ),
   );
   if (!BootGuard.instance.safeMode) {
     unawaited(RemoteSourceRepository.sync());
@@ -359,7 +373,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
 
   // 8) Notifications (alarmes « ton équipe joue bientôt ») : init du plugin +
   //    fuseaux horaires + canal Android. Idempotent, best-effort.
-  unawaited(NotificationService.instance.init());
+  if (Platform.isAndroid) unawaited(NotificationService.instance.init());
 
   // 9) Contrôle parental du profil en cours : le 1er rendu du Direct
   //    masque déjà l'Adulte si ce profil l'a activé (forcé sur Enfants).

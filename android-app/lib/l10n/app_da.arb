@@ -1341,7 +1341,7 @@
   "castFriendlyDnsUnstable": "Ustabilt internet eller DNS. Prøv igen om et par sekunder.",
   "castFriendlyProviderLimit": "Din IPTV-udbyder afviser en ekstra forbindelse (grænsen er nået). Luk en anden app, der ser med, og prøv igen.",
   "castProgressValidating": "Tjekker streamen…",
-  "castWindowsHelp": "Forbind pc og TV til det samme private netværk (Wi-Fi eller Ethernet). Vælg et DLNA-TV eller Roku. Modtagere med kun Google Cast understøttes ikke på Windows. Brug TV-fjernbetjeningen til lydspor og spoling.",
+  "castWindowsHelp": "Forbind PC og TV til samme private netværk (Wi-Fi eller Ethernet). Vælg Chromecast / Google TV, DLNA-TV eller Roku. Tillad ZUNO i Windows-firewallen på private netværk. Brug TV-fjernbetjeningen til lyd og spoling.",
   "vipCountriesTitle": "Mine lande · VIP",
   "vipCountriesHint": "Vælg op til 10 lande. Rækkefølgen gemmes for profilen; de øvrige er stadig tilgængelige.",
   "vipCountriesOrder": "Min rækkefølge",

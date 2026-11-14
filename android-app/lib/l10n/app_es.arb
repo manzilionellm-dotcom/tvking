@@ -1341,7 +1341,7 @@
   "castFriendlyDnsUnstable": "Internet o DNS inestable. Inténtalo de nuevo en unos segundos.",
   "castFriendlyProviderLimit": "Tu proveedor IPTV rechaza una conexión adicional (límite alcanzado). Cierra otra app que esté reproduciendo e inténtalo de nuevo.",
   "castProgressValidating": "Verificando el flujo…",
-  "castWindowsHelp": "Conecta el PC y la TV a la misma red privada (Wi-Fi o Ethernet). Elige una TV DLNA o Roku. Los receptores que solo usan Google Cast no son compatibles con Windows. Usa el mando de la TV para el audio y para avanzar.",
+  "castWindowsHelp": "Conecta PC y TV a la misma red privada (Wi-Fi o Ethernet). Elige Chromecast / Google TV, TV DLNA o Roku. Permite ZUNO en el firewall de Windows para redes privadas. Usa el mando para audio y avance.",
   "vipCountriesTitle": "Mis países · VIP",
   "vipCountriesHint": "Elige hasta 10 países. El orden se guarda para este perfil; los demás siguen disponibles.",
   "vipCountriesOrder": "Mi orden",
