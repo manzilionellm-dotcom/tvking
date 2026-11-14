@@ -86,6 +86,9 @@ import '../core/tv_zap.dart';
 import 'tv_channel_guide_screen.dart';
 import 'tv_cinema_common.dart';
 import 'tv_touch_components.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/app/zuno_edition.dart';
+import '../core/picture_fill.dart';
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -289,9 +292,64 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     LogicalKeyboardKey.numpad9,
   ];
 
+  // ---------- Téléphone : plein écran et « Remplir » ----------
+  static const String _kPictureFillKey = 'novatube.player.fill.v1';
+
+  /// Vrai sur l'édition tactile (téléphone, tablette). Rien de ce qui suit
+  /// ne s'applique à la TV ni au PC.
+  bool get _touchEdition => CastPlatform.zunoEdition == ZunoEdition.touch;
+
+  /// Choix « Remplir l'écran », retenu d'une chaîne à l'autre.
+  bool _pictureFill = false;
+
+  /// Barres du système masquées (paysage) ou non. `null` = pas encore réglé.
+  bool? _immersive;
+
+  Future<void> _loadPictureFill() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final bool saved = prefs.getBool(_kPictureFillKey) ?? false;
+      if (mounted && saved != _pictureFill) setState(() => _pictureFill = saved);
+    } catch (_) {/* préférence illisible : image entière */}
+  }
+
+  void _togglePictureFill() {
+    setState(() => _pictureFill = !_pictureFill);
+    _showOverlayTemporarily();
+    unawaited(() async {
+      try {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_kPictureFillKey, _pictureFill);
+      } catch (_) {}
+    }());
+  }
+
+  /// Le bouton n'apparaît que là où il change quelque chose : téléphone,
+  /// écran plus allongé que l'image.
+  bool _fillButtonShown(BuildContext context) {
+    if (!_touchEdition) return false;
+    final Size size = MediaQuery.sizeOf(context);
+    return pictureFillUseful(width: size.width, height: size.height);
+  }
+
+  /// Téléphone en paysage : on masque la barre d'état et la barre de
+  /// navigation, l'image prend tout l'écran (un glissé depuis le bord les
+  /// fait revenir un instant). En portrait, elles restent visibles.
+  void _syncSystemBars(BuildContext context) {
+    if (!_touchEdition) return;
+    final bool wanted =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (_immersive == wanted) return;
+    _immersive = wanted;
+    unawaited(SystemChrome.setEnabledSystemUIMode(
+      wanted ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+    ));
+  }
+
   @override
   void initState() {
     super.initState();
+    if (_touchEdition) unawaited(_loadPictureFill());
     TvActivity.enter();
     BlackBox.instance.info('SCREEN', 'Lecteur ouvert');
     // Tant que ce plein écran vit, l'aperçu ne crée pas un second lecteur.
@@ -476,6 +534,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   void dispose() {
+    // On rend les barres du système en quittant le lecteur.
+    if (_touchEdition && _immersive == true) {
+      unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    }
     AdultAccess.instance.unlocked.removeListener(_onAdultAccessChanged);
     final Future<void> castClosed =
         _desktopCastKey.currentState?.close() ?? Future<void>.value();
@@ -1776,6 +1838,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // soulignement jaune) — c'était le rendu vu sur la box pour « Guide /
     // REC / Favori » et le bandeau de chaîne. Aucun autre changement visuel :
     // les styles TvTokens prévus s'appliquent enfin.
+    _syncSystemBars(context);
     return Material(
       type: MaterialType.transparency,
       child: PopScope(
@@ -1804,11 +1867,30 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                 fit: StackFit.expand,
                 children: <Widget>[
                   // Vidéo SurfaceView native plein écran (16:9 centré sur TV 16:9).
-                  Center(
-                    child: AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: NativeVideoView(controller: _controller),
-                    ),
+                  // Sur téléphone, « Remplir » agrandit le cadre jusqu'à
+                  // couvrir l'écran (picture_fill.dart). Partout ailleurs,
+                  // l'image entière en 16:9, comme avant.
+                  LayoutBuilder(
+                    builder: (BuildContext context, BoxConstraints box) {
+                      final ({double width, double height}) size = pictureBox(
+                        width: box.maxWidth,
+                        height: box.maxHeight,
+                        fill: _touchEdition && _pictureFill,
+                      );
+                      return ClipRect(
+                        child: OverflowBox(
+                          minWidth: 0,
+                          minHeight: 0,
+                          maxWidth: double.infinity,
+                          maxHeight: double.infinity,
+                          child: SizedBox(
+                            width: size.width,
+                            height: size.height,
+                            child: NativeVideoView(controller: _controller),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   // Le temps que l'image arrive (ou qu'on lâche Haut/Bas), on dit
                   // QUELLE chaîne est visée. Un logo seul ne permettait pas de
@@ -1887,6 +1969,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             engineLabel: _engineLabel(),
                             engineFocused: _btnFocus == _engineBtn(context),
                             engineNote: _engineNote,
+                            onPictureFill: _fillButtonShown(context)
+                                ? _togglePictureFill
+                                : null,
+                            pictureFillOn: _pictureFill,
                           ),
                         ),
                       ),
@@ -2249,6 +2335,8 @@ class _ControlsBar extends StatelessWidget {
     this.engineLabel,
     this.engineFocused = false,
     this.engineNote,
+    this.onPictureFill,
+    this.pictureFillOn = false,
   });
 
   final Channel channel;
@@ -2285,6 +2373,10 @@ class _ControlsBar extends StatelessWidget {
   final String? engineLabel;
   final bool engineFocused;
   final String? engineNote;
+
+  /// Téléphone : « Remplir » / « Image entière ». Null = bouton absent.
+  final VoidCallback? onPictureFill;
+  final bool pictureFillOn;
 
   @override
   Widget build(BuildContext context) {
@@ -2417,6 +2509,22 @@ class _ControlsBar extends StatelessWidget {
               label: engineLabel ?? context.l10n.tvPictureEngine,
               onTap: onEngine!,
               focused: engineFocused,
+            ),
+          ],
+          // Téléphone en paysage seulement : remplir l'écran ou revenir à
+          // l'image entière. Au doigt, hors du surlignage au D-pad.
+          if (onPictureFill != null) ...<Widget>[
+            const SizedBox(width: 34),
+            _CtrlButton(
+              icon: pictureFillOn
+                  ? Icons.fit_screen_rounded
+                  : Icons.zoom_out_map_rounded,
+              label: pictureFillOn
+                  ? context.l10n.tvPictureFit
+                  : context.l10n.tvPictureFill,
+              onTap: onPictureFill!,
+              active: pictureFillOn,
+              focused: false,
             ),
           ],
         ],
