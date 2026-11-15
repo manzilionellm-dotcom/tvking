@@ -25,6 +25,7 @@ import 'features/player/data/audio_diag_prefs.dart';
 import 'features/player/data/image_prefs.dart';
 import 'features/player/data/audio_report_store.dart';
 import 'features/player/domain/audio_report_book.dart';
+import 'features/player/domain/audio_report_dedupe.dart';
 import 'core/update/update_service.dart';
 import 'core/app/boot_guard.dart';
 import 'core/app/startup_trace.dart';
@@ -78,6 +79,10 @@ void _syncPlayerLanguage() {
 /// Diagnostic du son → boîte noire (Réglages → Boîte noire). Une ligne par
 /// constat, étiquette « SON », avec la chaîne en cours quand on la connaît.
 void _wireAudioDiagnostic() {
+  // Le rapport complet revient à chaque changement du compteur Android :
+  // on n'écrit en entier que le premier de chaque ouverture, puis les lignes
+  // qui ont changé (voir audio_report_dedupe.dart).
+  final AudioReportDedupe dedupe = AudioReportDedupe();
   NativeVideoController.onAudioDiagnostic = (String diagnostic) {
     // « Son témoin » : le nom vient de l'écran Diagnostic, pas du
     // heartbeat (NowPlaying reste la chaîne, ou vide).
@@ -85,9 +90,7 @@ void _wireAudioDiagnostic() {
         AudioReportStore.channelOverride ?? NowPlaying.instance.current;
     final String safe = redactAudioText(diagnostic);
     bool first = true;
-    for (final String raw in safe.split('\n')) {
-      final String line = raw.trim();
-      if (line.isEmpty) continue;
+    for (final String line in dedupe.linesFor(safe)) {
       BlackBox.instance.info(
         'SON',
         first && channel.isNotEmpty ? '[$channel] $line' : line,
@@ -95,6 +98,22 @@ void _wireAudioDiagnostic() {
       first = false;
     }
     unawaited(AudioReportStore.instance.record(channel: channel, body: safe));
+  };
+}
+
+/// Pauses du lecteur → boîte noire, étiquette « LECTURE » : à chaque coupure
+/// terminée, sa durée, ce que le serveur a livré pendant qu'elle durait, les
+/// images perdues et le réseau. Avant, le journal ne disait pas POURQUOI le
+/// son s'arrêtait (serveur muet ou appareil qui ne suit pas).
+void _wirePlaybackDiagnostic() {
+  NativeVideoController.onPlaybackDiagnostic = (String line) {
+    final String channel = NowPlaying.instance.current;
+    final String text = redactAudioText(line).trim();
+    if (text.isEmpty) return;
+    BlackBox.instance.info(
+      'LECTURE',
+      channel.isNotEmpty ? '[$channel] $text' : text,
+    );
   };
 }
 
@@ -199,6 +218,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   );
   _wireAudioDiagnostic();
   _wireVideoDiagnostic();
+  _wirePlaybackDiagnostic();
   // Le journal part vers le panel (même Worker, même MAC). L'envoi
   // est coupé par l'interrupteur « En plus ». Rien ici ne touche au son.
   BlackBoxUpload.instance.start();

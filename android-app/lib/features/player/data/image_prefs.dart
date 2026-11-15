@@ -12,6 +12,11 @@
 //  À allumer sur une box où un film 4K donne un écran noir ou d'une
 //  seule couleur avec le son. Les clés Amazon connues pour ce défaut
 //  sont corrigées sans ce réglage (voir logic/HybridHdr.kt).
+//
+//  « Coussin anti-coupure » (coupé par défaut) : réglage de LECTURE rangé
+//  ici avec les autres choix du lecteur. Après une coupure du direct, le
+//  lecteur attend 5 s de réserve avant de repartir (au lieu de 2 s) :
+//  moins de coupures, mais chacune plus longue (voir logic/PlaybackStalls.kt).
 // =========================================================
 
 import 'package:flutter/foundation.dart';
@@ -27,17 +32,20 @@ class ImagePrefs {
   static const String frameRateKey = 'zuno.player.image.fps.v1';
   static const String contrastKey = 'zuno.player.image.contrast.v1';
   static const String hdrCompatKey = 'zuno.player.image.hdr_compat.v1';
+  static const String stallCushionKey = 'zuno.player.stall_cushion.v1';
 
   static ImageEngine _engine = ImageEngine.hardware;
   static bool _frameRateMatch = false;
   static bool _lightContrast = false;
   static bool _hdrCompat = false;
+  static bool _stallCushion = false;
   static bool _loaded = false;
 
   static ImageEngine get engine => _engine;
   static bool get frameRateMatch => _frameRateMatch;
   static bool get lightContrast => _lightContrast;
   static bool get hdrCompat => _hdrCompat;
+  static bool get stallCushion => _stallCushion;
 
   static final ValueNotifier<int> changes = ValueNotifier<int>(0);
 
@@ -49,15 +57,18 @@ class ImagePrefs {
       _frameRateMatch = prefs.getBool(frameRateKey) ?? false;
       _lightContrast = prefs.getBool(contrastKey) ?? false;
       _hdrCompat = prefs.getBool(hdrCompatKey) ?? false;
+      _stallCushion = prefs.getBool(stallCushionKey) ?? false;
     } catch (_) {
       _engine = ImageEngine.hardware;
       _frameRateMatch = false;
       _lightContrast = false;
       _hdrCompat = false;
+      _stallCushion = false;
     }
     NativeVideoController.defaultLightContrast = _lightContrast;
     // Statique : le lecteur l'envoie à chaque vue avant son adresse.
     NativeVideoController.hdrCompat = _hdrCompat;
+    NativeVideoController.stallCushion = _stallCushion;
     NativeVideoController.pushAudioDiagFlags();
     _loaded = true;
     changes.value++;
@@ -116,14 +127,32 @@ class ImagePrefs {
     }
   }
 
+  /// Pris en compte à la prochaine coupure, y compris sur la chaîne en cours :
+  /// le lecteur relit le réglage à chaque décision de reprise.
+  static Future<void> setStallCushion(bool value) async {
+    _stallCushion = value;
+    _loaded = true;
+    NativeVideoController.stallCushion = value;
+    NativeVideoController.pushAudioDiagFlags();
+    changes.value++;
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(stallCushionKey, value);
+    } catch (_) {
+      // Le choix reste appliqué jusqu'à la fermeture de l'app.
+    }
+  }
+
   @visibleForTesting
   static void resetForTesting() {
     _engine = ImageEngine.hardware;
     _frameRateMatch = false;
     _lightContrast = false;
     _hdrCompat = false;
+    _stallCushion = false;
     _loaded = false;
     NativeVideoController.defaultLightContrast = false;
     NativeVideoController.hdrCompat = false;
+    NativeVideoController.stallCushion = false;
   }
 }

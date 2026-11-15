@@ -136,6 +136,14 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
     if (mounted) setState(() {});
   }
 
+  /// « Coussin anti-coupure » : après une coupure du direct, attendre 5 s de
+  /// réserve au lieu de 2 s avant de repartir. Coupé par défaut.
+  Future<void> _toggleStallCushion() async {
+    await ImagePrefs.load();
+    await ImagePrefs.setStallCushion(!ImagePrefs.stallCushion);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _toggleVoice() async {
     await ClearVoiceFlag.load();
     await ClearVoiceFlag.set(!ClearVoiceFlag.value);
@@ -294,6 +302,15 @@ class _TvExtrasScreenState extends State<TvExtrasScreen> {
                 ? context.l10n.tvHdrCompatOn
                 : context.l10n.tvHdrCompatOff,
             onSelect: _toggleHdrCompat,
+          ),
+        // Un réglage de lecture du direct : même condition (lecteur Android).
+        if (contrastAvailable)
+          ExtrasRow(
+            title: context.l10n.tvStallCushion,
+            subtitle: ImagePrefs.stallCushion
+                ? context.l10n.tvStallCushionOn
+                : context.l10n.tvStallCushionOff,
+            onSelect: _toggleStallCushion,
           ),
       ],
     );

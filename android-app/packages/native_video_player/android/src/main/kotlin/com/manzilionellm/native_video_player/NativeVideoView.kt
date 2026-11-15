@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Point
@@ -39,8 +41,11 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.decoder.DecoderInputBuffer
 import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
@@ -48,6 +53,7 @@ import androidx.media3.decoder.ffmpeg.FfmpegLibrary
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
@@ -63,6 +69,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoFrameMetadataListener
@@ -100,11 +107,14 @@ import com.manzilionellm.native_video_player.logic.PictureHealth
 import com.manzilionellm.native_video_player.logic.PictureSignal
 import com.manzilionellm.native_video_player.logic.PictureTune
 import com.manzilionellm.native_video_player.logic.PlaybackSession
+import com.manzilionellm.native_video_player.logic.PlaybackStallTracker
 import com.manzilionellm.native_video_player.logic.PlayerCensus
 import com.manzilionellm.native_video_player.logic.ProbeAttach
 import com.manzilionellm.native_video_player.logic.VolumeTrace
 import com.manzilionellm.native_video_player.logic.ReconnectGate
 import com.manzilionellm.native_video_player.logic.ReconnectPlan
+import com.manzilionellm.native_video_player.logic.ResumeCushion
+import com.manzilionellm.native_video_player.logic.StallText
 import com.manzilionellm.native_video_player.logic.SpokenCandidate
 import com.manzilionellm.native_video_player.logic.SpokenTrackChoice
 import com.manzilionellm.native_video_player.logic.VideoCandidate
@@ -443,6 +453,25 @@ class NativeVideoView(
     private var diag = AudioSnapshot()
     private var diagLastUnderrunSentMs = 0L
     private var diagCapsSent = false
+
+    // Pauses du lecteur (voir PlaybackStallTracker) : mesurées et écrites dans
+    // la boîte noire (étiquette LECTURE). Déclarés AVANT le bloc init : la
+    // fabrique de données réseau ci-dessous s'en sert à la construction.
+    private val stalls = PlaybackStallTracker()
+    private val bytesWatch = object : TransferListener {
+        override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+        override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+        override fun onBytesTransferred(
+            source: DataSource,
+            dataSpec: DataSpec,
+            isNetwork: Boolean,
+            bytesTransferred: Int,
+        ) {
+            // Fil réseau : seulement une date et un compteur, rien d'autre.
+            if (isNetwork) stalls.onBytes(SystemClock.elapsedRealtime(), bytesTransferred)
+        }
+        override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) = Unit
+    }
 
     // Trace de volume : une ligne par seconde, 10 s après chaque ouverture.
     // Incrémenté à chaque silence : les lignes de l'ancienne chaîne s'arrêtent.
@@ -1117,17 +1146,13 @@ class NativeVideoView(
         // de démarrage passent toujours (priorité au temps) ; au-delà, le
         // chargement s'arrête à 45 s OU 32 Mio. Box plus grosses : inchangé.
         // Voir logic/LowRamBuffer.kt et LowRamBufferTest.
-        val loadControlBuilder = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                5_000,
-                45_000,
-                ReconnectPlan.BUFFER_FOR_PLAYBACK_MS,
-                2_000,
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .setBackBuffer(0, false)
-        lowRamTargetBufferBytes()?.let { loadControlBuilder.setTargetBufferBytes(it) }
-        val loadControl = loadControlBuilder.build()
+        // Mêmes valeurs qu'avant (5 s / 45 s / démarrage ReconnectPlan / reprise 2 s,
+        // priorité au temps, pas de tampon arrière), mais construites ici pour
+        // que la REPRISE après une coupure puisse être allongée par le réglage
+        // « Coussin anti-coupure » (coupé par défaut : alors rien ne change).
+        val loadControl = CushionLoadControl(
+            targetBufferBytes = lowRamTargetBufferBytes() ?: C.LENGTH_UNSET,
+        )
 
         // DÉCODEUR VIDÉO. Matériel d'abord (MediaCodec Android, le plus
         // compatible sur les box), repli vers le décodeur suivant SEULEMENT
@@ -1273,6 +1298,7 @@ class NativeVideoView(
             .setKeepPostFor302Redirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(15_000)
+            .setTransferListener(bytesWatch)
 
         // DefaultDataSource délègue le http(s) au httpFactory ci-dessus (donc
         // MÊME User-Agent / redirections pour le DIRECT) MAIS sait AUSSI ouvrir
@@ -1507,6 +1533,7 @@ class NativeVideoView(
                 // gardée, seulement son hachage.
                 val zapNo = PlayerCensus.onZap(AacRoute.key(url))
                 emit("audioDiag", "Zap : n°$zapNo.")
+                stalls.onOpen(SystemClock.elapsedRealtime())
                 // Repli AAC → box PAR CHAÎNE : seule une chaîne où FFmpeg a
                 // vraiment échoué repasse par la box. « FFmpeg : réessayer »
                 // efface d'abord sa mémoire. Le filet des 8 s reste armé plus bas.
@@ -1737,6 +1764,13 @@ class NativeVideoView(
                 HybridHdr.manual = call.arguments == true
                 result.success(null)
             }
+            "setStallCushion" -> {
+                // Réglage « Coussin anti-coupure » : vrai = après une coupure du
+                // direct, on attend 5 s de réserve au lieu de 2 s. Lu à chaque
+                // décision de reprise : pas de réouverture ici.
+                ResumeCushion.enabled = call.arguments == true
+                result.success(null)
+            }
             "setBackgroundFlutterOnly" -> {
                 // Vrai = ancien chemin (Flutter seul). Faux = arrêt dans onPause.
                 AppForeground.flutterOnly = call.arguments == true
@@ -1759,6 +1793,7 @@ class NativeVideoView(
                 val ms = (call.argument<Number>("ms"))?.toLong() ?: 0L
                 val dur = player.duration
                 val target = if (dur != C.TIME_UNSET && dur > 0) ms.coerceIn(0L, dur) else ms.coerceAtLeast(0L)
+                stalls.onSeek(SystemClock.elapsedRealtime())
                 player.seekTo(target)
                 lastKnownPos = target
                 emit("position", target)
@@ -1851,11 +1886,54 @@ class NativeVideoView(
         return eventTime.realtimeMs >= sessionOpenedAt && sessionOpenedAt > 0L
     }
 
+    /** Images perdues depuis l'ouverture (-1 : le décodeur ne le dit pas). */
+    private fun droppedFrameCount(): Int {
+        val counters = player.videoDecoderCounters ?: return -1
+        counters.ensureUpdated()
+        return counters.droppedBufferCount
+    }
+
+    private fun noteStallStart() {
+        stalls.onBuffering(
+            SystemClock.elapsedRealtime(),
+            player.totalBufferedDuration,
+            droppedFrameCount(),
+        )
+    }
+
+    private fun noteStallEnd() {
+        val stall = stalls.onReady(SystemClock.elapsedRealtime(), droppedFrameCount()) ?: return
+        emit("playDiag", StallText.line(stall, networkLabel()))
+    }
+
+    /** Réseau actuel en deux mots, pour la ligne des pauses. Jamais d'échec. */
+    private fun networkLabel(): String = try {
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val net = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) cm?.activeNetwork else null
+        val caps = if (cm != null && net != null) cm.getNetworkCapabilities(net) else null
+        when {
+            caps == null -> "inconnu"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "câble"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
+                val dbm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) caps.signalStrength else NetworkCapabilities.SIGNAL_STRENGTH_UNSPECIFIED
+                if (dbm != NetworkCapabilities.SIGNAL_STRENGTH_UNSPECIFIED) "Wi-Fi ($dbm dBm)" else "Wi-Fi"
+            }
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile"
+            else -> "autre"
+        }
+    } catch (_: Throwable) {
+        "inconnu"
+    }
+
     override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
         if (!fresh(eventTime)) return
         when (state) {
-            Player.STATE_BUFFERING -> emit("buffering", true)
+            Player.STATE_BUFFERING -> {
+                noteStallStart()
+                emit("buffering", true)
+            }
             Player.STATE_READY -> {
+                noteStallEnd()
                 // On annule une ré-ouverture devenue inutile, MAIS on ne
                 // remet pas le budget à zéro ici : « prêt » arrive parfois
                 // une fraction de seconde avant un nouvel échec. Le budget
@@ -4227,5 +4305,55 @@ private class HybridHdrVideoRenderer(
             toldAction = action
             HybridHdrReport.action(active)?.let(report)
         }
+    }
+}
+
+/**
+ * Même chargement que `DefaultLoadControl.Builder()…build()` utilisé jusqu'ici :
+ * 5 s minimum, 45 s maximum, démarrage [ReconnectPlan.BUFFER_FOR_PLAYBACK_MS],
+ * reprise après coupure 2 s, priorité au temps, aucun tampon arrière.
+ *
+ * UNE seule différence possible : si le réglage « Coussin anti-coupure » est
+ * allumé, la reprise après une COUPURE attend plus de réserve (voir
+ * [ResumeCushion], avec ses garde-fous). Coupé — c'est le cas par défaut — la
+ * décision est celle de Media3, mot pour mot.
+ */
+@UnstableApi
+private class CushionLoadControl(targetBufferBytes: Int) : DefaultLoadControl(
+    DefaultAllocator(/* trimOnReset= */ true, C.DEFAULT_BUFFER_SEGMENT_SIZE),
+    5_000,
+    45_000,
+    ReconnectPlan.BUFFER_FOR_PLAYBACK_MS,
+    2_000,
+    targetBufferBytes,
+    /* prioritizeTimeOverSizeThresholds= */ true,
+    /* backBufferDurationMs= */ 0,
+    /* retainBackBufferFromKeyframe= */ false,
+) {
+    /** Début de l'attente de la reprise en cours (0 : pas de coupure en cours). */
+    private var waitingSinceMs = 0L
+
+    override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean {
+        val base = super.shouldStartPlayback(parameters)
+        if (!parameters.rebuffering) {
+            waitingSinceMs = 0L
+            return base
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (waitingSinceMs == 0L) waitingSinceMs = now
+        val playoutUs = Util.getPlayoutDurationForMediaDuration(
+            parameters.bufferedDurationUs,
+            parameters.playbackSpeed,
+        )
+        val resume = ResumeCushion.shouldResume(
+            baseOk = base,
+            rebuffering = true,
+            bufferedPlayoutUs = playoutUs,
+            targetLiveOffsetUs = parameters.targetLiveOffsetUs,
+            waitedMs = now - waitingSinceMs,
+            enabled = ResumeCushion.enabled,
+        )
+        if (resume) waitingSinceMs = 0L
+        return resume
     }
 }
