@@ -1,0 +1,25 @@
+name: NovaTube isolated delta tooling
+on:
+  push:
+    branches: ['fix/novatube-stability-20261115']
+    paths: ['.github/workflows/novatube-stability-delta-tools.yml']
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Prepare runtime-compatible delta wheel
+        run: |
+          python -m pip download bsdiff4 --only-binary=:all: --python-version 313 --implementation cp --abi cp313 --platform manylinux2014_x86_64 --dest wheel
+          cd wheel && sha256sum *.whl > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: novatube-delta-wheel
+          path: wheel/
+          retention-days: 1
+          if-no-files-found: error
