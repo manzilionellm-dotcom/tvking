@@ -104,6 +104,25 @@ qui marche (aucun M3U lu), panne 503 (aucun M3U lu), M3U refusé, page web à la
 place du M3U, redémarrage (rien retéléchargé, films toujours lisibles),
 « Actualiser » (relu après 2 min, échec = ancien catalogue gardé).
 
+Vérifié aussi sur un **vrai réseau** (`m3u_vod_network_test.dart` : un petit
+serveur HTTP local, de vraies prises, pas un faux client) : réponse en morceaux,
+réponse compressée (gzip), redirection, panel qui refuse les trois premiers
+lecteurs et n'accepte que le quatrième, page web à la place du M3U, connexion
+**coupée** en route (échec net, rien laissé sur le disque, la reprise marche),
+serveur qui se tait (arrêt au délai d'inactivité), plafond de taille, fichier
+de 26 Mo reçu en entier, compte Xtream dont l'API répond 404 puis M3U lu pour de
+vrai, et liste M3U compressée avec films, séries et épisodes.
+
+Un piège rencontré en écrivant ces tests : un faux serveur qui « coupe » mal
+(en-têtes déjà partis) se tait au lieu de raccrocher, et le test passe pour la
+mauvaise raison (délai d'inactivité au lieu d'une vraie coupure). Le test
+vérifie donc que l'erreur est bien une fin de connexion, pas un silence.
+
+Limite connue : l'échec d'un téléchargement coupé reprend le texte commun aux
+listes de directs (« le serveur a refusé les N signatures… »), suivi de la
+vraie cause (« Connection closed… »). La cause est exacte, la première phrase
+est trop sévère pour une simple coupure.
+
 **Non vérifié** : le M3U d'un vrai fournisseur (taille, lenteur, formats de
 noms), le temps de la première lecture sur une box à 1 Go, et la lecture d'un
 film dont l'adresse vient du M3U sur une vraie box.
