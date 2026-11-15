@@ -1,7 +1,8 @@
 // =========================================================
 //  cinema_models.dart — Modèles du module Cinéma (Films + Séries)
 // =========================================================
-//  Tout vient du (ou des) compte(s) Xtream du client — jamais d'URL en dur.
+//  Tout vient du (ou des) compte(s) Xtream du client, ou du M3U de ses listes
+//  — jamais d'URL en dur.
 //
 //  API Xtream utilisée (player_api.php) :
 //    • get_vod_categories / get_vod_streams[&category_id]      → films
@@ -20,8 +21,9 @@ import 'package:flutter/foundation.dart';
 /// Films ou séries.
 enum CinemaKind { movie, series }
 
-/// Un compte Xtream du client (le module fusionne TOUS ses comptes, comme le
-/// Direct fusionne toutes ses listes).
+/// Un compte du client (le module fusionne TOUS ses comptes, comme le Direct
+/// fusionne toutes ses listes) : un compte Xtream, ou une liste M3U dont on lit
+/// les films et les séries (voir m3u_vod_store.dart).
 @immutable
 class CinemaSource {
   const CinemaSource({
@@ -30,22 +32,41 @@ class CinemaSource {
     required this.server,
     required this.username,
     required this.password,
+    this.m3uUrl,
   });
 
   /// Clé courte et stable (`p<playlistId>`), préfixe des identifiants.
   final String key;
   final int playlistId;
 
-  /// Base du serveur SANS slash final.
+  /// Base du serveur SANS slash final (vide pour une liste M3U).
   final String server;
   final String username;
   final String password;
 
+  /// Liste M3U (et non compte Xtream) : adresse du fichier, `file:` possible.
+  final String? m3uUrl;
+  bool get isM3u => m3uUrl != null;
+
+  /// M3U dont on lit les films et les séries : le fichier de la liste, ou,
+  /// pour un compte Xtream dont l'API n'a pas de films, son `get.php`.
+  String get m3uSourceUrl =>
+      m3uUrl ??
+      '$server/get.php?username=${Uri.encodeQueryComponent(username)}'
+          '&password=${Uri.encodeQueryComponent(password)}'
+          '&type=m3u_plus&output=ts';
+
+  /// Adresse d'un film connue par le M3U (posé par le dépôt au démarrage ;
+  /// absent = adresse Xtream habituelle). Ne contient que des films de ce
+  /// compte lus dans son M3U : voir M3uUrlBook.
+  static String? Function(String sourceKey, String streamId)? m3uUrlLookup;
+
   String movieUrl(String streamId, String ext) =>
-      '$server/movie/$username/$password/$streamId.$ext';
+      m3uUrlLookup?.call(key, streamId) ??
+      (isM3u ? '' : '$server/movie/$username/$password/$streamId.$ext');
 
   String episodeUrl(String episodeId, String ext) =>
-      '$server/series/$username/$password/$episodeId.$ext';
+      isM3u ? '' : '$server/series/$username/$password/$episodeId.$ext';
 }
 
 /// Une catégorie d'un compte (id serveur).

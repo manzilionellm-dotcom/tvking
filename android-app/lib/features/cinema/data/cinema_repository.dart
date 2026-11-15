@@ -32,9 +32,12 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart' show Database;
 
+import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel_genre.dart';
+import '../../playlists/data/playlist_database.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/xtream_client.dart';
 import '../../playlists/domain/playlist.dart';
@@ -45,7 +48,9 @@ import '../domain/cinema_models.dart';
 import 'catalog_cache_policy.dart';
 import 'catalog_disk.dart';
 import 'catalog_refresh.dart';
+import 'cinema_api.dart';
 import 'cinema_parsers.dart';
+import 'm3u_vod_store.dart';
 
 /// Au-delà, la liste complète n'est PAS téléchargée d'un bloc (index construit
 /// catégorie par catégorie). Même logique que l'import des chaînes.
@@ -66,7 +71,12 @@ const int kCinemaCategoryMax = 150000;
 const Duration kCinemaMaxAge = Duration(minutes: 10);
 
 class CinemaRepository {
-  CinemaRepository._();
+  CinemaRepository._() {
+    // Films lus dans un M3U : leur adresse vient du M3U, pas de la formule Xtream.
+    CinemaSource.m3uUrlLookup = M3uUrlBook.lookup;
+    // Un M3U refait en arrière-plan : le prochain passage relit le catalogue.
+    M3uVodApi.onRebuilt = (String _) => _wantsRefresh = true;
+  }
   static final CinemaRepository instance = CinemaRepository._();
   @visibleForTesting
   static http.Client Function()? httpForTesting;
@@ -171,6 +181,15 @@ class CinemaRepository {
   /// Bouton explicite : attendre le fournisseur, même avec un catalogue
   /// récent en mémoire. Un ancien staging partiel ne vaut pas une relecture.
   Future<bool> refreshNow(CinemaKind kind) async {
+    _manualRefresh = true;
+    try {
+      return await _refreshNowBody(kind);
+    } finally {
+      _manualRefresh = false;
+    }
+  }
+
+  Future<bool> _refreshNowBody(CinemaKind kind) async {
     await sources();
     if (_sources.isEmpty) return false;
     final Future<void>? previous = _refreshInFlight[kind];
@@ -216,7 +235,7 @@ class CinemaRepository {
   // ---------------- État ----------------
   String _sourcesSig = '';
   List<CinemaSource> _sources = const <CinemaSource>[];
-  final Map<String, XtreamClient> _clients = <String, XtreamClient>{};
+  final Map<String, CinemaApi> _clients = <String, CinemaApi>{};
 
   final Map<CinemaKind, List<CinemaCategory>> _cats =
       <CinemaKind, List<CinemaCategory>>{};
@@ -268,8 +287,24 @@ class CinemaRepository {
         await PlaylistRepository.instance.getAllPlaylists();
     final List<CinemaSource> out = <CinemaSource>[];
     for (final Playlist p in all) {
-      if (p.type != PlaylistType.xtream) continue;
       if (p.hidden) continue; // source désactivée par le client
+      if (p.type == PlaylistType.m3u) {
+        if (RepairFlags.cinemaM3uOff) continue; // repli : ancien comportement
+        // Liste M3U : ses films et séries sont lus dans le fichier, mais
+        // seulement si la liste en contient (sinon on ne télécharge rien).
+        final String link = (p.m3uUrl ?? '').trim();
+        if (link.isEmpty || p.id == null || !await _m3uHasVod(p)) continue;
+        out.add(CinemaSource(
+          key: 'p${p.id}',
+          playlistId: p.id!,
+          server: '',
+          username: '',
+          password: '',
+          m3uUrl: link,
+        ));
+        continue;
+      }
+      if (p.type != PlaylistType.xtream) continue;
       final String server = (p.xtreamServer ?? '').trim();
       final String user = (p.xtreamUsername ?? '').trim();
       if (server.isEmpty || user.isEmpty || p.id == null) continue;
@@ -284,12 +319,24 @@ class CinemaRepository {
       ));
     }
     final String sig = out
-        .map((CinemaSource s) => '${s.key}@${s.server}/${s.username}')
+        .map((CinemaSource s) =>
+            '${s.key}@${s.server}/${s.username}${_m3uPart(s)}')
         .join(',');
     if (sig != _sourcesSig) {
       clear();
       _sourcesSig = sig;
       _sources = out;
+      // Ménage : les dossiers M3U des listes supprimées.
+      unawaited(M3uVodApi.prune(<String>{
+        for (final Playlist p in all)
+          if (p.id != null) 'p${p.id}',
+      }));
+    }
+    // Adresses des films déjà lus dans un M3U : en mémoire AVANT que l'écran
+    // construise une vignette depuis le disque.
+    for (final CinemaSource s in out) {
+      await M3uVodApi.preloadBook(
+          sourceKey: s.key, signature: m3uVodHash(s.m3uSourceUrl));
     }
     // Empreinte du dossier cache. Le mot de passe n'entre PAS dedans :
     // s'il change, les films déjà enregistrés restent lisibles (l'URL est
@@ -297,10 +344,45 @@ class CinemaRepository {
     _folderSig = out.isEmpty
         ? null
         : catalogFolderName(out
-            .map(
-                (CinemaSource s) => '${s.playlistId}|${s.server}|${s.username}')
+            .map((CinemaSource s) =>
+                '${s.playlistId}|${s.server}|${s.username}${_m3uPart(s)}')
             .join('\n'));
     return _sources;
+  }
+
+  /// Empreinte du lien d'une liste M3U (jamais le lien : il porte les
+  /// identifiants). Vide pour un compte Xtream, dont les empreintes restent
+  /// donc celles d'avant.
+  static String _m3uPart(CinemaSource s) =>
+      s.isM3u ? '|m3u:${m3uVodHash(s.m3uUrl!)}' : '';
+
+  /// Résultat de [_m3uHasVod], par état de la liste (nombre de chaînes, date).
+  final Map<String, bool> _m3uVodCache = <String, bool>{};
+
+  /// Une liste M3U contient-elle des films ou des épisodes ? Lecture rapide de
+  /// ce qui est déjà en base : on ne télécharge pas un M3U de directs.
+  Future<bool> _m3uHasVod(Playlist p) async {
+    final String state = '${p.id}:${p.channelCount}:${p.lastSyncedAt ?? 0}';
+    final bool? known = _m3uVodCache[state];
+    if (known != null) return known;
+    bool has = false;
+    try {
+      final Database db = await PlaylistDatabase.instance.database;
+      final List<Map<String, Object?>> rows = await db.rawQuery(
+        'SELECT 1 FROM channels WHERE playlist_id = ? AND ('
+        "stream_url LIKE '%/movie/%' OR stream_url LIKE '%/series/%' OR "
+        "stream_url LIKE '%.mp4%' OR stream_url LIKE '%.mkv%' OR "
+        "stream_url LIKE '%.avi%' OR stream_url LIKE '%.mov%' OR "
+        "stream_url LIKE '%.wmv%' OR stream_url LIKE '%.m4v%' OR "
+        "stream_url LIKE '%.flv%' OR stream_url LIKE '%.webm%') LIMIT 1",
+        <Object?>[p.id],
+      );
+      has = rows.isNotEmpty;
+    } catch (e) {
+      BlackBox.instance.warn('CINEMA', 'liste ${p.id} : films non recherchés : $e');
+    }
+    _m3uVodCache[state] = has;
+    return has;
   }
 
   CinemaSource? sourceByKey(String key) {
@@ -310,16 +392,34 @@ class CinemaRepository {
     return null;
   }
 
-  XtreamClient _client(CinemaSource s) => _clients.putIfAbsent(
-        s.key,
-        () => XtreamClient(
+  /// Vrai pendant le bouton « Actualiser » : les M3U sont relus pour de bon.
+  bool _manualRefresh = false;
+
+  /// Qui répond pour ce compte : sa liste M3U, ou son API Xtream (avec, en
+  /// secours, le M3U du même compte si l'API n'a pas de films).
+  CinemaApi _client(CinemaSource s) => _clients.putIfAbsent(s.key, () {
+        final M3uVodApi m3u = M3uVodApi(
+          sourceKey: s.key,
+          m3uUrl: s.m3uSourceUrl,
+          signature: m3uVodHash(s.m3uSourceUrl),
+          httpClient: httpForTesting?.call(),
+          forceRefresh: () => _manualRefresh,
+        );
+        if (s.isM3u) return m3u;
+        final XtreamCinemaApi xtream = XtreamCinemaApi(XtreamClient(
           serverUrl: s.server,
           username: s.username,
           password: s.password,
           timeout: const Duration(seconds: 25),
           httpClient: httpForTesting?.call(),
-        ),
-      );
+        ));
+        if (RepairFlags.cinemaM3uOff) return xtream; // repli : API seule
+        return FallbackCinemaApi(
+          primary: xtream,
+          fallback: m3u,
+          forceRefresh: () => _manualRefresh,
+        );
+      });
 
   // ---------------- Catégories ----------------
 
@@ -773,7 +873,7 @@ class CinemaRepository {
   /// enregistrés. Le téléchargement en cours s'arrête ([_catalogGen]) et
   /// ne publie pas un morceau.
   void clear() {
-    for (final XtreamClient c in _clients.values) {
+    for (final CinemaApi c in _clients.values) {
       c.dispose();
     }
     _clients.clear();
@@ -813,6 +913,23 @@ class CinemaRepository {
   }
 
   // ---------------- Cache disque ----------------
+
+  /// Test : oublie le dossier disque ouvert (chaque test a son dossier neuf).
+  @visibleForTesting
+  void forgetDiskForTesting() => _disk = null;
+
+  /// Test : arrête tout et attend la fin des téléchargements lancés en
+  /// arrière-plan, pour qu'un test ne reçoive pas les requêtes du précédent
+  /// (le vidage [clear] les annule mais ne les attend pas).
+  @visibleForTesting
+  Future<void> shutdownForTesting() async {
+    final List<Future<void>> pending = _refreshInFlight.values.toList();
+    clear();
+    await Future.wait(<Future<void>>[
+      for (final Future<void> f in pending) f.catchError((Object _) {}),
+    ]);
+    await M3uVodApi.settleForTesting();
+  }
 
   Future<CatalogDisk?> _openDisk() async {
     if (_disk != null) return _disk;
