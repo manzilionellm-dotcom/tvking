@@ -1,0 +1,35 @@
+name: NovaTube stability toolchain (no release)
+on:
+  push:
+    branches: ['fix/novatube-stability-20261115']
+    paths: ['.github/workflows/novatube-stability-toolchain.yml']
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download pinned official Android build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sdk/build-tools sdk/platforms
+          curl --fail --location --retry 2 https://dl.google.com/android/repository/build-tools_r35_linux.zip -o tools.zip
+          curl --fail --location --retry 2 https://dl.google.com/android/repository/platform-33-ext5_r01.zip -o platform.zip
+          echo '2cfaa0bbb2336e9ec18ed3ecea84fa2e2af607bc  tools.zip' | sha1sum --check -
+          echo 'a6499e158fdd7140e3e466314b273016281fefcc  platform.zip' | sha1sum --check -
+          unzip -q tools.zip -d bt
+          mv bt/* sdk/build-tools/35.0.0
+          unzip -q platform.zip -d pf
+          mv pf/* sdk/platforms/android-33
+          tar -czf novatube-android-toolchain.tgz sdk/build-tools/35.0.0/d8 sdk/build-tools/35.0.0/apksigner sdk/build-tools/35.0.0/zipalign sdk/build-tools/35.0.0/aapt sdk/build-tools/35.0.0/aapt2 sdk/build-tools/35.0.0/lib sdk/build-tools/35.0.0/lib64 sdk/platforms/android-33/android.jar
+          sha256sum novatube-android-toolchain.tgz > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: novatube-android-toolchain
+          path: |
+            novatube-android-toolchain.tgz
+            SHA256SUMS.txt
+          retention-days: 1
+          if-no-files-found: error
