@@ -33,6 +33,7 @@ import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/live_shelves.dart';
 import '../domain/live_catalog_index.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 import '../domain/vip_channel_groups.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
@@ -251,9 +252,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   void initState() {
     super.initState();
     TvActivity.enter();
-    VipCountriesRepository.instance.addListener(_onVipChanged);
-    ActiveProfile.instance.listenable.addListener(_onVipProfileChanged);
-    VipCountriesRepository.instance.load();
+    if (!kNovatubeTv) {
+      VipCountriesRepository.instance.addListener(_onVipChanged);
+      ActiveProfile.instance.listenable.addListener(_onVipProfileChanged);
+      VipCountriesRepository.instance.load();
+    }
     BlackBox.instance.info('SCREEN', 'Direct ouvert');
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
@@ -339,8 +342,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     TvActivity.leave();
     BlackBox.instance.info('SCREEN', 'Direct fermé');
     _ingestGen++; // annule un pré-calcul en cours
-    VipCountriesRepository.instance.removeListener(_onVipChanged);
-    ActiveProfile.instance.listenable.removeListener(_onVipProfileChanged);
+    if (!kNovatubeTv) {
+      VipCountriesRepository.instance.removeListener(_onVipChanged);
+      ActiveProfile.instance.listenable.removeListener(_onVipProfileChanged);
+    }
     _sub?.cancel();
     _favSub?.cancel();
     _trendSub?.cancel();
@@ -499,7 +504,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Groupes pays construits UNE FOIS par lot, à partir du cache calculé
     // en isolate. Jamais de regex sur toutes les chaînes au déplacement D-pad.
-    _countryChannels = !_precomputed
+    _countryChannels = kNovatubeTv || !_precomputed
         ? const {}
         : RepairFlags.liveShelvesLegacy
         ? vipChannelGroups(_all)
@@ -512,8 +517,8 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Catégories affichées (pays VIP dans l'ordre choisi, puis autres rayons).
     final List<String> cats = <String>[
-      for (final code in VipCountriesRepository.instance.current)
-        '$_vipPrefix$code',
+      if (!kNovatubeTv)
+        for (final code in VipCountriesRepository.instance.current) '$_vipPrefix$code',
     ];
     if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
     if (_favCh.isNotEmpty) cats.add(_kFavCat);
@@ -949,7 +954,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       children: [
         // « Mes pays · VIP » et, juste à côté, la recherche : même écran
         // que le micro de la télécommande (chaînes, films, séries).
-        Row(
+        if (kNovatubeTv)
+          TvCtaButton(label: context.l10n.tvNavSearch, onSelect: _openSearch)
+        else Row(
           children: <Widget>[
             Expanded(
               child: TvCtaButton(
