@@ -481,11 +481,12 @@ class PlaylistRepository {
     return addM3uPlaylist(name: name, url: Uri.file(path).toString());
   }
 
-  Future<Uint8List> _loadM3uBody(String url, {http.Client? httpClient}) {
+  Future<Uint8List> _loadM3uBody(String url, {http.Client? httpClient,
+      Future<void> Function(Uint8List)? onFirstLines}) {
     if (url.startsWith('file:')) {
       return readLocalM3uBytes(Uri.parse(url).toFilePath());
     }
-    return M3uFetcher.fetchBytes(url, httpClient: httpClient);
+    return M3uFetcher.fetchBytes(url, httpClient: httpClient, onFirstLines: onFirstLines);
   }
 
   /// Télécharge le .m3u puis stocke les chaînes en base.
@@ -497,6 +498,7 @@ class PlaylistRepository {
     required String url,
     String? epgUrl,
     http.Client? httpClient,
+    VoidCallback? onFirstChannels,
     bool restoreDeleted = true,
   }) async {
     if (restoreDeleted) await DeletedSources.restoreManually(SourceFingerprint.ofM3uUrl(url));
@@ -534,6 +536,7 @@ class PlaylistRepository {
         client: client,
         playlistId: playlistId,
         wantEpg: epgUrl != null && epgUrl.isNotEmpty,
+        onFirstChannels: onFirstChannels,
       );
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -566,6 +569,9 @@ class PlaylistRepository {
       if (playlistId != null) {
         BlackBox.instance.info('DB', 'liste $playlistId supprimée (import M3U échoué)');
         await _deletePlaylist(playlistId);
+        if (kNovatubeTv && _channelsCache.any((c) => c.playlistId == playlistId)) {
+          await _emitCurrentState();
+        }
       }
       rethrow;
     } finally {
@@ -1076,10 +1082,11 @@ class PlaylistRepository {
     String url, {
     required http.Client client,
     required int playlistId,
+    Future<void> Function(Uint8List)? onFirstLines,
   }) async {
     // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
     // touche jamais au contenu, même pour un fichier de 60 Mo).
-    final Uint8List body = await _loadM3uBody(url, httpClient: client);
+    final Uint8List body = await _loadM3uBody(url, httpClient: client, onFirstLines: onFirstLines);
     return M3uParser.parseBytesInBackground(body, playlistId: playlistId);
   }
 
@@ -1088,11 +1095,17 @@ class PlaylistRepository {
     required http.Client client,
     required int playlistId,
     required bool wantEpg,
+    VoidCallback? onFirstChannels,
   }) async {
+    final publish = _firstChannelsPublisher(onFirstChannels);
     final M3uParseResult parsed = await _loadAndParseM3u(
       url,
       client: client,
       playlistId: playlistId,
+      onFirstLines: publish == null ? null : (bytes) async {
+        final part = await M3uParser.parseBytesInBackground(bytes, playlistId: playlistId);
+        publish(part.channels);
+      },
     );
     if (parsed.channels.isEmpty) {
       // Source invalide → on lève ; le `catch` de l'appelant retire l'orpheline.
@@ -1134,29 +1147,32 @@ class PlaylistRepository {
     );
   }
 
+  /// Le premier lot peut ouvrir l’accueil vide pendant le téléchargement.
+  /// Un changement de profil, de source ou une suppression annule ce droit.
+  void Function(List<Channel>)? _firstChannelsPublisher(VoidCallback? onReady) {
+    if (!kNovatubeTv || !mergeAllPlaylists || _channelsCache.isNotEmpty) return null;
+    final owner = ActiveProfile.instance.id;
+    final revision = _stateRevision;
+    return (channels) {
+      if (channels.isEmpty || owner != ActiveProfile.instance.id ||
+          revision != _stateRevision || _channelsCache.isNotEmpty) {
+        return;
+      }
+      _channelsCache = channels.take(48).toList(growable: false);
+      _channelsController.add(_channelsCache);
+      onReady?.call();
+    };
+  }
+
   Future<_ImportedCatalog> _fetchInsertXtream(
     XtreamClient xtream, {
     required int playlistId,
     required bool wantEpg,
     VoidCallback? onFirstChannels,
   }) async {
-    final String owner = ActiveProfile.instance.id;
-    final int revision = _stateRevision;
-    final bool early = kNovatubeTv && mergeAllPlaylists && _channelsCache.isEmpty;
     final List<Channel> channels = await xtream.fetchLiveChannels(
       playlistId: playlistId,
-      onFirstChannels: !early ? null : (first) {
-        // Le lot reste en mémoire. Une suppression, un autre profil ou une
-        // autre liste arrivée entre-temps ont toujours priorité.
-        if (owner != ActiveProfile.instance.id ||
-            revision != _stateRevision ||
-            _channelsCache.isNotEmpty) {
-          return;
-        }
-        _channelsCache = first;
-        _channelsController.add(first);
-        onFirstChannels?.call();
-      },
+      onFirstChannels: _firstChannelsPublisher(onFirstChannels),
     );
     if (channels.isEmpty) {
       // Compte sans chaîne live → on lève ; le `catch` de l'appelant retire l'orpheline.

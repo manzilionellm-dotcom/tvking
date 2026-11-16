@@ -138,6 +138,7 @@ abstract final class M3uFetcher {
     http.Client? httpClient,
     String? preferredUserAgent,
     FetchTimeouts? timeouts,
+    Future<void> Function(Uint8List)? onFirstLines,
   }) async {
     final http.Client client = httpClient ?? http.Client();
     final bool owns = httpClient == null;
@@ -198,6 +199,7 @@ abstract final class M3uFetcher {
             kMaxM3uBytes,
             idle: t.idle,
             onBytes: (int n) => received = n,
+            onFirstLines: onFirstLines,
           ).timeout(t.total);
           // Sniff sur les 64 premiers Ko (Latin-1 : ne lève jamais) — assez
           // pour voir #EXTM3U / #EXTINF / une URL, sans décoder 60 Mo ici.
@@ -312,7 +314,12 @@ abstract final class M3uFetcher {
     int maxBytes, {
     Duration? idle,
     void Function(int received)? onBytes,
+    Future<void> Function(Uint8List)? onFirstLines,
   }) async {
+    // Une seule tranche indépendante du corps complet. Un champ ou une URL
+    // coupés en fin de paquet ne sont jamais présentés comme une chaîne.
+    const target = 8192;
+    final first = onFirstLines == null ? null : BytesBuilder();
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
     final Stream<List<int>> guarded = idle == null
@@ -338,6 +345,19 @@ abstract final class M3uFetcher {
         );
       }
       builder.add(chunk);
+      if (first != null && onFirstLines != null) {
+        final remaining = target - first.length;
+        first.add(chunk.length <= remaining ? chunk : chunk.sublist(0, remaining));
+        if (first.length == target) {
+          final bytes = first.takeBytes();
+          final end = bytes.lastIndexOf(10);
+          final head = M3uParser.decodeBytes(bytes).trimLeft().toUpperCase();
+          if (end > 0 && (head.startsWith('#EXTM3U') || head.startsWith('#EXTINF'))) {
+            await onFirstLines(Uint8List.sublistView(bytes, 0, end + 1));
+          }
+          onFirstLines = null;
+        }
+      }
     }
     return builder.takeBytes();
   }

@@ -172,6 +172,11 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     bool returnedEarly = false;
     final messenger = kNovatubeTv ? ScaffoldMessenger.maybeOf(context) : null;
     final String lateError = kNovatubeTv ? context.l10n.tvConnectError : '';
+    void showFirstChannels() {
+      if (!mounted || widget.onAdded == null || ModalRoute.of(context)?.isCurrent != true) return;
+      returnedEarly = true;
+      widget.onAdded!();
+    }
     try {
       await RemoteSourceRepository.runUserImport<void>(() async {
         if (mounted) setState(() => _importStarted = true);
@@ -184,14 +189,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               serverUrl: draft.serverUrl!,
               username: draft.username!,
               password: draft.password!,
-              onFirstChannels: !kNovatubeTv ? null : () {
-                if (!mounted || widget.onAdded == null ||
-                    ModalRoute.of(context)?.isCurrent != true) {
-                  return;
-                }
-                returnedEarly = true;
-                widget.onAdded!();
-              },
+              onFirstChannels: kNovatubeTv ? showFirstChannels : null,
             ),
           );
         } else {
@@ -199,6 +197,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
             PlaylistRepository.instance.addM3uPlaylist(
               name: name,
               url: draft.m3uUrl!,
+              onFirstChannels: kNovatubeTv ? showFirstChannels : null,
             ),
           );
         }
