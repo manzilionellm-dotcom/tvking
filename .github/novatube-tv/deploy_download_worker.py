@@ -216,23 +216,30 @@ def main() -> int:
         got = download_sha('/novatube.apk')
         sha_ok = got == expected
         print(f'téléchargement par le domaine : SHA-256 {got} ({"identique" if sha_ok else "DIFFÉRENT"})')
-    mobile = probe('/mobile.apk')
-    if tv_ok and sha_ok and mobile != before and mobile[0] == 404:
+    # NovaTube mobile : /mobile.apk doit rediriger vers un APK qui n'est PAS
+    # l'APK TV (manifeste mobile vérifié). Quelques secondes de propagation
+    # possibles entre les points de présence Cloudflare.
+    def mobile_served() -> bool:
+        status, location = probe('/mobile.apk')
+        return status == 302 and location != TV_APK_URL
+    mobile_ok = wait_for(mobile_served, 60)
+    if tv_ok and sha_ok and not mobile_ok and probe('/mobile.apk')[0] == 404:
         # /mobile.apk n'arrive pas au Worker (routes limitées) : on ajoute
         # cette seule adresse si le jeton le permet.
         if ensure_mobile_route(zid, routes):
-            wait_for(lambda: probe('/mobile.apk') == before, 90)
-            mobile = probe('/mobile.apk')
-    print(f'après : /mobile.apk → HTTP {mobile[0]} {mobile[1]} (souhaité : comme /novatube.apk avant)')
+            mobile_ok = wait_for(mobile_served, 90)
+    mobile = probe('/mobile.apk')
+    print(f'après : /mobile.apk → HTTP {mobile[0]} {mobile[1]}')
 
     if tv_ok and sha_ok:
         print('✓ novatube.zuno8k.com/novatube.apk sert NovaTube TV (SHA-256 vérifié)')
-        if mobile == before:
+        if mobile_ok:
             print('✓ NovaTube mobile conservé sur novatube.zuno8k.com/mobile.apk')
         else:
             # Demande explicite du propriétaire : TV sur /novatube.apk. Le mobile
-            # reste téléchargeable par son lien GitHub (affiché ci-dessous).
-            print(f'::warning::/mobile.apk non disponible sur le domaine ; NovaTube mobile reste téléchargeable ici : {before[1]}')
+            # reste téléchargeable par son lien GitHub, s'il était connu.
+            legacy = before[1] if before[1] and before[1] != TV_APK_URL else 'lien inconnu'
+            print(f'::warning::/mobile.apk non disponible sur le domaine ; NovaTube mobile : {legacy}')
         return 0
 
     print('::warning::vérification en échec → retour arrière sur l\'ancien script')
