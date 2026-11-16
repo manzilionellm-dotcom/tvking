@@ -8,6 +8,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -86,6 +87,13 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
   final FocusNode _submitFocus = FocusNode();
   late OpenEntryMode _mode;
   bool _busy = false;
+  http.Client? _importClient;
+  bool _cancelled = false;
+
+  void _cancelImport() {
+    _cancelled = true;
+    _importClient?.close();
+  }
   bool _importStarted = false;
   bool _passwordVisible = false;
   bool _picking = false;
@@ -201,12 +209,17 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     final address = kNovatubeTv && _mode == OpenEntryMode.m3u ? _link.text.trim() : '';
     final owner = kNovatubeTv ? ActiveProfile.instance.id : '';
     final submit = widget.submitForTesting;
+    final client = kNovatubeTv && submit == null ? http.Client() : null;
+    _importClient = client;
+    _cancelled = false;
+    int? savedCount;
     setState(() {
       _busy = true;
       _importStarted = false;
       _error = null;
     });
     FocusScope.of(context).unfocus();
+    final localizations = context.l10n;
     bool added = false;
     bool returnedEarly = false;
     final messenger = kNovatubeTv ? ScaffoldMessenger.maybeOf(context) : null;
@@ -218,36 +231,48 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     }
     try {
       await RemoteSourceRepository.runUserImport<void>(() async {
+        if (_cancelled) return;
         if (mounted) setState(() => _importStarted = true);
         if (submit != null) {
           await submit(draft, name);
         } else if (draft.kind == OpenSourceKind.xtream) {
-          await ownedByActiveProfile(
+          final saved = await ownedByActiveProfile(
             PlaylistRepository.instance.addXtreamPlaylist(
               name: name,
               serverUrl: draft.serverUrl!,
               username: draft.username!,
               password: draft.password!,
+              httpClient: client,
+              isCancelled: kNovatubeTv ? () => _cancelled : null,
               onFirstChannels: kNovatubeTv ? showFirstChannels : null,
             ),
           );
+          savedCount = saved.channelCount;
         } else {
-          await ownedByActiveProfile(
+          final saved = await ownedByActiveProfile(
             PlaylistRepository.instance.addM3uPlaylist(
               name: name,
               url: draft.m3uUrl!,
+              httpClient: client,
+              isCancelled: kNovatubeTv ? () => _cancelled : null,
               onFirstChannels: kNovatubeTv ? showFirstChannels : null,
             ),
           );
+          savedCount = saved.channelCount;
         }
       });
+      if (_cancelled) return;
       added = true;
       if (address.isNotEmpty && submit == null) {
         // L’historique n’est jamais une condition de réussite de l’import.
         unawaited(NovatubeRecentSources.remember(owner, address).catchError((Object _) {}));
       }
       BlackBox.instance.info('SOURCE', 'source ouverte ajoutée');
+      if (messenger?.mounted == true && savedCount != null) {
+        messenger!.showSnackBar(SnackBar(content: Text(localizations.tvSourceChannels(savedCount!))));
+      }
     } catch (error) {
+      if (_cancelled) return;
       // Une exception fournisseur peut contenir des identifiants dans l'URL.
       // Seul son type est journalisé ; le message public reste traduit.
       BlackBox.instance.warn(
@@ -261,6 +286,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         messenger!.showSnackBar(SnackBar(content: Text(lateError)));
       }
     } finally {
+      client?.close();
+      _importClient = null;
       // Le wrapper du dépôt a déjà nettoyé le bus AVANT de libérer la file.
       if (mounted) {
         setState(() {
@@ -566,6 +593,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               ),
             ],
             if (_busy) ...<Widget>[
+              if (kNovatubeTv && _importClient != null)
+                TvCtaButton(label: l10n.buttonCancel, onSelect: _cancelImport),
               const SizedBox(height: 16),
               ValueListenableBuilder<ImportProgress?>(
                 valueListenable: ImportProgressBus.current,

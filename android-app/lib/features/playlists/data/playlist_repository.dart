@@ -500,6 +500,7 @@ class PlaylistRepository {
     String? epgUrl,
     http.Client? httpClient,
     VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
     bool restoreDeleted = true,
   }) async {
     if (restoreDeleted) await DeletedSources.restoreManually(SourceFingerprint.ofM3uUrl(url));
@@ -538,6 +539,7 @@ class PlaylistRepository {
         playlistId: playlistId,
         wantEpg: epgUrl != null && epgUrl.isNotEmpty,
         onFirstChannels: onFirstChannels,
+        isCancelled: isCancelled,
       );
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -717,6 +719,7 @@ class PlaylistRepository {
     String? originM3uUrl,
     http.Client? httpClient,
     VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
     bool restoreDeleted = true,
   }) async {
     if (restoreDeleted) {
@@ -764,6 +767,7 @@ class PlaylistRepository {
         playlistId: playlistId,
         wantEpg: newPlaylist.epgUrl != null,
         onFirstChannels: onFirstChannels,
+        isCancelled: isCancelled,
       );
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -1158,6 +1162,7 @@ class PlaylistRepository {
     required int playlistId,
     required bool wantEpg,
     VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
   }) async {
     final publish = _firstChannelsPublisher(onFirstChannels);
     final M3uParseResult parsed = await _loadAndParseM3u(
@@ -1180,8 +1185,10 @@ class PlaylistRepository {
         'URL invalide ou format incompatible ?$hint',
       );
     }
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     await _ensurePlaylistRow(playlistId);
     await _insertChannels(parsed.channels);
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     return _ImportedCatalog(
       parsed.channels.length,
       wantEpg ? _epgPlanFor(parsed.channels) : null,
@@ -1231,6 +1238,7 @@ class PlaylistRepository {
     required int playlistId,
     required bool wantEpg,
     VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
   }) async {
     final List<Channel> channels = await xtream.fetchLiveChannels(
       playlistId: playlistId,
@@ -1243,8 +1251,10 @@ class PlaylistRepository {
         'Aucune chaîne live disponible pour ce compte Xtream.',
       );
     }
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     await _ensurePlaylistRow(playlistId);
     await _insertChannels(channels);
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     return _ImportedCatalog(
       channels.length,
       wantEpg

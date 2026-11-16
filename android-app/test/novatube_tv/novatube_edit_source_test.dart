@@ -40,5 +40,15 @@ void main() {
     await repo.editSource(saved,name:'Renommée');
     expect((await repo.getAllPlaylists()).single.name,'Renommée');
     expect(repo.currentChannels.single.name,'Mire /b');
+    var cancelled = false;
+    final waiting = MockClient((_) async {
+      cancelled = true;
+      return http.Response('#EXTM3U\n#EXTINF:-1,Annulée\nhttp://localhost/mire.ts\n',200);
+    });
+    addTearDown(waiting.close);
+    await expectLater(repo.addM3uPlaylist(name:'À annuler', url:'http://localhost/stop',
+        httpClient:waiting, isCancelled:() => cancelled), throwsException);
+    expect((await repo.getAllPlaylists()).map((p) => p.name), ['Renommée']);
+    expect(repo.currentChannels.single.name,'Mire /b');
   });
 }
