@@ -15,6 +15,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app/app_platform.dart';
+import '../app/novatube_tv_edition.dart';
 import '../branding/brand_config.dart';
 import '../blackbox/black_box.dart';
 import '../blackbox/black_box_redaction.dart';
@@ -251,6 +252,9 @@ abstract final class VipSupport {
   /// présents. wa.me ouvre WhatsApp ou le navigateur selon les apps installées.
   /// C'est toujours un brouillon : le client choisit ensuite « Envoyer ».
   static Future<bool> openWhatsApp({String? customMessage}) {
+    // NovaTube TV : ce numéro est celui de l'assistance Zuno. Il n'est
+    // jamais ouvert depuis l'édition NovaTube (« false » = indisponible).
+    if (kNovatubeTv) return Future<bool>.value(false);
     final Future<bool>? pending = _opening;
     if (pending != null) return pending;
     final Future<bool> operation = _openWhatsApp(customMessage);
@@ -284,6 +288,7 @@ abstract final class VipSupport {
   /// un toast 'Cet appareil ne peut pas appeler' et proposer le
   /// canal Message à la place.
   static Future<bool> openPhoneCall() async {
+    if (kNovatubeTv) return false; // même règle que openWhatsApp
     // On garde le numéro affichage (avec +) car `tel:` accepte le
     // format E.164. On retire seulement les espaces — les tirets et
     // le + sont tolérés par tous les OS.

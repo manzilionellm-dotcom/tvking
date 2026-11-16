@@ -342,7 +342,14 @@ class _TvHubScreenState extends State<TvHubScreen> {
     // NovaTube TV : les annonces, « favori du jour » et bannières du panel
     // sont celles des revendeurs Zuno (espace « tv » partagé côté serveur).
     // Aucune n'est affichée à un client NovaTube : l'accueil reste sobre.
-    if (kNovatubeTv) return;
+    if (kNovatubeTv) {
+      // Interrupteurs éteints AVANT la première image : même si le canal
+      // du panel rafraîchit ces dépôts plus tard, rien ne s'affiche.
+      _noticeOn = false;
+      _featuredOn = false;
+      _promoOn = false;
+      return;
+    }
     try {
       await Future.wait(<Future<void>>[
         panelNoticeFlag.load(),
