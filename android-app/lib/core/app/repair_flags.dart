@@ -17,6 +17,8 @@
 import 'package:native_video_player/native_video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'novatube_tv_edition.dart';
+
 abstract final class RepairFlags {
   /// Vrai = copie de la dernière image à l'ancienne (gardée même noire,
   /// retirée seulement au signal « première image »). Faux = copie noire
@@ -79,7 +81,9 @@ abstract final class RepairFlags {
   /// Faux = le client voit « AD:A6:98:70:6A » ; l'identifiant interne
   /// (serveur, QR, appels réseau) garde toujours « MK: ».
   static const String macShowPrefixKey = 'zuno.mac.show_prefix';
-  static bool macShowPrefix = false;
+  // NovaTube TV : le code complet MK:XX:XX:XX:XX:XX est la règle (demande
+  // du propriétaire) ; la préférence reste prioritaire si elle existe.
+  static bool macShowPrefix = kNovatubeTv;
 
   /// Vrai = mise à jour à l'ancienne : un seul manifeste (release clients),
   /// 3 minutes maximum pour tout le téléchargement, pas de vérification de
@@ -344,7 +348,7 @@ abstract final class RepairFlags {
       holdLegacy = prefs.getBool(legacyHoldFrameKey) ?? false;
       epgInline = prefs.getBool(epgInlineParseKey) ?? false;
       histOpen = prefs.getBool(historyOnOpenKey) ?? false;
-      macPrefix = prefs.getBool(macShowPrefixKey) ?? false;
+      macPrefix = prefs.getBool(macShowPrefixKey) ?? kNovatubeTv;
       updLegacy = prefs.getBool(updateLegacyKey) ?? false;
       channelLegacy = prefs.getBool(realtimeLegacyKey) ?? false;
       pillOff = prefs.getBool(syncPillOffKey) ?? false;

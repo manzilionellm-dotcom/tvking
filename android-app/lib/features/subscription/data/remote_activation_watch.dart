@@ -25,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/update/update_service.dart';
@@ -53,6 +54,7 @@ import 'box_signal_client.dart';
 import 'order_ack_client.dart';
 import 'signal_inbox.dart';
 import 'subscription_backend.dart';
+import 'novatube_atlas.dart';
 import 'subscription_state.dart';
 
 class RemoteActivationWatch {
@@ -108,6 +110,11 @@ class RemoteActivationWatch {
     _arm(ActivationPace.fast);
     _generation++;
     final int generation = _generation;
+    // Édition NovaTube TV : le canal /api/box (WebSocket, attente longue,
+    // accusés) est indexé par la seule MAC et réservé aux fiches Zuno. La
+    // box NovaTube lit son statut et ses listes par /api/novatube4k/state
+    // (ticks ci-dessus, rythme calme d'ActivationPace).
+    if (kNovatubeTv) return;
     unawaited(_signalLoop(generation));
     // WebSocket d'abord. S'il ne tient pas, l'attente longue
     // (déjà dans _signalLoop) prend le relais. L'interrupteur
@@ -274,6 +281,14 @@ class RemoteActivationWatch {
     );
     if (result == RemoteSyncResult.networkError) return;
     if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
+    // NovaTube TV : reçu « listes enregistrées sur la box » pour CETTE
+    // révision. Le panel voit la liste arrivée ; un échec sera retenté au
+    // prochain changement (le serveur refuse une révision dépassée).
+    if (kNovatubeTv && snap.sourceRev != null && snap.sourceRev! > 0) {
+      final bool acked = await NovatubeAtlas.instance.ack(snap.sourceRev!);
+      BlackBox.instance.info('PANEL', 'listes NovaTube rev ${snap.sourceRev} : '
+          '${acked ? 'reçu envoyé' : 'reçu refusé, nouvel essai plus tard'}');
+    }
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite
     // (heartbeat), au lieu d'attendre le prochain heartbeat régulier. Le
     // panel (bouton « Envoi instantané ») voit alors « Liste sur la TV

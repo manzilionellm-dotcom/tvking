@@ -26,7 +26,9 @@ define, le build Zuno est identique à avant (tests dans les deux modes).
 | Premier écran | « Bienvenue sur NovaTube » : Ajouter une liste M3U · Se connecter avec Xtream Codes · code `MK:XX:XX:XX:XX:XX` · état de la licence |
 | Listes | enregistrables licence en attente ; plusieurs listes (écran « Mes listes ») ; conservées après expiration |
 | TV en direct | 3 colonnes existantes : catégories · chaînes (logos, recherche) · aperçu vidéo + guide |
-| Synchronisation | 5 s / 15 s / filet 60 s, reprise jusqu'à 2 min (jamais chaque seconde) |
+| Activation | application Atlas dédiée `app_novatube4k` (routes /api/novatube4k/*, clé d'installation), essai serveur de 10 jours, code `MK:` identique au panel, réassociation par code d'assistance |
+| Accès | lecture seulement avec essai ou licence confirmés par le serveur ; « Bienvenue » tant qu'aucune liste n'est ajoutée |
+| Synchronisation | 5 s en attente, 15 s ensuite, reprise jusqu'à 2 min (jamais chaque seconde) |
 | Retiré pour NovaTube | thème « tv » du panel, WhatsApp Zuno, publicité de démarrage, cartes du panel, mise à jour vers la release `zuno-tv` |
 | Moteur vidéo | **inchangé** par rapport à Zuno TV : aucun fichier de `packages/`, `android/`, `lib/features/player` modifié |
 
@@ -83,12 +85,18 @@ copie hors ligne du `.jks` : sa perte empêche toute mise à jour future.
 
 ## Limites connues (à traiter avant une vente)
 
-- **Activation séparée dans Atlas** : la box s'annonce comme appareil « tv »
-  (espace Zuno) par `/api/heartbeat`. Elle apparaît et s'active dans le panel
-  comme une box Zuno, avec la politique d'essai Zuno. Une application Atlas
-  NovaTube TV distincte (essai serveur de 10 jours, 9,99 €) demande une
-  évolution additive du Worker (le code `app_novatube4k` des PR #250-#254 vise
-  `com.manthefew`) et un déploiement autorisé.
+- **Activation Atlas** : la box utilise l'application Atlas NovaTube déjà en
+  production (`app_novatube4k`, routes `/api/novatube4k/*` des PR #250-#253).
+  Aucune route historique Zuno n'est appelée (heartbeat, statut, device-source,
+  canal /api/box, sauvegarde, historique). Vérifié contre le VRAI code serveur
+  lancé en local (`ci/novatube_tv/atlas_local_server.mjs`,
+  `test/novatube_tv/atlas_local_integration_test.dart`) : essai de 10 jours,
+  activation payée par l'administrateur, clé étrangère refusée. Pas encore
+  vérifié contre la production elle-même. Le libellé de la fiche dans le
+  panel reste « NOVATUBE 4K · <MAC brute> » (choisi par le serveur).
+- **Instantané** : sans canal temps réel, une activation faite dans le panel
+  apparaît sur la box en 5 s au plus (attente) ; la route `wait` du serveur
+  n'est pas encore utilisée.
 - **Paiement** : aucun paiement réel n'est activé.
 - **Qualité d'image** : identique à Zuno TV (mêmes binaires vidéo), non
   comparée à 4K Player ; HDR / Dolby Vision / passthrough à vérifier sur SHIELD.

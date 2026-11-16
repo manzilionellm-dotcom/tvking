@@ -2931,5 +2931,6 @@
   "novatubeStatusActive": "许可证已激活",
   "novatubeStatusExpired": "访问已过期。您的播放列表已保留：将代码提供给经销商即可重新激活。",
   "novatubeStatusSuspended": "许可证已暂停。请联系您的经销商。",
-  "novatubePlayerNotice": "NovaTube 是一款播放器：不提供任何频道或电视订阅。"
+  "novatubePlayerNotice": "NovaTube 是一款播放器：不提供任何频道或电视订阅。",
+  "novatubeRecoveryCode": "提供给经销商的协助代码：{code}"
 }

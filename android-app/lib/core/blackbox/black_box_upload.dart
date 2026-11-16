@@ -25,6 +25,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../core/app/novatube_tv_edition.dart';
+import '../../features/subscription/data/novatube_atlas.dart';
 
 import '../../features/device/data/device_identity.dart';
 import '../../features/subscription/data/subscription_backend.dart';
@@ -110,6 +112,11 @@ class BlackBoxUpload {
     final List<String> lines = await BlackBox.instance.tail(max: 400);
     final String? text = prepareBlackBoxUpload(lines.join('\n'), enabled: true);
     if (text == null) return;
+    // NovaTube TV : journal envoyé à SON application Atlas (clé d'appareil).
+    if (kNovatubeTv) {
+      await NovatubeAtlas.instance.uploadBlackbox(text);
+      return;
+    }
     final String mac = (await DeviceIdentity.instance.mac).trim().toUpperCase();
     if (mac.isEmpty) return;
     final http.Response resp = await http

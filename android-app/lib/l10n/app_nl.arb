@@ -2931,5 +2931,6 @@
   "novatubeStatusActive": "Licentie actief",
   "novatubeStatusExpired": "Toegang verlopen. Je afspeellijsten blijven bewaard: geef je code aan je verkoper om opnieuw te activeren.",
   "novatubeStatusSuspended": "Licentie opgeschort. Neem contact op met je verkoper.",
-  "novatubePlayerNotice": "NovaTube is een speler: er worden geen zenders of tv-abonnement geleverd."
+  "novatubePlayerNotice": "NovaTube is een speler: er worden geen zenders of tv-abonnement geleverd.",
+  "novatubeRecoveryCode": "Hulpcode voor je verkoper: {code}"
 }

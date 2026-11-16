@@ -3292,5 +3292,7 @@
   "novatubeStatusSuspended": "Licence suspendue. Contactez votre revendeur.",
   "@novatubeStatusSuspended": {"description": "Édition NovaTube TV : licence suspendue (gel) depuis le panel."},
   "novatubePlayerNotice": "NovaTube est un lecteur : aucune chaîne ni aucun abonnement TV n'est fourni.",
-  "@novatubePlayerNotice": {"description": "Édition NovaTube TV : rappel juridique, l'app ne fournit aucun contenu."}
+  "@novatubePlayerNotice": {"description": "Édition NovaTube TV : rappel juridique, l'app ne fournit aucun contenu."},
+  "novatubeRecoveryCode": "Code d'assistance pour votre revendeur : {code}",
+  "@novatubeRecoveryCode": {"description": "Édition NovaTube TV : code temporaire de réassociation (données de l'app effacées).", "placeholders": {"code": {"type": "String"}}}
 }

@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart';
@@ -41,6 +42,7 @@ class FeedbackRepository extends ChangeNotifier {
   }
 
   Future<void> _fetch({bool strict = false}) async {
+    if (kNovatubeTv) return; // invitation publiée pour les box Zuno
     final request = ++_request;
     try {
       final http.Response resp = await http
@@ -88,6 +90,7 @@ class FeedbackRepository extends ChangeNotifier {
   /// une invitation arrivée pendant la requête ne doit pas être acquittée.
   Future<bool> submit(
       {required String text, int rating = 0, String? prompt}) async {
+    if (kNovatubeTv) return false; // route historique indexée par MAC
     final value = text.trim();
     if (value.isEmpty || value.length > 2000 || rating < 0 || rating > 5) {
       return false;

@@ -38,6 +38,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/domain/display_mac.dart';
 import '../../playlists/domain/open_source_input.dart';
+import '../../subscription/data/novatube_atlas.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_app_tokens.dart';
@@ -205,6 +206,23 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                           ),
                           const SizedBox(height: 16),
                           _AccessStatus(line: access),
+                          // Données de l'app effacées : la fiche Atlas est
+                          // protégée. Ce code temporaire permet au revendeur
+                          // de la réassocier (licence et listes conservées).
+                          ValueListenableBuilder<String?>(
+                            valueListenable: NovatubeAtlas.instance.recoveryCode,
+                            builder: (BuildContext context, String? code, _) =>
+                                code == null
+                                    ? const SizedBox.shrink()
+                                    : Padding(
+                                        padding: const EdgeInsets.only(top: 12),
+                                        child: Text(
+                                          l10n.novatubeRecoveryCode(code),
+                                          textAlign: TextAlign.center,
+                                          style: t.mono(18, color: t.accentBright),
+                                        ),
+                                      ),
+                          ),
                         ],
                       ),
                     ),
@@ -313,10 +331,19 @@ class _AccessLine {
     if (s.syncHint == 'offline') {
       return _AccessLine(l10n.tvNetworkUnavailableHelp, false);
     }
+    // Jours restants calculés par le SERVEUR (échéance d'essai ou de licence).
+    final int days = s.trialDaysRemaining;
     return switch (s.status) {
-      SubscriptionStatus.paid => _AccessLine(l10n.novatubeStatusActive, true),
-      SubscriptionStatus.trialActive =>
-        _AccessLine(l10n.novatubeStatusTrial, true),
+      SubscriptionStatus.paid => _AccessLine(
+          s.remote.isLifetime || s.remote.paidUntil <= 0
+              ? l10n.novatubeStatusActive
+              : l10n.tvStatusPaidDays(days),
+          true,
+        ),
+      SubscriptionStatus.trialActive => _AccessLine(
+          days > 0 ? l10n.tvStatusTrial(days) : l10n.novatubeStatusTrial,
+          true,
+        ),
       SubscriptionStatus.trialExpired =>
         _AccessLine(l10n.novatubeStatusExpired, false),
       SubscriptionStatus.frozen =>

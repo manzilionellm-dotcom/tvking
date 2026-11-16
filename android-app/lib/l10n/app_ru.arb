@@ -2931,5 +2931,6 @@
   "novatubeStatusActive": "Лицензия активна",
   "novatubeStatusExpired": "Доступ истёк. Ваши плейлисты сохранены: сообщите код продавцу для повторной активации.",
   "novatubeStatusSuspended": "Лицензия приостановлена. Свяжитесь с продавцом.",
-  "novatubePlayerNotice": "NovaTube — это плеер: каналы и ТВ-подписка не предоставляются."
+  "novatubePlayerNotice": "NovaTube — это плеер: каналы и ТВ-подписка не предоставляются.",
+  "novatubeRecoveryCode": "Код поддержки для продавца: {code}"
 }

@@ -2931,5 +2931,6 @@
   "novatubeStatusActive": "लाइसेंस सक्रिय",
   "novatubeStatusExpired": "पहुँच समाप्त हो गई। आपकी प्लेलिस्ट सुरक्षित हैं: फिर से सक्रिय करने के लिए अपना कोड विक्रेता को दें।",
   "novatubeStatusSuspended": "लाइसेंस निलंबित। अपने विक्रेता से संपर्क करें।",
-  "novatubePlayerNotice": "NovaTube एक प्लेयर है: कोई चैनल या टीवी सदस्यता प्रदान नहीं की जाती।"
+  "novatubePlayerNotice": "NovaTube एक प्लेयर है: कोई चैनल या टीवी सदस्यता प्रदान नहीं की जाती।",
+  "novatubeRecoveryCode": "आपके विक्रेता के लिए सहायता कोड: {code}"
 }

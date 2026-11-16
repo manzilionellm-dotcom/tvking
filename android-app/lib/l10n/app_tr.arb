@@ -2931,5 +2931,6 @@
   "novatubeStatusActive": "Lisans etkin",
   "novatubeStatusExpired": "Erişim süresi doldu. Listeleriniz korunur: yeniden etkinleştirmek için kodunuzu bayinize verin.",
   "novatubeStatusSuspended": "Lisans askıya alındı. Bayinizle iletişime geçin.",
-  "novatubePlayerNotice": "NovaTube bir oynatıcıdır: hiçbir kanal veya TV aboneliği sağlanmaz."
+  "novatubePlayerNotice": "NovaTube bir oynatıcıdır: hiçbir kanal veya TV aboneliği sağlanmaz.",
+  "novatubeRecoveryCode": "Bayiniz için destek kodu: {code}"
 }

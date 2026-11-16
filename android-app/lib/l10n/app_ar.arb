@@ -1494,5 +1494,6 @@
   "novatubeStatusActive": "الترخيص مفعّل",
   "novatubeStatusExpired": "انتهى الوصول. قوائمك محفوظة: أعطِ رمزك للموزّع لإعادة التفعيل.",
   "novatubeStatusSuspended": "الترخيص معلّق. تواصل مع الموزّع.",
-  "novatubePlayerNotice": "NovaTube مشغّل فقط: لا يوفّر أي قنوات أو اشتراك تلفزيوني."
+  "novatubePlayerNotice": "NovaTube مشغّل فقط: لا يوفّر أي قنوات أو اشتراك تلفزيوني.",
+  "novatubeRecoveryCode": "رمز المساعدة للموزّع: {code}"
 }

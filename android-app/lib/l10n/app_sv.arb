@@ -1494,5 +1494,6 @@
   "novatubeStatusActive": "Licensen är aktiv",
   "novatubeStatusExpired": "Åtkomsten har gått ut. Dina spellistor sparas: ge din kod till din återförsäljare för att återaktivera.",
   "novatubeStatusSuspended": "Licensen är avstängd. Kontakta din återförsäljare.",
-  "novatubePlayerNotice": "NovaTube är en spelare: inga kanaler eller tv-abonnemang tillhandahålls."
+  "novatubePlayerNotice": "NovaTube är en spelare: inga kanaler eller tv-abonnemang tillhandahålls.",
+  "novatubeRecoveryCode": "Hjälpkod till din återförsäljare: {code}"
 }

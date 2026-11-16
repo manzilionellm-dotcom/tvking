@@ -1494,5 +1494,6 @@
   "novatubeStatusActive": "Leseni inatumika",
   "novatubeStatusExpired": "Ufikiaji umeisha. Orodha zako zimehifadhiwa: mpe muuzaji msimbo wako ili kuwasha tena.",
   "novatubeStatusSuspended": "Leseni imesimamishwa. Wasiliana na muuzaji wako.",
-  "novatubePlayerNotice": "NovaTube ni kicheza video: hakuna chaneli wala usajili wa TV unaotolewa."
+  "novatubePlayerNotice": "NovaTube ni kicheza video: hakuna chaneli wala usajili wa TV unaotolewa.",
+  "novatubeRecoveryCode": "Msimbo wa msaada kwa muuzaji wako: {code}"
 }

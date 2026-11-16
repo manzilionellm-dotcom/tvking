@@ -2931,5 +2931,6 @@
   "novatubeStatusActive": "Lizenz aktiv",
   "novatubeStatusExpired": "Zugang abgelaufen. Ihre Playlists bleiben erhalten: Geben Sie Ihren Code Ihrem Händler, um zu reaktivieren.",
   "novatubeStatusSuspended": "Lizenz gesperrt. Wenden Sie sich an Ihren Händler.",
-  "novatubePlayerNotice": "NovaTube ist ein Player: Es werden keine Sender und kein TV-Abonnement bereitgestellt."
+  "novatubePlayerNotice": "NovaTube ist ein Player: Es werden keine Sender und kein TV-Abonnement bereitgestellt.",
+  "novatubeRecoveryCode": "Hilfecode für Ihren Händler: {code}"
 }

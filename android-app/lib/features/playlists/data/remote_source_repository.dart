@@ -33,6 +33,8 @@ import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import '../../subscription/data/novatube_atlas.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../../subscription/domain/order_ack.dart' show SourceSyncReport;
@@ -253,7 +255,10 @@ abstract final class RemoteSourceRepository {
   static Future<bool> _deleteFromTv(Playlist playlist, {http.Client? client}) async {
     final int? id = playlist.id;
     if (id == null) return false;
-    if (RepairFlags.tvDeleteLegacy) return true;
+    // NovaTube TV : suppression LOCALE seulement. La copie côté panel se
+    // gère dans Atlas (les routes /api/device-source et /api/self-source
+    // sont réservées aux fiches Zuno).
+    if (RepairFlags.tvDeleteLegacy || kNovatubeTv) return true;
     final List<String> fps = SourceFingerprint.ofPlaylist(playlist);
     final http.Client c = client ?? http.Client();
     try {
@@ -399,27 +404,36 @@ abstract final class RemoteSourceRepository {
 
   static Future<RemoteSyncResult> _syncBody({bool force = false}) async {
     try {
-      final String mac = await DeviceIdentity.instance.mac;
-      if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
+      final Map<String, dynamic> body;
+      if (kNovatubeTv) {
+        // Édition NovaTube TV : les listes envoyées par le panel arrivent
+        // dans la dernière réponse authentifiée /api/novatube4k/state (même
+        // format, déchiffré par le même code serveur). Rien d'assez sûr
+        // reçu → on GARDE les listes locales (jamais d'effacement sur doute).
+        final Map<String, dynamic>? served = NovatubeAtlas.instance.servedSources;
+        if (served == null) return RemoteSyncResult.networkError;
+        body = served;
+      } else {
+        final String mac = await DeviceIdentity.instance.mac;
+        if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
 
-      // Enregistre le secret de cette box avant de demander les codes.
-      // Si le serveur connaît déjà l'empreinte, la requête suivante
-      // doit présenter le header. Sinon (box pas encore enrôlée côté
-      // serveur), l'ancienne lecture par MAC reste acceptée.
-      await DeviceSecret.instance.enroll(mac);
-      final http.Response resp = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
-            headers: await DeviceSecret.instance.headers(),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) {
-        BlackBox.instance.warn('PANEL', 'device-source HTTP ${resp.statusCode}');
-        return RemoteSyncResult.networkError;
+        // Enregistre le secret de cette box avant de demander les codes.
+        // Si le serveur connaît déjà l'empreinte, la requête suivante
+        // doit présenter le header. Sinon (box pas encore enrôlée côté
+        // serveur), l'ancienne lecture par MAC reste acceptée.
+        await DeviceSecret.instance.enroll(mac);
+        final http.Response resp = await http
+            .get(
+              Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+              headers: await DeviceSecret.instance.headers(),
+            )
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode != 200) {
+          BlackBox.instance.warn('PANEL', 'device-source HTTP ${resp.statusCode}');
+          return RemoteSyncResult.networkError;
+        }
+        body = jsonDecode(resp.body) as Map<String, dynamic>;
       }
-
-      final Map<String, dynamic> body =
-          jsonDecode(resp.body) as Map<String, dynamic>;
       // HTTP 200 ne suffit pas : une réponse incomplète n'est pas un ordre
       // de vider la box. Un tableau vide, lui, est une suppression explicite.
       if (body['sources'] is! List && !body.containsKey('source')) {
@@ -562,6 +576,8 @@ abstract final class RemoteSourceRepository {
   /// pour retrouver « Récemment » et « Pour vous » immédiatement. Best-effort :
   /// ne throw jamais, n'écrase jamais un historique local déjà présent.
   static Future<void> syncHistory() async {
+    // NovaTube TV : pas de restauration par la route historique (MAC seule).
+    if (kNovatubeTv) return;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return;

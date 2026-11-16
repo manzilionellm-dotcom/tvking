@@ -20,6 +20,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../subscription/data/subscription_backend.dart';
 import 'device_identity.dart';
@@ -61,6 +62,9 @@ class DeviceSecret {
   /// bloque pas la lecture (l'ancien logiciel est encore accepté
   /// tant que le serveur n'a pas d'empreinte).
   Future<void> enroll(String mac) async {
+    // NovaTube TV : sa clé d'installation est envoyée par les routes
+    // /api/novatube4k/* (novatube_identity.dart). Pas de /api/device-proof.
+    if (kNovatubeTv) return;
     try {
       if (!mac.startsWith('MK:')) return;
       final String secret = await getOrCreate();

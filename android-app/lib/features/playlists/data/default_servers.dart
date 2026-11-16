@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
@@ -127,6 +128,7 @@ abstract final class DefaultServersApi {
   }
 
   static Future<List<DefaultServer>> _fetchFromNetwork() async {
+    if (kNovatubeTv) return const <DefaultServer>[];
     try {
       final http.Response resp = await http.get(
         Uri.parse('$kSubscriptionBaseUrl/api/servers'),

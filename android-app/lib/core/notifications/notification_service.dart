@@ -30,6 +30,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
+import '../../core/app/novatube_tv_edition.dart';
 
 import '../i18n/l10n_now.dart';
 import '../../features/profiles/data/active_profile.dart';
@@ -393,6 +394,7 @@ class NotificationService {
   /// l'`id` est plus récent que la dernière annonce déjà vue. Gardé par
   /// l'interrupteur Réglages. 100 % best-effort.
   Future<void> checkAnnouncement() async {
+    if (kNovatubeTv) return; // annonces des box Zuno
     try {
       if (!await isEnabled(prefAnnouncements)) return;
       final http.Response resp = await http

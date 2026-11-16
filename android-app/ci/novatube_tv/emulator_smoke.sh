@@ -152,6 +152,22 @@ sleep 30
 alive "réouverture"
 shot 05-reouverture
 
+if [[ -n "${NOVATUBE_EMULATOR_APK:-}" ]]; then
+  # Phase B : MÊME code, compilé avec l'adresse d'un Atlas LOCAL (le vrai
+  # code serveur des routes /api/novatube4k/*, lancé sur le runner, port
+  # 8788). La box l'atteint par sa boucle locale (adb reverse) : aucun
+  # contact avec la production, aucun appareil de test dans le vrai panel.
+  step "Phase B : variante reliée à l'Atlas local (essai serveur de 10 jours)"
+  adb -s "$serial" install -r "$(readlink -f "$NOVATUBE_EMULATOR_APK")" > "$out/install-variante.txt" 2>&1
+  grep -q Success "$out/install-variante.txt"
+  adb -s "$serial" shell pm clear "$pkg" > /dev/null
+  adb -s "$serial" reverse tcp:8788 tcp:8788
+  adb -s "$serial" shell am start -W -n "$component" > "$out/demarrage-3.txt" 2>&1
+  sleep 35
+  alive "premier démarrage avec Atlas local"
+  shot 06-bienvenue-atlas-local
+fi
+
 if [[ -n "${NOVATUBE_TEST_MEDIA:-}" ]]; then
   step "Phase média : import M3U HTTP, Direct 3 zones, lecture"
   if bash "$(dirname "$(readlink -f "$0")")/emulator_media.sh" \
@@ -161,7 +177,7 @@ if [[ -n "${NOVATUBE_TEST_MEDIA:-}" ]]; then
   else
     # Non bloquant : les captures montrent où le parcours s'est arrêté.
     # Un PLANTAGE reste bloquant (contrôle ci-dessous, sur toute la session).
-    step "Phase média : NON CONCLUANTE (voir captures 06 à 13)"
+    step "Phase média : NON CONCLUANTE (voir captures 07 à 14)"
     echo echec > "$out/phase-media.txt"
   fi
 fi

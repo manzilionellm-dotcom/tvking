@@ -1562,5 +1562,6 @@
   "novatubeStatusActive": "Licence active",
   "novatubeStatusExpired": "Access expired. Your playlists are kept: give your code to your reseller to reactivate.",
   "novatubeStatusSuspended": "Licence suspended. Contact your reseller.",
-  "novatubePlayerNotice": "NovaTube is a player: no channels or TV subscription are provided."
+  "novatubePlayerNotice": "NovaTube is a player: no channels or TV subscription are provided.",
+  "novatubeRecoveryCode": "Support code for your reseller: {code}"
 }

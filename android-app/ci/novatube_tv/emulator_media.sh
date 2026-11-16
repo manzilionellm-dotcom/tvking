@@ -40,31 +40,31 @@ adb -s "$serial" reverse tcp:8080 tcp:8080
 step "Import M3U HTTP : OK sur « Ajouter une liste M3U »"
 key KEYCODE_DPAD_CENTER 6
 alive "formulaire M3U"
-shot 06-formulaire-m3u
+shot 07-formulaire-m3u
 adb -s "$serial" shell input text 'http://127.0.0.1:8080/novatube-test.m3u'
 sleep 2
-shot 07-adresse-saisie
+shot 08-adresse-saisie
 key KEYCODE_ENTER 30
 alive "import M3U"
-shot 08-apres-import
+shot 09-apres-import
 
 step "Accueil → OK sur la première tuile (Direct)"
 key KEYCODE_DPAD_CENTER 12
 alive "écran Direct"
-shot 09-direct-3-zones
+shot 10-direct-3-zones
 # L'aperçu démarre après 1,5 s d'immobilité du focus (tv_live_preview.dart).
 sleep 12
-shot 10-direct-apercu-video
+shot 11-direct-apercu-video
 
 step "OK = lecture plein écran"
 key KEYCODE_DPAD_CENTER 15
 alive "lecture plein écran"
-shot 11-lecture-plein-ecran
+shot 12-lecture-plein-ecran
 sleep 10
-shot 12-lecture-10s-plus-tard
+shot 13-lecture-10s-plus-tard
 key KEYCODE_BACK 5
 alive "retour au Direct"
-shot 13-retour-direct
+shot 14-retour-direct
 
 step "Ce que l'application a réellement demandé au serveur local"
 grep -c 'GET /novatube-test.m3u' "$out/serveur-local.txt" > "$out/requetes-liste.txt" || true

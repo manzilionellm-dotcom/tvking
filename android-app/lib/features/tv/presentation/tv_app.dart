@@ -546,7 +546,14 @@ class _TvGateState extends State<TvGate> {
     // client légitime sur une coupure réseau ; le verrou serveur reprend la
     // main dès que la connexion revient (et device-source ne livre plus la
     // source une fois l'essai expiré).
-    final bool showHome = active || (hasOwnList && !mustBlock);
+    // NovaTube TV : la lecture exige un essai ou une licence CONFIRMÉS par
+    // le serveur (cahier des charges). Les listes s'ajoutent quand même
+    // depuis l'écran d'accueil NovaTube, et restent après expiration.
+    // Premier démarrage NovaTube : « Bienvenue » tant qu'aucune liste n'est
+    // ajoutée, même si l'essai serveur est déjà ouvert (cahier des charges).
+    final bool showHome = kNovatubeTv
+        ? (active && hasOwnList)
+        : (active || (hasOwnList && !mustBlock));
     final Widget home = showHome
         // NovaTube TV : pas de publicité de démarrage. Celles du panel sont
         // publiées pour les box Zuno (même espace « tv » côté serveur).

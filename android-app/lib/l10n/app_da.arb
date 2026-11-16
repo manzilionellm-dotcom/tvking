@@ -1494,5 +1494,6 @@
   "novatubeStatusActive": "Licens aktiv",
   "novatubeStatusExpired": "Adgangen er udløbet. Dine playlister bevares: giv din kode til din forhandler for at genaktivere.",
   "novatubeStatusSuspended": "Licens suspenderet. Kontakt din forhandler.",
-  "novatubePlayerNotice": "NovaTube er en afspiller: der leveres ingen kanaler eller tv-abonnement."
+  "novatubePlayerNotice": "NovaTube er en afspiller: der leveres ingen kanaler eller tv-abonnement.",
+  "novatubeRecoveryCode": "Hjælpekode til din forhandler: {code}"
 }

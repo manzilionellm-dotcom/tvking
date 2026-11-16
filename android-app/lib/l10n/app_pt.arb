@@ -2931,5 +2931,6 @@
   "novatubeStatusActive": "Licença ativa",
   "novatubeStatusExpired": "Acesso expirado. As suas listas são mantidas: dê o seu código ao revendedor para reativar.",
   "novatubeStatusSuspended": "Licença suspensa. Contacte o seu revendedor.",
-  "novatubePlayerNotice": "O NovaTube é um leitor: não fornece canais nem assinatura de TV."
+  "novatubePlayerNotice": "O NovaTube é um leitor: não fornece canais nem assinatura de TV.",
+  "novatubeRecoveryCode": "Código de assistência para o seu revendedor: {code}"
 }

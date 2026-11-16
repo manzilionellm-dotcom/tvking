@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/app/novatube_tv_edition.dart';
+import 'package:tv_king/features/device/data/novatube_identity.dart';
 import 'package:tv_king/features/playlists/domain/open_source_input.dart';
 import 'package:tv_king/features/tv/presentation/tv_add_source_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_novatube_welcome_screen.dart';
@@ -20,7 +22,12 @@ import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 import 'ahem_fonts.dart';
 
-const String _mac = 'MK:12:34:AB:CD:56';
+// Code affiché : identité Zuno (MAC virtuelle) ou, dans l'édition NovaTube,
+// code Atlas calculé comme le serveur à partir de la MAC brute.
+const String _zunoMac = 'MK:12:34:AB:CD:56';
+const String _novatubeRaw = '0123456789AB';
+const String _novatubeMac = 'MK:F8:CA:83:78:18';
+const String _mac = kNovatubeTv ? _novatubeMac : _zunoMac;
 
 Widget _app(Widget child, Locale locale) => MaterialApp(
       locale: locale,
@@ -45,8 +52,12 @@ void main() {
   tearDownAll(removeAhemFonts);
   setUp(() {
     GoogleFonts.config.allowRuntimeFetching = false;
-    SharedPreferences.setMockInitialValues(
-        <String, Object>{'device.virtual_mac.v1': _mac});
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'device.virtual_mac.v1': _zunoMac,
+      NovatubeIdentity.kRawKey: _novatubeRaw,
+      NovatubeIdentity.kDeviceKeyKey: 'a' * 64,
+    });
+    NovatubeIdentity.instance.resetForTesting();
   });
 
   testWidgets('titre, deux grands boutons, code MK complet, licence en attente',
