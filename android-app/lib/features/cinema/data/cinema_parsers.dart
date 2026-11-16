@@ -121,7 +121,12 @@ List<CinemaTitle> mapTitles(
       year: year,
       addedAt: _int(movie ? item['added'] : (item['last_modified'] ?? item['added'])),
       containerExt: ext,
-      streamUrl: movie ? source.movieUrl(remoteId, ext) : null,
+      // `zuno_url` n'existe que dans les réponses fabriquées à partir d'un M3U
+      // (m3u_vod_store.dart) : l'adresse du fichier est alors celle du M3U.
+      // Une vraie réponse Xtream n'a jamais ce champ → formule habituelle.
+      streamUrl: movie
+          ? ((source.allowM3uUrls ? _str(item['zuno_url']) : null) ?? source.movieUrl(remoteId, ext))
+          : null,
       plot: movie ? null : _text(item['plot']),
     ));
   }
@@ -201,7 +206,7 @@ SeriesDetails parseSeriesInfo(
           season: season,
           number: number,
           title: cleanEpisodeTitle(_str(e['title']) ?? '', seriesName),
-          streamUrl: source.episodeUrl(id, ext),
+          streamUrl: (source.allowM3uUrls ? _str(e['zuno_url']) : null) ?? source.episodeUrl(id, ext),
           containerExt: ext,
           plot: _text(epInfo['plot']),
           durationSec: dur,

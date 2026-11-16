@@ -24,6 +24,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -285,6 +286,134 @@ abstract final class M3uFetcher {
       throw Exception(_friendlyFailure(lastError, url, userAgents.length));
     } finally {
       if (owns) client.close();
+    }
+  }
+
+  /// Comme [fetchBytes], mais le M3U est écrit dans [target] AU FIL DU
+  /// TÉLÉCHARGEMENT au lieu d'être gardé en mémoire. Sert à Cinéma : le M3U
+  /// d'un gros fournisseur dépasse 100 Mo, ce que la RAM d'une box ne supporte
+  /// pas, alors qu'un fichier temporaire (effacé ensuite) ne coûte rien.
+  ///
+  /// Même rotation de signatures, mêmes délais et même contrôle « est-ce
+  /// bien un M3U ? » que [fetchBytes]. Le plafond est [maxBytes].
+  static Future<void> fetchToFile(
+    String url,
+    File target, {
+    http.Client? httpClient,
+    String? preferredUserAgent,
+    FetchTimeouts? timeouts,
+    int maxBytes = kMaxM3uVodBytes,
+  }) async {
+    final http.Client client = httpClient ?? http.Client();
+    final bool owns = httpClient == null;
+    final String host = Uri.tryParse(url)?.host ?? '?';
+    final FetchTimeouts t =
+        timeouts ?? fetchTimeouts(legacy: RepairFlags.m3uTimeoutLegacy);
+    BlackBox.instance.breadcrumb('Téléchargement M3U (films) $host');
+    try {
+      final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
+      Object? lastError;
+      for (final String ua in userAgents) {
+        IOSink? sink;
+        bool headersSeen = false;
+        int received = 0;
+        final Stopwatch sw = Stopwatch()..start();
+        try {
+          final http.Request req = http.Request('GET', Uri.parse(url))
+            ..followRedirects = true
+            ..headers.addAll(<String, String>{
+              'User-Agent': ua,
+              'Accept': '*/*',
+              'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Connection': 'keep-alive',
+            });
+          final http.StreamedResponse resp =
+              await client.send(req).timeout(t.headers);
+          headersSeen = true;
+          if (resp.statusCode != 200) {
+            lastError = Exception('HTTP ${resp.statusCode} sur $host');
+            continue;
+          }
+          sink = target.openWrite();
+          final Stream<List<int>> guarded = resp.stream.timeout(
+            t.idle,
+            onTimeout: (EventSink<List<int>> out) {
+              out.addError(TimeoutException(
+                  'aucune donnée depuis ${t.idle.inSeconds} s', t.idle));
+              out.close();
+            },
+          );
+          await () async {
+            await for (final List<int> chunk in guarded) {
+              received += chunk.length;
+              if (received > maxBytes) {
+                throw PlaylistImportTooLarge(
+                  'Le M3U dépasse ${maxBytes ~/ (1024 * 1024)} Mo : '
+                  'Cinéma ne peut pas le lire en entier.',
+                );
+              }
+              sink!.add(chunk);
+            }
+          }()
+              .timeout(t.total);
+          await sink.flush();
+          await sink.close();
+          sink = null;
+
+          // Même garde-fou que fetchBytes : une page web ou un message
+          // d'erreur en 200 n'est pas un M3U → signature suivante.
+          final String head = await _readHead(target);
+          if (head.isEmpty) {
+            lastError = Exception('Le serveur a renvoyé une réponse vide.');
+            continue;
+          }
+          final String upper = head.toUpperCase();
+          final bool looksM3u = upper.contains('#EXTM3U') ||
+              upper.contains('#EXTINF') ||
+              head.contains('://');
+          if (!looksM3u) {
+            lastError = Exception(head.startsWith('<')
+                ? 'Le serveur a renvoyé une page web (HTML), pas une playlist.'
+                : 'Réponse sans aucune adresse de flux.');
+            continue;
+          }
+          BlackBox.instance.info('M3U',
+              '$host (films) : ${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus');
+          return;
+        } on PlaylistImportTooLarge {
+          rethrow;
+        } on TimeoutException {
+          final String phase = headersSeen
+              ? 'corps, ${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus'
+              : 'aucune réponse du serveur (en-têtes)';
+          BlackBox.instance.warn('M3U',
+              '$host (films) : délai dépassé après ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(0)} s ($phase)');
+          lastError = Exception(headersSeen
+              ? 'Le serveur a commencé à envoyer la liste puis s\'est tu.'
+              : 'Le serveur n\'a pas répondu en ${t.headers.inSeconds} s.');
+          break;
+        } on Exception catch (e) {
+          lastError = e;
+          continue;
+        } finally {
+          try {
+            await sink?.close();
+          } catch (_) {}
+        }
+      }
+      throw Exception(_friendlyFailure(lastError, url, userAgents.length));
+    } finally {
+      if (owns) client.close();
+    }
+  }
+
+  /// 64 premiers Ko d'un fichier (Latin-1 : ne lève jamais), sans espaces de tête.
+  static Future<String> _readHead(File file) async {
+    final RandomAccessFile f = await file.open();
+    try {
+      return latin1.decode(await f.read(65536)).trimLeft();
+    } finally {
+      await f.close();
     }
   }
 
