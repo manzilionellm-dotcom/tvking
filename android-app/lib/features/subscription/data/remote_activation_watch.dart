@@ -66,6 +66,7 @@ class RemoteActivationWatch {
   bool _tickBusy = false;
   bool _nudge = false;
   bool _allowSourceImport = true;
+  bool _novaSourceOrdered = false;
   bool _channelUp = false;
   int _failures = 0;
   int _signalFailures = 0;
@@ -160,6 +161,7 @@ class RemoteActivationWatch {
     _signalFailures = 0;
     _channelUp = false;
     _lastSourceRev = null;
+    _novaSourceOrdered = false;
     _session?.stop();
     _session = null;
     _signalHttp?.close();
@@ -230,6 +232,12 @@ class RemoteActivationWatch {
       if (snapOf().revoked.isNotEmpty) {
         await RemoteSourceRepository.applyRevocations(snapOf().revoked);
       }
+      // Un ordre arrivé pendant une lecture précédente reste en attente
+      // jusqu’à ce que l’état authentifié soit disponible.
+      if (kNovatubeTv && _novaSourceOrdered) {
+        sourceOrdered = true;
+        _novaSourceOrdered = false;
+      }
       await _maybeImportSource(ordered: sourceOrdered);
     } finally {
       _tickBusy = false;
@@ -284,15 +292,21 @@ class RemoteActivationWatch {
       force: ordered,
     );
     if (result == RemoteSyncResult.networkError) return;
-    if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
-    // NovaTube TV : reçu « listes enregistrées sur la box » pour CETTE
-    // révision. Le panel voit la liste arrivée ; un échec sera retenté au
-    // prochain changement (le serveur refuse une révision dépassée).
-    if (kNovatubeTv && snap.sourceRev != null && snap.sourceRev! > 0) {
-      final bool acked = await NovatubeAtlas.instance.ack(snap.sourceRev!);
-      BlackBox.instance.info('PANEL', 'listes NovaTube rev ${snap.sourceRev} : '
+    final rev = snap.sourceRev;
+    if (kNovatubeTv && rev != null && rev > 0) {
+      final report = RemoteSourceRepository.lastReport;
+      // Une révision multi-listes peut réussir partiellement. Un refus, une
+      // liste différée ou une ancienne révision ne valident jamais l’ensemble.
+      if (report == null || report.configRev != rev || report.error != null ||
+          report.keptPrevious || result == RemoteSyncResult.sourceFailed) {
+        return;
+      }
+      final acked = await NovatubeAtlas.instance.ack(rev);
+      BlackBox.instance.info('PANEL', 'listes NovaTube rev $rev : '
           '${acked ? 'reçu envoyé' : 'reçu refusé, nouvel essai plus tard'}');
+      if (!acked) return;
     }
+    if (rev != null) _lastSourceRev = rev;
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite
     // (heartbeat), au lieu d'attendre le prochain heartbeat régulier. Le
     // panel (bouton « Envoi instantané ») voit alors « Liste sur la TV
@@ -332,7 +346,11 @@ class RemoteActivationWatch {
           final previous = after;
           for (final order in orders.whereType<Map<String, Object?>>()) {
             final seq = order['id'];
-            if (seq is int && seq > after) after = seq;
+            if (seq is int && seq > previous) {
+              if (seq > after) after = seq;
+              final kind = order['kind'] ?? order['type'];
+              if (kind == 'source' || kind == 'source_clear') _novaSourceOrdered = true;
+            }
           }
           if (after > previous) {
             nudge();

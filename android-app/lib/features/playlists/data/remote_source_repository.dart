@@ -41,6 +41,7 @@ import '../../subscription/domain/order_ack.dart' show SourceSyncReport;
 import '../domain/m3u_link.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
+import '../domain/source_import_problem.dart';
 import '../domain/source_retry.dart';
 import '../domain/tv_delete.dart';
 import 'favorites_repository.dart';
@@ -158,12 +159,13 @@ abstract final class RemoteSourceRepository {
       // rejeté. La boîte noire expurge les liens et mots de passe à
       // l'écriture ; on coupe quand même la raison pour rester lisible.
       final String secs = (watch.elapsedMilliseconds / 1000).toStringAsFixed(1);
-      _lastError = 'liste $kind refusée après $secs s : ${shortReason(e)}';
+      final reason = kNovatubeTv ? e.runtimeType.toString() : shortReason(e);
+      _lastError = 'liste $kind refusée après $secs s : $reason';
       BlackBox.instance.warn(
         'SOURCE',
-        'liste $kind du panel refusée après $secs s : ${shortReason(e)}',
+        'liste $kind du panel refusée après $secs s : $reason',
       );
-      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: $e');
+      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: ${kNovatubeTv ? reason : e}');
       return RemoteSyncResult.sourceFailed;
     } finally {
       importing.value = false;
@@ -177,7 +179,8 @@ abstract final class RemoteSourceRepository {
   /// refuserait pareil. Pur, testé.
   @visibleForTesting
   static bool shouldFallbackToM3u(Object? apiError) {
-    return apiError is! XtreamAuthException;
+    return apiError is! XtreamAuthException &&
+        (!kNovatubeTv || (apiError != SourceImportProblem.denied && apiError != SourceImportProblem.expired));
   }
 
   /// Première ligne du message d'erreur, 120 caractères au plus.
@@ -487,6 +490,7 @@ abstract final class RemoteSourceRepository {
           retryAlways: RepairFlags.sourceRetryAlways,
         );
         if (plan.skipped.isNotEmpty) {
+          if (kNovatubeTv) _lastError = 'Une liste reste à charger.';
           BlackBox.instance.info(
             'SOURCE',
             '${plan.skipped.length} liste(s) refusée(s) récemment mise(s) de côté '
@@ -497,6 +501,9 @@ abstract final class RemoteSourceRepository {
         for (final int index in plan.tryNow) {
           final Map<String, dynamic> item = items[index];
           final RemoteSyncResult r = await _applySource(item);
+          if (kNovatubeTv && r != RemoteSyncResult.loaded) {
+            _lastError ??= 'Une liste n’a pas pu être chargée.';
+          }
           final String? fp = SourceFingerprint.fromMap(item);
           if (fp != null && r != RemoteSyncResult.networkError) {
             failures = noteSourceOutcome(
