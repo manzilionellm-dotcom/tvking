@@ -43,6 +43,7 @@ import '../../profiles/domain/family_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
 import '../domain/source_import_problem.dart';
+import '../domain/open_source_input.dart';
 import 'deleted_sources.dart';
 import 'playlist_secret.dart';
 import 'profile_source_switches.dart';
@@ -975,6 +976,67 @@ class PlaylistRepository {
   /// charge les nouvelles. Le `playlistId` reste le même.
   ///
   /// Retourne `true` si la sync a réussi, lance une Exception sinon.
+  /// Modifie la source à sa place : les favoris, les profils et l’interrupteur
+  /// continuent à viser le même identifiant. Une adresse refusée conserve
+  /// l’ancienne configuration et toutes ses chaînes.
+  Future<void> editSource(Playlist previous, {required String name, String? address,
+      http.Client? httpClient}) async {
+    final id = previous.id;
+    if (id == null) throw const PlaylistDeletedException();
+    final db = await PlaylistDatabase.instance.database;
+    final changes = <String, Object?>{'name': name};
+    if (address == null) {
+      final rows = await db.update('playlists', changes, where: 'id = ?', whereArgs: [id]);
+      if (rows == 0) throw const PlaylistDeletedException();
+      _playlistsCache = await getAllPlaylists();
+      _playlistsController.add(_playlistsCache);
+      return;
+    }
+    final draft = OpenSourceInput.playlistLink(address).draft;
+    if (draft == null) throw const FormatException();
+    final client = httpClient ?? http.Client();
+    try {
+      final List<Channel> channels;
+      final String? epg;
+      final Map<String, String>? guide;
+      if (draft.kind == OpenSourceKind.xtream) {
+        final api = XtreamClient(serverUrl: draft.serverUrl!, username: draft.username!,
+            password: draft.password!, httpClient: client);
+        await api.verifyCredentials();
+        channels = await api.fetchLiveChannels(playlistId: id);
+        epg = xtreamEpgUrl(serverUrl: draft.serverUrl!, username: draft.username!,
+            password: draft.password!);
+        guide = api.epgChannelIds;
+      } else {
+        channels = (await _loadAndParseM3u(draft.m3uUrl!, client: client, playlistId: id)).channels;
+        epg = null;
+        guide = null;
+      }
+      if (channels.isEmpty) throw SourceImportProblem.empty;
+      changes.addAll({
+        'type': draft.kind == OpenSourceKind.xtream ? PlaylistType.xtream.name : PlaylistType.m3u.name,
+        'm3u_url': await PlaylistSecret.seal(draft.m3uUrl ?? address),
+        'xtream_server': draft.serverUrl, 'xtream_username': draft.username,
+        'xtream_password': await PlaylistSecret.seal(draft.password),
+        'epg_url': epg, 'channel_count': channels.length,
+        'last_synced_at': DateTime.now().millisecondsSinceEpoch,
+      });
+      await db.transaction((txn) async {
+        final rows = await txn.update('playlists', changes, where: 'id = ?', whereArgs: [id]);
+        if (rows == 0) throw const PlaylistDeletedException();
+        await txn.delete('channels', where: 'playlist_id = ?', whereArgs: [id]);
+        await _insertChannelsImpl(channels, executor: txn);
+      });
+      await _emitCurrentState();
+      if (epg != null && guide != null) {
+        final epgPlan = _epgPlanFor(channels, xtreamEpgIds: guide);
+        unawaited(_syncEpg(epg, epgPlan));
+      }
+    } finally {
+      if (httpClient == null) client.close();
+    }
+  }
+
   Future<bool> refreshPlaylist(Playlist playlist) async {
     if (playlist.id == null) return false;
     final Database db = await PlaylistDatabase.instance.database;
