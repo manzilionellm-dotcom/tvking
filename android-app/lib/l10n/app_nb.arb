@@ -1481,5 +1481,18 @@
   "tvCatchupEnded": "Replay er slutt. Tilbake til direkte.",
   "tvStatusPaidDays": "Abonnement aktivt · {days} dag(er) igjen",
   "tvPrevChannel": "Forrige",
-  "tvNextChannel": "Neste"
+  "tvNextChannel": "Neste",
+  "novatubeWelcomeTitle": "Velkommen til NovaTube",
+  "novatubeWelcomeSubtitle": "Legg til spillelisten fra leverandøren din for å komme i gang.",
+  "novatubeAddM3u": "Legg til en M3U-spilleliste",
+  "novatubeXtreamLogin": "Logg inn med Xtream Codes",
+  "novatubeDeviceCodeLabel": "Enhetskode",
+  "novatubeDeviceCodeHelp": "Gi denne koden til forhandleren din for å aktivere NovaTube. Den endres ikke ved en oppdatering.",
+  "novatubeCheckAccess": "Sjekk tilgangen min",
+  "novatubeStatusPending": "Lisens venter på aktivering",
+  "novatubeStatusTrial": "Gratis prøveperiode pågår",
+  "novatubeStatusActive": "Lisens aktiv",
+  "novatubeStatusExpired": "Tilgangen er utløpt. Spillelistene dine beholdes: gi koden din til forhandleren for å aktivere på nytt.",
+  "novatubeStatusSuspended": "Lisens suspendert. Kontakt forhandleren din.",
+  "novatubePlayerNotice": "NovaTube er en avspiller: ingen kanaler eller TV-abonnement leveres."
 }

@@ -1481,5 +1481,18 @@
   "tvCatchupEnded": "Marudio yameisha. Kurudi kwenye matangazo ya moja kwa moja.",
   "tvStatusPaidDays": "Usajili unatumika · siku {days} zimebaki",
   "tvPrevChannel": "Iliyotangulia",
-  "tvNextChannel": "Inayofuata"
+  "tvNextChannel": "Inayofuata",
+  "novatubeWelcomeTitle": "Karibu NovaTube",
+  "novatubeWelcomeSubtitle": "Ongeza orodha ya mtoa huduma wako ili kuanza.",
+  "novatubeAddM3u": "Ongeza orodha ya M3U",
+  "novatubeXtreamLogin": "Ingia kwa Xtream Codes",
+  "novatubeDeviceCodeLabel": "Msimbo wa kifaa",
+  "novatubeDeviceCodeHelp": "Mpe muuzaji wako msimbo huu ili kuwasha NovaTube. Haubadiliki baada ya kusasisha.",
+  "novatubeCheckAccess": "Angalia ufikiaji wangu",
+  "novatubeStatusPending": "Leseni inasubiri kuwashwa",
+  "novatubeStatusTrial": "Jaribio la bure linaendelea",
+  "novatubeStatusActive": "Leseni inatumika",
+  "novatubeStatusExpired": "Ufikiaji umeisha. Orodha zako zimehifadhiwa: mpe muuzaji msimbo wako ili kuwasha tena.",
+  "novatubeStatusSuspended": "Leseni imesimamishwa. Wasiliana na muuzaji wako.",
+  "novatubePlayerNotice": "NovaTube ni kicheza video: hakuna chaneli wala usajili wa TV unaotolewa."
 }

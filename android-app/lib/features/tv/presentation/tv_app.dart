@@ -1,3 +1,4 @@
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/i18n/somali_localizations.dart';
 
 // =========================================================
@@ -45,6 +46,7 @@ import '../core/tv_type.dart';
 import '../data/greeting_repository.dart';
 import 'removed_list_prompt.dart';
 import 'tv_activation_screen.dart';
+import 'tv_novatube_welcome_screen.dart';
 import 'tv_components.dart';
 import 'tv_hub_screen.dart';
 import 'tv_light_intro.dart';
@@ -546,8 +548,19 @@ class _TvGateState extends State<TvGate> {
     // source une fois l'essai expiré).
     final bool showHome = active || (hasOwnList && !mustBlock);
     final Widget home = showHome
-        ? const TvStartupAdGate(child: TvHubScreen())
-        : const TvShell(child: TvActivationScreen());
+        // NovaTube TV : pas de publicité de démarrage. Celles du panel sont
+        // publiées pour les box Zuno (même espace « tv » côté serveur).
+        ? (kNovatubeTv
+            ? const TvHubScreen()
+            : const TvStartupAdGate(child: TvHubScreen()))
+        // Édition NovaTube TV : « Bienvenue sur NovaTube » (deux grands
+        // boutons M3U / Xtream + code MK). La règle d'accès ci-dessus est la
+        // MÊME : seul l'écran affiché change. Zuno : écran d'activation.
+        : const TvShell(
+            child: kNovatubeTv
+                ? TvNovatubeWelcomeScreen()
+                : TvActivationScreen(),
+          );
     // Retour : sur l'ACCUEIL, c'est TvHomeScreen qui gère (contenu → menu →
     // boîte Quitter au dernier niveau). Ce PopScope racine (même route) ne
     // garde donc la boîte QUE pour l'écran d'activation ; sinon il laisse

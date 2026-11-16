@@ -1481,5 +1481,18 @@
   "tvCatchupEnded": "Fin del replay. Vuelta al directo.",
   "tvStatusPaidDays": "Suscripción activa · quedan {days} día(s)",
   "tvPrevChannel": "Anterior",
-  "tvNextChannel": "Siguiente"
+  "tvNextChannel": "Siguiente",
+  "novatubeWelcomeTitle": "Bienvenido a NovaTube",
+  "novatubeWelcomeSubtitle": "Añade la lista de tu proveedor para empezar.",
+  "novatubeAddM3u": "Añadir una lista M3U",
+  "novatubeXtreamLogin": "Iniciar sesión con Xtream Codes",
+  "novatubeDeviceCodeLabel": "Código del dispositivo",
+  "novatubeDeviceCodeHelp": "Da este código a tu revendedor para activar NovaTube. No cambia tras una actualización.",
+  "novatubeCheckAccess": "Comprobar mi acceso",
+  "novatubeStatusPending": "Licencia pendiente de activación",
+  "novatubeStatusTrial": "Prueba gratuita en curso",
+  "novatubeStatusActive": "Licencia activa",
+  "novatubeStatusExpired": "Acceso caducado. Tus listas se conservan: da tu código a tu revendedor para reactivar.",
+  "novatubeStatusSuspended": "Licencia suspendida. Contacta con tu revendedor.",
+  "novatubePlayerNotice": "NovaTube es un reproductor: no se proporciona ningún canal ni suscripción de TV."
 }

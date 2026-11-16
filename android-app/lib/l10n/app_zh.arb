@@ -2918,5 +2918,18 @@
     }
   },
   "tvPrevChannel": "上一个",
-  "tvNextChannel": "下一个"
+  "tvNextChannel": "下一个",
+  "novatubeWelcomeTitle": "欢迎使用 NovaTube",
+  "novatubeWelcomeSubtitle": "添加您的服务商播放列表即可开始。",
+  "novatubeAddM3u": "添加 M3U 播放列表",
+  "novatubeXtreamLogin": "使用 Xtream Codes 登录",
+  "novatubeDeviceCodeLabel": "设备代码",
+  "novatubeDeviceCodeHelp": "将此代码提供给您的经销商以激活 NovaTube。更新后代码不会改变。",
+  "novatubeCheckAccess": "检查我的访问权限",
+  "novatubeStatusPending": "许可证等待激活",
+  "novatubeStatusTrial": "免费试用进行中",
+  "novatubeStatusActive": "许可证已激活",
+  "novatubeStatusExpired": "访问已过期。您的播放列表已保留：将代码提供给经销商即可重新激活。",
+  "novatubeStatusSuspended": "许可证已暂停。请联系您的经销商。",
+  "novatubePlayerNotice": "NovaTube 是一款播放器：不提供任何频道或电视订阅。"
 }

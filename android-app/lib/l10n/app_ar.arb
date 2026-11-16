@@ -1481,5 +1481,18 @@
   "tvCatchupEnded": "انتهت الإعادة. العودة إلى البث المباشر.",
   "tvStatusPaidDays": "الاشتراك نشط · المتبقي {days} يوم",
   "tvPrevChannel": "السابقة",
-  "tvNextChannel": "التالية"
+  "tvNextChannel": "التالية",
+  "novatubeWelcomeTitle": "مرحبًا بك في NovaTube",
+  "novatubeWelcomeSubtitle": "أضف قائمة مزوّدك للبدء.",
+  "novatubeAddM3u": "إضافة قائمة M3U",
+  "novatubeXtreamLogin": "تسجيل الدخول باستخدام Xtream Codes",
+  "novatubeDeviceCodeLabel": "رمز الجهاز",
+  "novatubeDeviceCodeHelp": "أعطِ هذا الرمز للموزّع لتفعيل NovaTube. لا يتغيّر بعد التحديث.",
+  "novatubeCheckAccess": "التحقق من وصولي",
+  "novatubeStatusPending": "الترخيص بانتظار التفعيل",
+  "novatubeStatusTrial": "الفترة التجريبية المجانية جارية",
+  "novatubeStatusActive": "الترخيص مفعّل",
+  "novatubeStatusExpired": "انتهى الوصول. قوائمك محفوظة: أعطِ رمزك للموزّع لإعادة التفعيل.",
+  "novatubeStatusSuspended": "الترخيص معلّق. تواصل مع الموزّع.",
+  "novatubePlayerNotice": "NovaTube مشغّل فقط: لا يوفّر أي قنوات أو اشتراك تلفزيوني."
 }

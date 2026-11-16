@@ -2918,5 +2918,18 @@
     }
   },
   "tvPrevChannel": "Vorige",
-  "tvNextChannel": "Volgende"
+  "tvNextChannel": "Volgende",
+  "novatubeWelcomeTitle": "Welkom bij NovaTube",
+  "novatubeWelcomeSubtitle": "Voeg de afspeellijst van je provider toe om te beginnen.",
+  "novatubeAddM3u": "M3U-afspeellijst toevoegen",
+  "novatubeXtreamLogin": "Inloggen met Xtream Codes",
+  "novatubeDeviceCodeLabel": "Apparaatcode",
+  "novatubeDeviceCodeHelp": "Geef deze code aan je verkoper om NovaTube te activeren. Hij blijft hetzelfde na een update.",
+  "novatubeCheckAccess": "Mijn toegang controleren",
+  "novatubeStatusPending": "Licentie wacht op activering",
+  "novatubeStatusTrial": "Gratis proefperiode loopt",
+  "novatubeStatusActive": "Licentie actief",
+  "novatubeStatusExpired": "Toegang verlopen. Je afspeellijsten blijven bewaard: geef je code aan je verkoper om opnieuw te activeren.",
+  "novatubeStatusSuspended": "Licentie opgeschort. Neem contact op met je verkoper.",
+  "novatubePlayerNotice": "NovaTube is een speler: er worden geen zenders of tv-abonnement geleverd."
 }

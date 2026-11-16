@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/app/app_platform.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/branding/brand_config.dart';
 import '../../../core/theme/accent_controller.dart';
 import '../../../core/theme/remote_theme_settings.dart';
@@ -31,6 +32,11 @@ abstract final class RemoteThemeRepository {
   /// Récupère le thème distant. Une réponse ancienne ne peut pas annuler
   /// une modification plus récente reçue sur le canal du panel.
   static Future<void> fetchAndApply({bool strict = false}) async {
+    // Édition NovaTube TV : le thème vert pétrole est DÉFINITIF. Le thème
+    // « tv » du panel appartient aux box Zuno (nom, accent, clair/sombre) :
+    // on ne le télécharge pas, sinon un client NovaTube verrait le nom ou
+    // la couleur d'une autre application. Rien d'autre n'est désactivé.
+    if (kNovatubeTv) return;
     final request = ++_request;
     try {
       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV

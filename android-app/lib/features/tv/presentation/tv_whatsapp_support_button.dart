@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/support/vip_support.dart';
 import '../core/tv_dimens.dart';
@@ -49,7 +50,12 @@ class _TvWhatsAppSupportButtonState extends State<TvWhatsAppSupportButton> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) => kNovatubeTv
+      // NovaTube TV : pas de numéro d'assistance qui lui soit propre pour
+      // l'instant. On n'envoie JAMAIS un client NovaTube vers le WhatsApp
+      // de Zuno. Le code MK de l'écran d'accueil suffit au revendeur.
+      ? const SizedBox.shrink()
+      : Column(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
       TextButton.icon(

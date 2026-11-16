@@ -2918,5 +2918,18 @@
     }
   },
   "tvPrevChannel": "Предыдущий",
-  "tvNextChannel": "Следующий"
+  "tvNextChannel": "Следующий",
+  "novatubeWelcomeTitle": "Добро пожаловать в NovaTube",
+  "novatubeWelcomeSubtitle": "Добавьте плейлист вашего провайдера, чтобы начать.",
+  "novatubeAddM3u": "Добавить плейлист M3U",
+  "novatubeXtreamLogin": "Войти через Xtream Codes",
+  "novatubeDeviceCodeLabel": "Код устройства",
+  "novatubeDeviceCodeHelp": "Сообщите этот код продавцу, чтобы активировать NovaTube. Он не меняется после обновления.",
+  "novatubeCheckAccess": "Проверить мой доступ",
+  "novatubeStatusPending": "Лицензия ожидает активации",
+  "novatubeStatusTrial": "Идёт бесплатный пробный период",
+  "novatubeStatusActive": "Лицензия активна",
+  "novatubeStatusExpired": "Доступ истёк. Ваши плейлисты сохранены: сообщите код продавцу для повторной активации.",
+  "novatubeStatusSuspended": "Лицензия приостановлена. Свяжитесь с продавцом.",
+  "novatubePlayerNotice": "NovaTube — это плеер: каналы и ТВ-подписка не предоставляются."
 }

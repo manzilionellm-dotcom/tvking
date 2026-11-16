@@ -1481,5 +1481,18 @@
   "tvCatchupEnded": "Replay er slut. Tilbage til live.",
   "tvStatusPaidDays": "Abonnement aktivt · {days} dag(e) tilbage",
   "tvPrevChannel": "Forrige",
-  "tvNextChannel": "Næste"
+  "tvNextChannel": "Næste",
+  "novatubeWelcomeTitle": "Velkommen til NovaTube",
+  "novatubeWelcomeSubtitle": "Tilføj din udbyders playliste for at komme i gang.",
+  "novatubeAddM3u": "Tilføj en M3U-playliste",
+  "novatubeXtreamLogin": "Log ind med Xtream Codes",
+  "novatubeDeviceCodeLabel": "Enhedskode",
+  "novatubeDeviceCodeHelp": "Giv denne kode til din forhandler for at aktivere NovaTube. Den ændrer sig ikke ved en opdatering.",
+  "novatubeCheckAccess": "Tjek min adgang",
+  "novatubeStatusPending": "Licens afventer aktivering",
+  "novatubeStatusTrial": "Gratis prøveperiode i gang",
+  "novatubeStatusActive": "Licens aktiv",
+  "novatubeStatusExpired": "Adgangen er udløbet. Dine playlister bevares: giv din kode til din forhandler for at genaktivere.",
+  "novatubeStatusSuspended": "Licens suspenderet. Kontakt din forhandler.",
+  "novatubePlayerNotice": "NovaTube er en afspiller: der leveres ingen kanaler eller tv-abonnement."
 }

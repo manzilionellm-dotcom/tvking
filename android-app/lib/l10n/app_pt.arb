@@ -2918,5 +2918,18 @@
     }
   },
   "tvPrevChannel": "Anterior",
-  "tvNextChannel": "Seguinte"
+  "tvNextChannel": "Seguinte",
+  "novatubeWelcomeTitle": "Bem-vindo ao NovaTube",
+  "novatubeWelcomeSubtitle": "Adicione a lista do seu fornecedor para começar.",
+  "novatubeAddM3u": "Adicionar uma lista M3U",
+  "novatubeXtreamLogin": "Entrar com Xtream Codes",
+  "novatubeDeviceCodeLabel": "Código do dispositivo",
+  "novatubeDeviceCodeHelp": "Dê este código ao seu revendedor para ativar o NovaTube. Ele não muda após uma atualização.",
+  "novatubeCheckAccess": "Verificar o meu acesso",
+  "novatubeStatusPending": "Licença aguardando ativação",
+  "novatubeStatusTrial": "Teste gratuito em curso",
+  "novatubeStatusActive": "Licença ativa",
+  "novatubeStatusExpired": "Acesso expirado. As suas listas são mantidas: dê o seu código ao revendedor para reativar.",
+  "novatubeStatusSuspended": "Licença suspensa. Contacte o seu revendedor.",
+  "novatubePlayerNotice": "O NovaTube é um leitor: não fornece canais nem assinatura de TV."
 }

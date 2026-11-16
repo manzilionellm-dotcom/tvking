@@ -12,18 +12,27 @@ import '../../theme/data/remote_theme_repository.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 
-/// Nom produit affiché PARTOUT.
-const String kAppName = 'Zuno';
+/// Nom produit affiché PARTOUT. « NovaTube » dans l'édition NovaTube TV
+/// (constante de compilation, voir core/app/novatube_tv_edition.dart).
+const String kAppName = kNovatubeTv ? kNovatubeTvName : 'Zuno';
 // Logo « naturel » sur fond TRANSPARENT (pas le carré noir, qui se voyait
 // comme un rectangle plus sombre sur les surfaces gris foncé de l'app).
 // Le carré noir reste UNIQUEMENT pour l'icône de lancement (cf. yaml dédié),
 // où un fond est normal.
-const String _kLogoAsset = 'assets/branding/zuno_logo.png';
+//
+// NovaTube TV : mot-symbole SANS cadre (transparent), généré par
+// ci/novatube_tv/make_brand_assets.py. Il n'est déclaré dans pubspec.yaml
+// que par le build NovaTube (ci/novatube_tv/prepare_build.py) : le build
+// Zuno n'embarque donc aucun fichier de plus.
+const String _kLogoAsset = kNovatubeTv
+    ? 'assets/branding/novatube_tv_wordmark.png'
+    : 'assets/branding/zuno_logo.png';
 
 /// Numéro WhatsApp business (format international, sans + ni espaces).
 const String kWhatsAppPhone = '447307410512';
@@ -53,6 +62,10 @@ class TvWhatsAppQr extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // NovaTube TV n'a pas (encore) de numéro d'assistance qui lui soit
+    // propre : on n'affiche JAMAIS celui de Zuno à un client NovaTube.
+    // Le code appareil MK reste visible ailleurs pour l'activation.
+    if (kNovatubeTv) return const SizedBox.shrink();
     return SizedBox(
       width: size + 40,
       child: Column(

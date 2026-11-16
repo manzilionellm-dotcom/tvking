@@ -1,3 +1,4 @@
+import 'core/app/novatube_tv_edition.dart';
 import 'features/cast/data/cast_platform.dart';
 
 // =========================================================
@@ -178,13 +179,19 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de
   // signature à chaque build → l'installateur met à jour PAR-DESSUS, sans
   // désinstaller (favoris, listes, licence conservés).
-  UpdateService.manifestUrl =
-      'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/version.json';
-  UpdateService.apkPrefix = 'zuno-tv';
+  //
+  // ÉDITION NOVATUBE TV : JAMAIS la release Zuno (sinon une box NovaTube se
+  // verrait proposer l'APK d'une autre application). Elle lit sa propre
+  // release `novatube-tv`, qui n'existe pas tant que le propriétaire n'a pas
+  // autorisé une publication : d'ici là, aucune mise à jour n'est proposée.
+  UpdateService.manifestUrl = kNovatubeTv
+      ? 'https://github.com/manzilionellm-dotcom/tvking/releases/download/novatube-tv/version.json'
+      : 'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv/version.json';
+  UpdateService.apkPrefix = kNovatubeTv ? 'novatube-tv' : 'zuno-tv';
   // Box de TEST seulement (build test_box, --dart-define=ZUNO_UPDATE_CHANNEL=test) :
   // le bouton voit aussi la release de test, et prend la plus récente des
   // deux. Un APK client n'a jamais ce réglage : il ne lit que zuno-tv.
-  if (kZunoUpdateChannel == 'test') {
+  if (!kNovatubeTv && kZunoUpdateChannel == 'test') {
     UpdateService.extraManifestUrls = const <String>[
       'https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-tv-test/version.json',
     ];

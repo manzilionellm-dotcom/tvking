@@ -22,6 +22,7 @@
 //  « populaire maintenant ». Rien ne se lance tout seul, sauf si elle a
 //  choisi dans Réglages « Dernière chaîne » au démarrage (Retour = accueil).
 // =========================================================
+import '../../../core/app/novatube_tv_edition.dart';
 import 'dart:async';
 import 'dart:io' show Platform, exit;
 
@@ -338,6 +339,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
   /// réseau ensuite). Le canal « signal » les rafraîchira quand le panel
   /// publie ; l'accueil n'a qu'à écouter.
   Future<void> _preparePanelBoard() async {
+    // NovaTube TV : les annonces, « favori du jour » et bannières du panel
+    // sont celles des revendeurs Zuno (espace « tv » partagé côté serveur).
+    // Aucune n'est affichée à un client NovaTube : l'accueil reste sobre.
+    if (kNovatubeTv) return;
     try {
       await Future.wait(<Future<void>>[
         panelNoticeFlag.load(),

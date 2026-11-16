@@ -2918,5 +2918,18 @@
     }
   },
   "tvPrevChannel": "Önceki",
-  "tvNextChannel": "Sonraki"
+  "tvNextChannel": "Sonraki",
+  "novatubeWelcomeTitle": "NovaTube'a hoş geldiniz",
+  "novatubeWelcomeSubtitle": "Başlamak için sağlayıcınızın listesini ekleyin.",
+  "novatubeAddM3u": "M3U listesi ekle",
+  "novatubeXtreamLogin": "Xtream Codes ile giriş yap",
+  "novatubeDeviceCodeLabel": "Cihaz kodu",
+  "novatubeDeviceCodeHelp": "NovaTube'u etkinleştirmek için bu kodu bayinize verin. Güncellemeden sonra değişmez.",
+  "novatubeCheckAccess": "Erişimimi kontrol et",
+  "novatubeStatusPending": "Lisans etkinleştirme bekliyor",
+  "novatubeStatusTrial": "Ücretsiz deneme sürüyor",
+  "novatubeStatusActive": "Lisans etkin",
+  "novatubeStatusExpired": "Erişim süresi doldu. Listeleriniz korunur: yeniden etkinleştirmek için kodunuzu bayinize verin.",
+  "novatubeStatusSuspended": "Lisans askıya alındı. Bayinizle iletişime geçin.",
+  "novatubePlayerNotice": "NovaTube bir oynatıcıdır: hiçbir kanal veya TV aboneliği sağlanmaz."
 }

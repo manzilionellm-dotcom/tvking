@@ -1481,5 +1481,18 @@
   "tvCatchupEnded": "Reprisen är slut. Tillbaka till direktsändning.",
   "tvStatusPaidDays": "Abonnemang aktivt · {days} dag(ar) kvar",
   "tvPrevChannel": "Föregående",
-  "tvNextChannel": "Nästa"
+  "tvNextChannel": "Nästa",
+  "novatubeWelcomeTitle": "Välkommen till NovaTube",
+  "novatubeWelcomeSubtitle": "Lägg till din leverantörs spellista för att komma igång.",
+  "novatubeAddM3u": "Lägg till en M3U-spellista",
+  "novatubeXtreamLogin": "Logga in med Xtream Codes",
+  "novatubeDeviceCodeLabel": "Enhetskod",
+  "novatubeDeviceCodeHelp": "Ge den här koden till din återförsäljare för att aktivera NovaTube. Den ändras inte vid en uppdatering.",
+  "novatubeCheckAccess": "Kontrollera min åtkomst",
+  "novatubeStatusPending": "Licensen väntar på aktivering",
+  "novatubeStatusTrial": "Gratis provperiod pågår",
+  "novatubeStatusActive": "Licensen är aktiv",
+  "novatubeStatusExpired": "Åtkomsten har gått ut. Dina spellistor sparas: ge din kod till din återförsäljare för att återaktivera.",
+  "novatubeStatusSuspended": "Licensen är avstängd. Kontakta din återförsäljare.",
+  "novatubePlayerNotice": "NovaTube är en spelare: inga kanaler eller tv-abonnemang tillhandahålls."
 }

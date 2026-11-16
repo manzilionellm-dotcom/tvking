@@ -2918,5 +2918,18 @@
     }
   },
   "tvPrevChannel": "पिछला",
-  "tvNextChannel": "अगला"
+  "tvNextChannel": "अगला",
+  "novatubeWelcomeTitle": "NovaTube में आपका स्वागत है",
+  "novatubeWelcomeSubtitle": "शुरू करने के लिए अपने प्रदाता की प्लेलिस्ट जोड़ें।",
+  "novatubeAddM3u": "M3U प्लेलिस्ट जोड़ें",
+  "novatubeXtreamLogin": "Xtream Codes से साइन इन करें",
+  "novatubeDeviceCodeLabel": "डिवाइस कोड",
+  "novatubeDeviceCodeHelp": "NovaTube सक्रिय करने के लिए यह कोड अपने विक्रेता को दें। अपडेट के बाद यह नहीं बदलता।",
+  "novatubeCheckAccess": "मेरी पहुँच जाँचें",
+  "novatubeStatusPending": "लाइसेंस सक्रियण की प्रतीक्षा में",
+  "novatubeStatusTrial": "निःशुल्क परीक्षण चल रहा है",
+  "novatubeStatusActive": "लाइसेंस सक्रिय",
+  "novatubeStatusExpired": "पहुँच समाप्त हो गई। आपकी प्लेलिस्ट सुरक्षित हैं: फिर से सक्रिय करने के लिए अपना कोड विक्रेता को दें।",
+  "novatubeStatusSuspended": "लाइसेंस निलंबित। अपने विक्रेता से संपर्क करें।",
+  "novatubePlayerNotice": "NovaTube एक प्लेयर है: कोई चैनल या टीवी सदस्यता प्रदान नहीं की जाती।"
 }
