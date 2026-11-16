@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -220,7 +221,7 @@ class _SourceRow extends StatelessWidget {
                 ),
                 if (ref.user != null || ref.host != null) ...<Widget>[
                   const SizedBox(height: 4),
-                  _Reference(user: ref.user, host: ref.host),
+                  _Reference(user: kNovatubeTv ? null : ref.user, host: ref.host),
                 ],
                 const SizedBox(height: 4),
                 Text(

@@ -21,6 +21,8 @@ import '../../playlists/presentation/widgets/configured_servers_picker.dart';
 import '../core/tv_field_keys.dart';
 import '../core/tv_focusable.dart';
 import '../data/local_m3u_picker.dart';
+import '../data/novatube_recent_sources.dart';
+import '../../profiles/data/active_profile.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'source_http_input_formatter.dart';
@@ -71,6 +73,10 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
   final TextEditingController _server = TextEditingController();
   final TextEditingController _username = TextEditingController();
   final TextEditingController _password = TextEditingController();
+  final _name = TextEditingController();
+  final _nameFocus = FocusNode();
+  List<String> _recent = const [];
+  bool _privateLink = false;
   final TextEditingController _link = TextEditingController();
   final FocusNode _serverFocus = FocusNode();
   final FocusNode _usernameFocus = FocusNode();
@@ -95,10 +101,41 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     _mode = widget.initialMode == OpenEntryMode.xtream
         ? OpenEntryMode.xtream
         : OpenEntryMode.m3u;
+    if (kNovatubeTv) {
+      _link.addListener(_protectAddress);
+      unawaited(_loadRecent());
+    }
+  }
+
+  Future<void> _loadRecent() async {
+    final profile = ActiveProfile.instance.id;
+    final saved = await NovatubeRecentSources.read(profile);
+    if (mounted && profile == ActiveProfile.instance.id && saved.isNotEmpty) {
+      setState(() => _recent = saved);
+    }
+  }
+
+  void _protectAddress() {
+    final text = _link.text;
+    final hide = RegExp(r'[?&](?:username|password|token)=', caseSensitive: false).hasMatch(text) ||
+        (Uri.tryParse(text)?.userInfo.isNotEmpty ?? false);
+    if (hide != _privateLink) setState(() => _privateLink = hide);
+  }
+
+  void _addShortcut(String token) {
+    final value = _link.value;
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : start;
+    _link.value = TextEditingValue(text: value.text.replaceRange(start, end, token),
+        selection: TextSelection.collapsed(offset: start + token.length));
+    _linkFocus.requestFocus();
   }
 
   @override
   void dispose() {
+    _name.dispose();
+    _nameFocus.dispose();
     _server.dispose();
     _username.dispose();
     _password.dispose();
@@ -160,7 +197,9 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     // Capturer la saisie et la traduction avant toute attente. Le formulaire
     // peut disparaître dès le premier lot de chaînes, l'import doit finir.
     final OpenSourceDraft draft = parsed.draft!;
-    final String name = context.l10n.tvMyListHint;
+    final name = kNovatubeTv && _name.text.trim().isNotEmpty ? _name.text.trim() : context.l10n.tvMyListHint;
+    final address = kNovatubeTv && _mode == OpenEntryMode.m3u ? _link.text.trim() : '';
+    final owner = kNovatubeTv ? ActiveProfile.instance.id : '';
     final submit = widget.submitForTesting;
     setState(() {
       _busy = true;
@@ -203,6 +242,10 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         }
       });
       added = true;
+      if (address.isNotEmpty && submit == null) {
+        // L’historique n’est jamais une condition de réussite de l’import.
+        unawaited(NovatubeRecentSources.remember(owner, address).catchError((Object _) {}));
+      }
       BlackBox.instance.info('SOURCE', 'source ouverte ajoutée');
     } catch (error) {
       // Une exception fournisseur peut contenir des identifiants dans l'URL.
@@ -251,7 +294,9 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     final OpenSourceDraft draft = parsed.draft!;
     setState(() {
       _error = null;
-      if (draft.kind == OpenSourceKind.xtream) {
+      if (kNovatubeTv && _mode == OpenEntryMode.m3u) {
+        _link.text = text;
+      } else if (draft.kind == OpenSourceKind.xtream) {
         _mode = OpenEntryMode.xtream;
         _server.text = draft.serverUrl ?? '';
         _username.text = draft.username ?? '';
@@ -285,7 +330,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
       return;
     }
     final String path = pick.path!;
-    final String name = context.l10n.tvMyListHint;
+    final name = kNovatubeTv && _name.text.trim().isNotEmpty ? _name.text.trim() : context.l10n.tvMyListHint;
     final Future<void> Function(String path)? importer =
         widget.importLocalFileForTesting;
     setState(() {
@@ -384,6 +429,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               ],
             ),
             const SizedBox(height: 14),
+            if (!kNovatubeTv || !widget.autofocus)
             Row(
               children: <Widget>[
                 Expanded(
@@ -408,6 +454,26 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               ],
             ),
             const SizedBox(height: 16),
+            if (kNovatubeTv && _mode == OpenEntryMode.m3u) ...[
+              if (_recent.isNotEmpty)
+                Wrap(children: [
+                  for (final address in _recent)
+                    _SideAction(label: Uri.parse(address).host, enabled: !_blocked,
+                      onSelect: () async {
+                        _link.text = address;
+                        _submitFocus.requestFocus();
+                      }),
+                ]),
+              Wrap(children: [
+                for (final token in l10n.novaSourceShortcuts.split('|'))
+                  _SideAction(label: token, enabled: !_blocked,
+                    onSelect: () async => _addShortcut(token)),
+              ]),
+              _SourceField(controller: _name, focusNode: _nameFocus,
+                label: l10n.tvFieldNameOptional, enabled: !_busy,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) => _linkFocus.requestFocus()),
+            ],
             if (_mode == OpenEntryMode.xtream) ...<Widget>[
               ConfiguredServersPicker(
                 serverController: _server,
@@ -475,6 +541,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                 key: const ValueKey<String>('tv-source-m3u'),
                 controller: _link,
                 focusNode: _linkFocus,
+                obscure: kNovatubeTv && _privateLink,
                 label: l10n.tvFieldM3uUrl,
                 hint: 'http://',
                 enabled: !_busy,

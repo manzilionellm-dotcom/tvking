@@ -555,6 +555,7 @@
   "tvFieldUser": "Username",
   "tvFieldPass": "Password",
   "tvAddListError": "Fill in the server, username and password.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Cannot reach the server. Check your connection and try again.",
   "novaSourceTimeout": "The server took too long to respond. Try again.",
   "novaSourceDenied": "Access denied. Check your sign-in details.",

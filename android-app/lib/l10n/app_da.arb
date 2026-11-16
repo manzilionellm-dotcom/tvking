@@ -555,6 +555,7 @@
   "tvFieldUser": "Brugernavn",
   "tvFieldPass": "Adgangskode",
   "tvAddListError": "Udfyld server, brugernavn og adgangskode.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Kan ikke kontakte serveren. Kontrollér forbindelsen, og prøv igen.",
   "novaSourceTimeout": "Serveren svarede ikke i tide. Prøv igen.",
   "novaSourceDenied": "Adgang nægtet. Kontrollér dine loginoplysninger.",

@@ -555,6 +555,7 @@
   "tvFieldUser": "Jina la mtumiaji",
   "tvFieldPass": "Nenosiri",
   "tvAddListError": "Jaza seva, jina la mtumiaji na nenosiri.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Seva haipatikani. Kagua muunganisho wako na ujaribu tena.",
   "novaSourceTimeout": "Seva haikujibu kwa wakati. Jaribu tena.",
   "novaSourceDenied": "Umenyimwa ruhusa. Hakikisha taarifa zako za kuingia ni sahihi.",

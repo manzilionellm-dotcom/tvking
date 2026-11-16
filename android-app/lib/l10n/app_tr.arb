@@ -1993,6 +1993,7 @@
   "tvFieldUser": "Kullanıcı adı",
   "tvFieldPass": "Şifre",
   "tvAddListError": "Sunucu, kullanıcı adı ve şifreyi doldur.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Sunucuya ulaşılamıyor. Bağlantınızı kontrol edip tekrar deneyin.",
   "novaSourceTimeout": "Sunucu zamanında yanıt vermedi. Tekrar deneyin.",
   "novaSourceDenied": "Erişim reddedildi. Giriş bilgilerinizi kontrol edin.",

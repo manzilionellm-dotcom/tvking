@@ -1993,6 +1993,7 @@
   "tvFieldUser": "Gebruikersnaam",
   "tvFieldPass": "Wachtwoord",
   "tvAddListError": "Vul de server, gebruikersnaam en het wachtwoord in.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "De server is niet bereikbaar. Controleer je verbinding.",
   "novaSourceTimeout": "De server reageerde niet op tijd. Probeer het opnieuw.",
   "novaSourceDenied": "Toegang geweigerd. Controleer je inloggegevens.",

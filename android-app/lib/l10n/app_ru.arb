@@ -1993,6 +1993,7 @@
   "tvFieldUser": "Логин",
   "tvFieldPass": "Пароль",
   "tvAddListError": "Заполни сервер, логин и пароль.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Сервер недоступен. Проверьте подключение и повторите попытку.",
   "novaSourceTimeout": "Сервер не ответил вовремя. Попробуйте ещё раз.",
   "novaSourceDenied": "Доступ запрещён. Проверьте данные для входа.",

@@ -1993,6 +1993,7 @@
   "tvFieldUser": "Nome utente",
   "tvFieldPass": "Password",
   "tvAddListError": "Compila server, nome utente e password.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Server irraggiungibile. Controlla la connessione e riprova.",
   "novaSourceTimeout": "Il server non ha risposto in tempo. Riprova.",
   "novaSourceDenied": "Accesso negato. Verifica le credenziali.",

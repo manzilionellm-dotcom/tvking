@@ -1993,6 +1993,7 @@
   "tvFieldUser": "Magaca isticmaalaha",
   "tvFieldPass": "Erayga sirta ah",
   "tvAddListError": "Buuxi adeegaha, magaca isticmaalaha iyo erayga sirta ah.",
+  "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Lama xiriiri karo adeegaha. Hubi internetka oo mar kale isku day.",
   "novaSourceTimeout": "Adeeguhu waqtigii loogu talagalay kuma jawaabin. Mar kale isku day.",
   "novaSourceDenied": "Gelitaanka waa la diiday. Hubi xogta aad ku gasho.",
