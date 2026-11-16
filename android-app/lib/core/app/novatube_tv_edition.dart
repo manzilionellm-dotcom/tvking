@@ -30,6 +30,13 @@
 // =========================================================
 
 /// `true` seulement dans un build compilé avec `--dart-define=NOVATUBE_TV=true`.
+///
+/// Trois fichiers partagés relisent ce MÊME define sans importer ce fichier
+/// (feedback_repository.dart, default_servers.dart,
+/// remote_theme_repository.dart) : la chaîne du téléphone 7 MOTION les
+/// recopie tels quels dans un arbre où ce fichier n'existe pas. Renommer le
+/// define impose de les modifier aussi (contrôlé par
+/// test/novatube_tv/novatube_mobile_overlay_test.dart).
 const bool kNovatubeTv = bool.fromEnvironment('NOVATUBE_TV');
 
 /// Nom commercial affiché à l'écran dans l'édition NovaTube TV.

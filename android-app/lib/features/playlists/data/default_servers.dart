@@ -13,10 +13,18 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
+
+// Interrupteur de l'édition NovaTube TV : le MÊME define que
+// lib/core/app/novatube_tv_edition.dart, relu ici SANS import. Ce fichier
+// est copié tel quel dans l'arbre du téléphone 7 MOTION
+// (ci/mobile/mobile_controls_options.py), qui ne contient pas l'édition
+// NovaTube : un import y casserait l'analyse et la construction du
+// téléphone. Sans `--dart-define=NOVATUBE_TV=true`, la valeur est `false` :
+// Zuno et le téléphone gardent exactement leur comportement.
+const bool _kNovatubeTv = bool.fromEnvironment('NOVATUBE_TV');
 
 /// Un serveur IPTV par défaut tel que renvoyé par le Worker.
 /// L'adresse reste visible et modifiable avant la connexion Xtream.
@@ -128,7 +136,7 @@ abstract final class DefaultServersApi {
   }
 
   static Future<List<DefaultServer>> _fetchFromNetwork() async {
-    if (kNovatubeTv) return const <DefaultServer>[];
+    if (_kNovatubeTv) return const <DefaultServer>[];
     try {
       final http.Response resp = await http.get(
         Uri.parse('$kSubscriptionBaseUrl/api/servers'),
