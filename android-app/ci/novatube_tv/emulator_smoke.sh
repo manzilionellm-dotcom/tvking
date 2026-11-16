@@ -182,6 +182,29 @@ if [[ -n "${NOVATUBE_TEST_MEDIA:-}" ]]; then
   fi
 fi
 
+if [[ -n "${NOVATUBE_PROFILE_APK:-}" ]]; then
+  step "Chronométrage Android 11 en profil : deux tailles en HTTP et en HTTPS"
+  # L'APK de profil utilise la clé de développement du runner. Le parcours
+  # officiel vient de se terminer : ne pas tenter de l'installer par-dessus.
+  adb -s "$serial" uninstall "$pkg" >/dev/null
+  adb -s "$serial" install "$(readlink -f "$NOVATUBE_PROFILE_APK")" > "$out/install-profil.txt"
+  grep -q Success "$out/install-profil.txt"
+  # Une nouvelle signature peut donner un nouveau code MK. On isole donc
+  # le serveur de mesures du serveur réservé au parcours de captures.
+  script_dir="$(dirname "$(readlink -f "$0")")"
+  profile_atlas="$(mktemp -d)"
+  ATLAS_PORT=8789 node "$script_dir/atlas_local_server.mjs" atlas/android-app/cloudflare \
+    "$profile_atlas/config.json" > "$profile_atlas/serveur.log" 2>&1 &
+  profile_pid=$!
+  for i in $(seq 1 45); do [[ -s "$profile_atlas/config.json" ]] && break; sleep 1; done
+  test -s "$profile_atlas/config.json"
+  adb -s "$serial" reverse tcp:8788 tcp:8789
+  python3 "$script_dir/profile_catalogs.py" "$serial" "$pkg" "$component" "$out/profil" \
+    "$profile_atlas/config.json" "$NOVATUBE_TEST_MEDIA"
+  kill "$profile_pid"
+  rm -rf "$profile_atlas"
+fi
+
 step "Recherche de plantages"
 adb -s "$serial" logcat -d -b crash > "$out/tampon-crash.txt" 2>&1 || true
 if grep -q "$pkg" "$out/tampon-crash.txt"; then

@@ -280,12 +280,20 @@ jobs:
           mkdir -p build/novatube_tv_emulateur
           cp build/app/outputs/flutter-apk/app-release.apk \
             build/novatube_tv_emulateur/NovaTube-TV-emulateur.apk
+          # Le profil sert uniquement aux chronomètres et à gfxinfo sous Android 11.
+          flutter build apk --profile --no-tree-shake-icons \
+            --android-skip-build-dependency-validation --target-platform android-x64 \
+            --build-number="$BUILD_NUMBER" --build-name="$NOVATUBE_TV_VERSION" \
+            --dart-define=NOVATUBE_TV=true --dart-define=BACKEND_URL=http://127.0.0.1:8788 \
+            --target=lib/main_tv.dart
+          cp build/app/outputs/flutter-apk/app-profile.apk \
+            build/novatube_tv_emulateur/NovaTube-TV-profil.apk
 
       - name: Conserver la variante d'émulateur (jamais publiée)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: novatube-emulateur-apk-${{ github.sha }}
-          path: android-app/build/novatube_tv_emulateur/NovaTube-TV-emulateur.apk
+          path: android-app/build/novatube_tv_emulateur/*.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -360,7 +368,7 @@ jobs:
           apk="$(ls artifacts/apk/*.apk | head -1)"
           echo "$(sha256sum "$apk" | awk '{print $1}')" > expected.txt
           test "$(cat expected.txt)" = "${{ needs.build.outputs.apk-sha256 }}"
-          NOVATUBE_EMULATOR_APK="$(ls artifacts/variante/*.apk | head -1)" \
+          NOVATUBE_PROFILE_APK=artifacts/variante/NovaTube-TV-profil.apk NOVATUBE_EMULATOR_APK=artifacts/variante/NovaTube-TV-emulateur.apk \
           NOVATUBE_TEST_MEDIA="$RUNNER_TEMP/novatube-media" \
             bash android-app/ci/novatube_tv/emulator_smoke.sh "$apk" artifacts/emulateur
 
