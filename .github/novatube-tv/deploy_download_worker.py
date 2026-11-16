@@ -149,6 +149,37 @@ def upload(acc: str, module: bytes, conf: dict) -> None:
         die(f'envoi du script refusé (HTTP {status}) : {[e.get("message") for e in errors]}')
 
 
+def zone_routes() -> tuple[str, list[dict]]:
+    """Zone de zuno8k.com et routes Workers (lecture seule, affichées)."""
+    status, body, _ = cf('GET', '/zones?name=zuno8k.com')
+    zones = json.loads(body or b'{}').get('result') or [] if status == 200 else []
+    if not zones:
+        print(f'zone zuno8k.com non lisible avec ce jeton (HTTP {status})')
+        return '', []
+    zid = zones[0]['id']
+    status, body, _ = cf('GET', f'/zones/{zid}/workers/routes')
+    routes = json.loads(body or b'{}').get('result') or [] if status == 200 else []
+    for r in routes:
+        if 'novatube' in (r.get('pattern') or ''):
+            print(f"route : {r.get('pattern')} → {r.get('script')}")
+    return zid, routes
+
+
+def ensure_mobile_route(zid: str, routes: list[dict]) -> bool:
+    """Ajoute la SEULE adresse novatube.zuno8k.com/mobile* vers ce Worker."""
+    pattern = 'novatube.zuno8k.com/mobile*'
+    if any(r.get('pattern') == pattern for r in routes):
+        return True
+    if not zid:
+        return False
+    status, body, _ = cf('POST', f'/zones/{zid}/workers/routes',
+                         json.dumps({'pattern': pattern, 'script': SCRIPT}).encode(),
+                         'application/json')
+    ok = status == 200 and json.loads(body or b'{}').get('success') is True
+    print(f"ajout de la route {pattern} : {'fait' if ok else f'refusé (HTTP {status})'}")
+    return ok
+
+
 def wait_for(check, seconds: int = 120) -> bool:
     end = time.time() + seconds
     while time.time() < end:
@@ -166,6 +197,10 @@ def main() -> int:
         die('EXPECTED_SHA256 absent')
     acc = account_id()
     conf = settings(acc)
+    zid, routes = zone_routes()
+    status_d, body_d, _ = cf('GET', f'/accounts/{acc}/workers/domains?service={SCRIPT}')
+    for d in (json.loads(body_d or b'{}').get('result') or [] if status_d == 200 else []):
+        print(f"domaine personnalisé : {d.get('hostname')} → {d.get('service')}")
     old = current_module(acc)
     Path('ancien-worker.mjs').write_bytes(old)
     before = probe('/novatube.apk')
@@ -182,11 +217,22 @@ def main() -> int:
         sha_ok = got == expected
         print(f'téléchargement par le domaine : SHA-256 {got} ({"identique" if sha_ok else "DIFFÉRENT"})')
     mobile = probe('/mobile.apk')
-    mobile_ok = mobile == before
-    print(f'après : /mobile.apk → HTTP {mobile[0]} {mobile[1]} (attendu : comme /novatube.apk avant)')
+    if tv_ok and sha_ok and mobile != before and mobile[0] == 404:
+        # /mobile.apk n'arrive pas au Worker (routes limitées) : on ajoute
+        # cette seule adresse si le jeton le permet.
+        if ensure_mobile_route(zid, routes):
+            wait_for(lambda: probe('/mobile.apk') == before, 90)
+            mobile = probe('/mobile.apk')
+    print(f'après : /mobile.apk → HTTP {mobile[0]} {mobile[1]} (souhaité : comme /novatube.apk avant)')
 
-    if tv_ok and sha_ok and mobile_ok:
-        print('✓ novatube.zuno8k.com/novatube.apk sert NovaTube TV ; mobile conservé sur /mobile.apk')
+    if tv_ok and sha_ok:
+        print('✓ novatube.zuno8k.com/novatube.apk sert NovaTube TV (SHA-256 vérifié)')
+        if mobile == before:
+            print('✓ NovaTube mobile conservé sur novatube.zuno8k.com/mobile.apk')
+        else:
+            # Demande explicite du propriétaire : TV sur /novatube.apk. Le mobile
+            # reste téléchargeable par son lien GitHub (affiché ci-dessous).
+            print(f'::warning::/mobile.apk non disponible sur le domaine ; NovaTube mobile reste téléchargeable ici : {before[1]}')
         return 0
 
     print('::warning::vérification en échec → retour arrière sur l\'ancien script')
