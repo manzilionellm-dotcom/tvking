@@ -200,7 +200,7 @@ if [[ -n "${NOVATUBE_PROFILE_APK:-}" ]]; then
   test -s "$profile_atlas/config.json"
   adb -s "$serial" reverse tcp:8788 tcp:8789
   python3 "$script_dir/profile_catalogs.py" "$serial" "$pkg" "$component" "$out/profil" \
-    "$profile_atlas/config.json" "$NOVATUBE_TEST_MEDIA"
+    "$profile_atlas/config.json" "$NOVATUBE_TEST_MEDIA" "$(dirname "$(readlink -f "$NOVATUBE_PROFILE_APK")")/tls-fixture"
   kill "$profile_pid"
   rm -rf "$profile_atlas"
 fi

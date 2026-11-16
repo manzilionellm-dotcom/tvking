@@ -7,13 +7,12 @@ import ssl
 import statistics
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.parse
 import urllib.request
 
-SERIAL, PKG, COMPONENT, OUTPUT, FIXTURE, MEDIA = sys.argv[1:]
+SERIAL, PKG, COMPONENT, OUTPUT, FIXTURE, MEDIA, TLS = sys.argv[1:]
 out = Path(OUTPUT)
 out.mkdir(parents=True, exist_ok=True)
 cfg = json.loads(Path(FIXTURE).read_text())
@@ -113,23 +112,10 @@ def confirme(endpoint, token, rev):
     return any(item['rev'] == rev and item['state'] == 'acknowledged' for item in status['revisions'])
 
 
-with tempfile.TemporaryDirectory() as work, contextlib.ExitStack() as stack:
-    cert = Path(work) / 'test.pem'
-    key = Path(work) / 'test.key'
-    subprocess.run(['openssl', 'req', '-new', '-newkey', 'rsa:2048', '-x509', '-nodes',
-                    '-days', '1', '-subj', '/CN=NovaTube-Test', '-addext', 'subjectAltName=IP:127.0.0.1',
-                    '-addext', 'basicConstraints=critical,CA:TRUE', '-keyout', str(key),
-                    '-out', str(cert)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    digest = subprocess.check_output(['openssl', 'x509', '-in', str(cert), '-subject_hash_old',
-                                      '-noout'], text=True).strip()
-    adb('push', str(cert), '/data/local/tmp/novatube-tls.pem')
-    # Android 11 lit ses AC dans ce dossier. Montage privé de l'émulateur
-    # jetable : l'APK officiel, le trafic de production et les secrets restent séparés.
-    adb('shell', 'mkdir -p /data/local/tmp/nova-ca && cp /system/etc/security/cacerts/* /data/local/tmp/nova-ca/')
-    adb('shell', f'cp /data/local/tmp/novatube-tls.pem /data/local/tmp/nova-ca/{digest}.0 && '
-        f'chmod 644 /data/local/tmp/nova-ca/{digest}.0 && chown root:root /data/local/tmp/nova-ca/{digest}.0 && '
-        'chcon -R u:object_r:system_file:s0 /data/local/tmp/nova-ca && '
-        'mount --bind /data/local/tmp/nova-ca /system/etc/security/cacerts')
+with contextlib.ExitStack() as stack:
+    fixture_dir = Path(TLS)
+    cert = fixture_dir / 'server.pem'
+    key = fixture_dir / 'server.key'
     for use_tls, port in ((False, 9080), (True, 9443)):
         server = http.server.ThreadingHTTPServer(('127.0.0.1', port), Listes)
         if use_tls:

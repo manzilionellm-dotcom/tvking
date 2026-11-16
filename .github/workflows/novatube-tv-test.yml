@@ -281,11 +281,25 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk \
             build/novatube_tv_emulateur/NovaTube-TV-emulateur.apk
           # Le profil sert uniquement aux chronomètres et à gfxinfo sous Android 11.
+          certdir="$RUNNER_TEMP/certificat-test-nova"
+          mkdir -m 700 "$certdir"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=NovaTube-Test \
+            -addext basicConstraints=critical,CA:TRUE -keyout "$certdir/ca.key" -out "$certdir/ca.pem" 2>/dev/null
+          openssl req -new -newkey rsa:2048 -nodes -subj /CN=127.0.0.1 \
+            -keyout "$certdir/server.key" -out "$certdir/server.csr" 2>/dev/null
+          openssl x509 -req -in "$certdir/server.csr" -CA "$certdir/ca.pem" -CAkey "$certdir/ca.key" \
+            -CAcreateserial -days 1 -extfile <(printf '%s\n' 'subjectAltName=IP:127.0.0.1' \
+            'basicConstraints=CA:FALSE' 'extendedKeyUsage=serverAuth') -out "$certdir/server.pem" 2>/dev/null
+          rm "$certdir/ca.key"
+          openssl verify -CAfile "$certdir/ca.pem" "$certdir/server.pem"
           flutter build apk --profile --no-tree-shake-icons \
             --android-skip-build-dependency-validation --target-platform android-x64 \
             --build-number="$BUILD_NUMBER" --build-name="$NOVATUBE_TV_VERSION" \
             --dart-define=NOVATUBE_TV=true --dart-define=BACKEND_URL=http://127.0.0.1:8788 \
-            --target=lib/main_tv.dart
+            --dart-define="NOVATUBE_CI_ROOT_PEM=$(base64 -w0 "$certdir/ca.pem")" \
+            --target=ci/novatube_tv/profile_entry.dart
+          mkdir build/novatube_tv_emulateur/tls-fixture
+          cp "$certdir/server.pem" "$certdir/server.key" build/novatube_tv_emulateur/tls-fixture/
           cp build/app/outputs/flutter-apk/app-profile.apk \
             build/novatube_tv_emulateur/NovaTube-TV-profil.apk
 
@@ -293,7 +307,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: novatube-emulateur-apk-${{ github.sha }}
-          path: android-app/build/novatube_tv_emulateur/*.apk
+          path: |
+            android-app/build/novatube_tv_emulateur/*.apk
+            android-app/build/novatube_tv_emulateur/tls-fixture/
           if-no-files-found: error
           retention-days: 7
 
