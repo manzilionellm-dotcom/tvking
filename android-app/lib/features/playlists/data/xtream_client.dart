@@ -38,6 +38,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/app/box_memory_budget.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import '../domain/source_import_problem.dart';
 import '../../../core/app/repair_flags.dart';
 
 import '../../../core/blackbox/black_box.dart';
@@ -123,6 +125,9 @@ class XtreamClient {
       throw XtreamException(
         'Réponse serveur invalide (pas de user_info).',
       );
+    }
+    if (kNovatubeTv && userInfo['status']?.toString().toLowerCase() == 'expired') {
+      throw SourceImportProblem.expired;
     }
     final String auth = (userInfo['auth']?.toString() ?? '0');
     if (auth != '1') {
@@ -585,7 +590,8 @@ class XtreamClient {
           return await read
               .timeout(idleTimeout ? kXtreamSingleShotMaxDuration : _timeout);
         }
-        lastError = XtreamException(
+        lastError = kNovatubeTv && (resp.statusCode == 401 || resp.statusCode == 403)
+            ? SourceImportProblem.denied : XtreamException(
           'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
         );
       } on PlaylistImportTooLarge {

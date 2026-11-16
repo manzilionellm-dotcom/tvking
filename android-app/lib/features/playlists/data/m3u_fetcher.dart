@@ -33,6 +33,8 @@ import '../../player/data/player_settings.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import 'm3u_parser.dart' show M3uParser;
+import '../../../core/app/novatube_tv_edition.dart';
+import '../domain/source_import_problem.dart';
 import 'import_progress.dart';
 import 'playlist_import_limits.dart';
 
@@ -181,7 +183,10 @@ abstract final class M3uFetcher {
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /
             // un code maison comme 884). On essaie la signature suivante.
-            lastError = Exception('HTTP ${resp.statusCode} sur $url');
+            lastError = kNovatubeTv
+                ? (resp.statusCode == 401 || resp.statusCode == 403
+                    ? SourceImportProblem.denied : SourceImportProblem.network)
+                : Exception('HTTP ${resp.statusCode} sur $url');
             continue;
           }
 
@@ -200,7 +205,7 @@ abstract final class M3uFetcher {
           final String head =
               latin1.decode(Uint8List.sublistView(bytes, 0, sniffLen)).trimLeft();
           if (head.isEmpty) {
-            lastError =
+            lastError = kNovatubeTv ? SourceImportProblem.empty :
                 Exception('Le serveur a renvoyé une réponse vide pour $url');
             continue;
           }
@@ -216,8 +221,8 @@ abstract final class M3uFetcher {
           final bool looksM3u = headUpper.contains('#EXTM3U') ||
               headUpper.contains('#EXTINF') ||
               head.contains('://');
-          if (looksHtml && !looksM3u) {
-            lastError = Exception(
+          if (looksHtml && (kNovatubeTv || !looksM3u)) {
+            lastError = kNovatubeTv ? SourceImportProblem.webPage : Exception(
               'Le serveur a renvoyé une page web (HTML), pas une playlist.',
             );
             continue;
@@ -225,7 +230,7 @@ abstract final class M3uFetcher {
           if (!looksM3u) {
             // Ni balise M3U ni URL de flux : probablement une erreur
             // applicative en texte/JSON. On tente une autre signature.
-            lastError = Exception(
+            lastError = kNovatubeTv ? SourceImportProblem.empty : Exception(
               'Réponse sans aucune chaîne (ni #EXTM3U ni URL) pour $url',
             );
             continue;
@@ -255,7 +260,7 @@ abstract final class M3uFetcher {
             'M3U',
             '$host : délai dépassé après ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(0)} s ($phase)',
           );
-          lastError = Exception(
+          lastError = kNovatubeTv ? SourceImportProblem.timeout : Exception(
             headersSeen
                 ? 'Le serveur a commencé à envoyer la liste puis s\'est tu '
                     '(${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus).'
@@ -272,6 +277,9 @@ abstract final class M3uFetcher {
       }
 
       // Aucune signature n'a fonctionné → message clair.
+      if (kNovatubeTv) {
+        throw lastError is SourceImportProblem ? lastError : SourceImportProblem.network;
+      }
       throw Exception(_friendlyFailure(lastError, url, userAgents.length));
     } finally {
       if (owns) client.close();

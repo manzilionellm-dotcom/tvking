@@ -212,7 +212,9 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         'SOURCE',
         'ajout source ouverte échoué (${error.runtimeType})',
       );
-      if (mounted) setState(() => _error = 'connect_failed');
+      if (mounted) {
+        setState(() => _error = kNovatubeTv ? sourceFailureCode(error) : 'connect_failed');
+      }
       if (returnedEarly && messenger?.mounted == true) {
         messenger!.showSnackBar(SnackBar(content: Text(lateError)));
       }
@@ -522,7 +524,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                   child: TvCtaButton(
                     key: const ValueKey<String>('tv-source-submit'),
                     focusNode: _submitFocus,
-                    label: _busy ? l10n.tvConnecting : l10n.loginConnectLoad,
+                    label: _busy ? l10n.tvConnecting
+                        : kNovatubeTv && _error != null ? l10n.buttonRetry : l10n.loginConnectLoad,
                     onSelect: _blocked ? null : _submit,
                   ),
                 ),

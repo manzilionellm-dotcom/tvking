@@ -42,6 +42,7 @@ import '../../profiles/data/active_profile.dart';
 import '../../profiles/domain/family_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
+import '../domain/source_import_problem.dart';
 import 'deleted_sources.dart';
 import 'playlist_secret.dart';
 import 'profile_source_switches.dart';
@@ -521,7 +522,9 @@ class PlaylistRepository {
       //    (User-Agent navigateur + UTF-8 / Latin-1 fallback +
       //    strip BOM + timeout 90s — gère les serveurs paranos
       //    ou les exports Windows-1252 mal étiquetés).
-      if (kDebugMode) debugPrint('[Repo] GET $url');
+      if (kDebugMode) {
+        debugPrint(kNovatubeTv ? '[Repo] Téléchargement M3U' : '[Repo] GET $url');
+      }
       // 3) Téléchargement + parse (ISOLATE) + insertion, dans une fonction à
       // part : à son retour, les octets bruts (jusqu'à 60 Mo) et la liste
       // parsée ne sont plus atteignables. La relecture de setActivePlaylist
@@ -1093,6 +1096,7 @@ class PlaylistRepository {
     );
     if (parsed.channels.isEmpty) {
       // Source invalide → on lève ; le `catch` de l'appelant retire l'orpheline.
+      if (kNovatubeTv) throw SourceImportProblem.empty;
       final String hint = parsed.warnings.isEmpty
           ? ''
           : '\n\nDétails parser :\n${parsed.warnings.take(3).join('\n')}';
@@ -1156,6 +1160,7 @@ class PlaylistRepository {
     );
     if (channels.isEmpty) {
       // Compte sans chaîne live → on lève ; le `catch` de l'appelant retire l'orpheline.
+      if (kNovatubeTv) throw SourceImportProblem.empty;
       throw Exception(
         'Aucune chaîne live disponible pour ce compte Xtream.',
       );
