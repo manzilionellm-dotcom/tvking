@@ -166,13 +166,24 @@ class NovatubeAtlas {
     };
   }
 
+  /// Canal authentifié de la box. Le propriétaire du client peut fermer
+  /// immédiatement la requête quand l’application passe en arrière-plan.
+  Future<NovatubeReply> waitForChanges(http.Client connection, int after) =>
+      post('wait', {'after': after, 'timeout': 18000},
+          connection: connection, timeout: const Duration(seconds: 24));
+
   /// Envoi authentifié d'une action NovaTube. Visible pour les tests.
   @visibleForTesting
-  Future<NovatubeReply> post(String action, Map<String, Object?> extra) async {
+  Future<NovatubeReply> post(
+    String action,
+    Map<String, Object?> extra, {
+    http.Client? connection,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
     final NovatubeIdentity id = NovatubeIdentity.instance;
     final String raw = await id.rawMac;
     final String key = await id.deviceKey;
-    final http.Client client = clientFactory();
+    final http.Client client = connection ?? clientFactory();
     try {
       final http.Response resp = await client
           .post(
@@ -184,7 +195,7 @@ class NovatubeAtlas {
             },
             body: jsonEncode(<String, Object?>{'raw_mac': raw, ...extra}),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(timeout);
       Object? decoded;
       try {
         decoded = jsonDecode(resp.body);
@@ -194,7 +205,7 @@ class NovatubeAtlas {
         decoded is Map<String, dynamic> ? decoded : null,
       );
     } finally {
-      client.close();
+      if (connection == null) client.close();
     }
   }
 

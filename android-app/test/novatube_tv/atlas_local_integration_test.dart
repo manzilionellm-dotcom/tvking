@@ -9,6 +9,7 @@
 //         --dart-define=NOVATUBE_TV=true test/novatube_tv/atlas_local_integration_test.dart
 //  Aucune requête ne part vers la production.
 // =========================================================
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -17,8 +18,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tv_king/core/app/novatube_tv_edition.dart';
+import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/device/data/novatube_identity.dart';
 import 'package:tv_king/features/subscription/data/novatube_atlas.dart';
+import 'package:tv_king/features/subscription/data/remote_activation_watch.dart';
 import 'package:tv_king/features/subscription/data/subscription_backend.dart';
 import 'package:tv_king/features/subscription/data/subscription_state.dart';
 
@@ -93,6 +96,33 @@ void main() {
     final RemoteStatusRead read = await NovatubeAtlas.instance.readStatus();
     expect(read.status.paid, isTrue);
     expect(read.status.paidUntil, greaterThan(DateTime.now().millisecondsSinceEpoch));
+  }, skip: skip);
+
+  test('le renouvellement du serveur réveille la box en moins de 5 secondes', () async {
+    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+    final state = SubscriptionState.instance;
+    await state.initialize();
+    expect(await state.syncWithBackend(), RemoteSyncOutcome.applied);
+    expect(state.status, SubscriptionStatus.trialActive);
+    final paid = Completer<void>();
+    void observe() {
+      if (state.status == SubscriptionStatus.paid && !paid.isCompleted) {
+        paid.complete();
+      }
+    }
+    state.addListener(observe);
+    final watch = RemoteActivationWatch.instance;
+    watch.start(allowSourceImport: false);
+    try {
+      final mac = await NovatubeIdentity.instance.mac;
+      final clock = Stopwatch()..start();
+      expect(await activateAsAdmin(mac), 201);
+      await paid.future.timeout(const Duration(seconds: 5));
+      expect(clock.elapsed, lessThan(const Duration(seconds: 5)));
+    } finally {
+      watch.stop();
+      state.removeListener(observe);
+    }
   }, skip: skip);
 
   test('données effacées (nouvelle clé) : la fiche reste protégée, réassociation', () async {

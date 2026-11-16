@@ -110,11 +110,12 @@ class RemoteActivationWatch {
     _arm(ActivationPace.fast);
     _generation++;
     final int generation = _generation;
-    // Édition NovaTube TV : le canal /api/box (WebSocket, attente longue,
-    // accusés) est indexé par la seule MAC et réservé aux fiches Zuno. La
-    // box NovaTube lit son statut et ses listes par /api/novatube4k/state
-    // (ticks ci-dessus, rythme calme d'ActivationPace).
-    if (kNovatubeTv) return;
+    if (kNovatubeTv) {
+      // Le serveur lie cette attente à la clé de l’installation. Le signal
+      // réveille la lecture habituelle des droits, seule source de vérité.
+      unawaited(_waitNovatube(generation));
+      return;
+    }
     unawaited(_signalLoop(generation));
     // WebSocket d'abord. S'il ne tient pas, l'attente longue
     // (déjà dans _signalLoop) prend le relais. L'interrupteur
@@ -125,7 +126,10 @@ class RemoteActivationWatch {
   /// « J'ai payé — Vérifier », ou juste après un changement de
   /// licence : on regarde tout de suite, sans attendre le délai.
   void nudge() {
-    _nudge = true;
+    if (kNovatubeTv && !_run) return;
+    // Un réveil pendant une lecture doit être rejoué. À l’arrêt du minuteur,
+    // le prochain tick immédiat suffit et ne doit pas se doubler.
+    _nudge = !kNovatubeTv || _tickBusy;
     if (_tickBusy) return;
     _timer?.cancel();
     _arm(Duration.zero);
@@ -303,6 +307,50 @@ class RemoteActivationWatch {
         'PANEL',
         'inventaire envoyé au panel après la liste (${hb.name})',
       );
+    }
+  }
+
+  /// L’attente longue dédiée à NovaTube reste ouverte pendant la navigation.
+  /// Le filet de sécurité à 5/15 s garde son rythme, même si le signal tombe.
+  Future<void> _waitNovatube(int generation) async {
+    final http.Client client = http.Client();
+    _signalHttp = client;
+    int after = 0;
+    int failures = 0;
+    bool current() => _run && _generation == generation;
+    try {
+      while (current()) {
+        final Stopwatch clock = Stopwatch()..start();
+        try {
+          final reply = await NovatubeAtlas.instance.waitForChanges(client, after);
+          if (!current()) return;
+          final orders = reply.body?['box'];
+          if (reply.status != 200 || orders is! List) {
+            throw const FormatException('Attente indisponible');
+          }
+          failures = 0;
+          final previous = after;
+          for (final order in orders.whereType<Map<String, Object?>>()) {
+            final seq = order['id'];
+            if (seq is int && seq > after) after = seq;
+          }
+          if (after > previous) {
+            nudge();
+          } else if (clock.elapsed < ActivationPace.fast) {
+            // Un proxy qui répond vide immédiatement ne crée pas de boucle.
+            await _pause(ActivationPace.fast - clock.elapsed, generation);
+          }
+        } on Exception {
+          if (!current()) return;
+          await _pause(ActivationPace.next(waiting: true, failures: failures), generation);
+          if (failures < 6) failures++;
+        }
+      }
+    } finally {
+      if (identical(_signalHttp, client)) {
+        _signalHttp = null;
+        client.close();
+      }
     }
   }
 
