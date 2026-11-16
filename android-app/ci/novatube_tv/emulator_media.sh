@@ -44,28 +44,79 @@ shot 07-formulaire-m3u
 adb -s "$serial" shell input text 'http://127.0.0.1:8080/novatube-test.m3u'
 sleep 2
 shot 08-adresse-saisie
-key KEYCODE_ENTER 30
-alive "import M3U"
+# Entrée peut seulement déplacer le focus vers le bouton. On contrôle l'écran
+# et le nombre de vrais GET avant d’envoyer une deuxième touche.
+ui_script="$(dirname "$(readlink -f "$0")")/screen_label.py"
+grab() { adb -s "$serial" exec-out screencap -p > "$out/instant.png"; }
+word() { python3 "$ui_script" "$out/instant.png" "$1" "${2:-0}" "${3:-1}"; }
+wait_word() {
+  for attempt in $(seq 1 10); do
+    grab
+    if word "$@" >/dev/null; then return 0; fi
+    sleep 1
+  done
+  step "Libellé introuvable après attente : $1"
+  return 1
+}
+tap_word() {
+  wait_word "$@"
+  local x y
+  read -r x y < <(word "$@")
+  adb -s "$serial" shell input tap "$x" "$y"
+  sleep 3
+}
+key KEYCODE_ENTER 2
+grab
+if ! word 'movies|films' >/dev/null; then key KEYCODE_DPAD_CENTER 2; fi
+wait_word 'movies|films'
+alive "accueil après import"
 shot 09-apres-import
 
-step "Accueil → OK sur la première tuile (Direct)"
-key KEYCODE_DPAD_CENTER 12
-alive "écran Direct"
+step "Accueil → Direct"
+key KEYCODE_DPAD_CENTER 4
+grab
+if ! word 'mire|barres' >/dev/null; then
+  tap_word 'live|direct'
+fi
+wait_word 'mire|barres'
 shot 10-direct-3-zones
-# L'aperçu démarre après 1,5 s d'immobilité du focus (tv_live_preview.dart).
-sleep 12
+sleep 6
 shot 11-direct-apercu-video
 
-step "OK = lecture plein écran"
-key KEYCODE_DPAD_CENTER 15
+step "Chaîne sélectionnée → plein écran"
+tap_word 'mire|barres' .18 .62
+grab
+if word 'barres|search' 0 .62 >/dev/null; then key KEYCODE_DPAD_CENTER 4; fi
 alive "lecture plein écran"
 shot 12-lecture-plein-ecran
-sleep 10
+sleep 8
 shot 13-lecture-10s-plus-tard
-key KEYCODE_BACK 5
-alive "retour au Direct"
+key KEYCODE_BACK 3
+wait_word 'mire|barres'
 shot 14-retour-direct
+key KEYCODE_BACK 3
+wait_word 'movies|films'
 
+# Les captures sont faites après l’ouverture de chaque page, jamais sur le
+# simple focus de sa tuile. Les données du fournisseur sont toutes générées.
+for page in 'movies|films:15-films' 'series:16-series' 'playlists|lists|sources:17-mes-listes' 'settings:18-reglages'; do
+  label="${page%%:*}"
+  fichier="${page#*:}"
+  tap_word "$label"
+  alive "$fichier"
+  grab
+  if word 'tonight' >/dev/null; then step "La tuile $label ne s’est pas ouverte"; exit 1; fi
+  shot "$fichier"
+  if [[ "$fichier" == 18-reglages ]]; then
+    key KEYCODE_DPAD_CENTER 3
+    wait_word 'access|reseller'
+    shot 19-licence
+    key KEYCODE_BACK 2
+  fi
+  key KEYCODE_BACK 3
+  wait_word 'movies|films'
+done
+rm -f "$out/instant.png"
 step "Ce que l'application a réellement demandé au serveur local"
 grep -c 'GET /novatube-test.m3u' "$out/serveur-local.txt" > "$out/requetes-liste.txt" || true
 grep -c 'GET /logos/' "$out/serveur-local.txt" > "$out/requetes-logos.txt" || true

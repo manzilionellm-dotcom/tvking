@@ -175,10 +175,10 @@ if [[ -n "${NOVATUBE_TEST_MEDIA:-}" ]]; then
     step "Phase média : OK"
     echo ok > "$out/phase-media.txt"
   else
-    # Non bloquant : les captures montrent où le parcours s'est arrêté.
-    # Un PLANTAGE reste bloquant (contrôle ci-dessous, sur toute la session).
+    # Les captures précédentes restent disponibles pour diagnostiquer le refus.
     step "Phase média : NON CONCLUANTE (voir captures 07 à 14)"
     echo echec > "$out/phase-media.txt"
+    exit 1
   fi
 fi
 
