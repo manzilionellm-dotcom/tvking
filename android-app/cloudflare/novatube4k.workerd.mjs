@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 // Vérification du candidat exact dans workerd/Miniflare, sans nodejs_compat.
 // D1 et RealtimeHub sont locaux. Les secrets sont créés pour ce processus ;
 // chaque sous-requête HTTP sortante est interceptée et refusée avant réseau.
@@ -10,7 +11,9 @@ import { randomBytes, createHash } from 'node:crypto';
 import { Miniflare, Log, LogLevel } from 'miniflare';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const candidate = resolve(process.argv[2] || join(here, '../../../atlas4k-evidence/release/novatube4k-live-entry.js'));
+// Bundle de preuve s'il est présent, sinon l'entrée reproductible du dépôt.
+const evidenceEntry = join(here, '../../../atlas4k-evidence/release/novatube4k-live-entry.js');
+const candidate = resolve(process.argv[2] || (existsSync(evidenceEntry) ? evidenceEntry : join(here, 'novatube4k-entry.js')));
 const rawMac = 'AABBCCDDEE01';
 const deviceKey = randomBytes(32).toString('hex');
 const wrongKey = randomBytes(32).toString('hex');

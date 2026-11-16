@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 // Validation du candidat exact dans workerd/D1 locaux. Ni clé, code ni session
 // de production ; aucun accès réseau extérieur, même pendant une activation fixture.
 import assert from 'node:assert/strict';
@@ -8,7 +9,9 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Miniflare, Log, LogLevel } from 'miniflare';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const candidate = resolve(process.argv[2] || join(here, '../../../novafix-evidence/recovery-release/novatube4k-live-entry.js'));
+// Bundle de preuve s'il est présent, sinon l'entrée reproductible du dépôt.
+const evidenceEntry = join(here, '../../../novafix-evidence/recovery-release/novatube4k-live-entry.js');
+const candidate = resolve(process.argv[2] || (existsSync(evidenceEntry) ? evidenceEntry : join(here, 'novatube4k-entry.js')));
 const RAW = 'AABBCCDDEE81', KEY = randomBytes(32).toString('hex'), NEXT = randomBytes(32).toString('hex');
 const adminSecret = randomBytes(32).toString('hex'), PATH = '/api/v1/novatube4k/reassociate';
 const APP = 'app_novatube4k', CODE = /^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){2}$/;

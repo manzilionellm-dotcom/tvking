@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 // Validation du bundle exact dans workerd : D1 + RealtimeHub locaux,
 // aucun réseau externe, aucun identifiant ni activation de production.
 import assert from 'node:assert/strict';
@@ -8,7 +9,9 @@ import { randomBytes, createHash } from 'node:crypto';
 import { Miniflare, Log, LogLevel } from 'miniflare';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const candidate = resolve(process.argv[2] || join(here, '../../../atlas4k-evidence/panel-release/novatube4k-live-entry.js'));
+// Bundle de preuve s'il est présent, sinon l'entrée reproductible du dépôt.
+const evidenceEntry = join(here, '../../../atlas4k-evidence/panel-release/novatube4k-live-entry.js');
+const candidate = resolve(process.argv[2] || (existsSync(evidenceEntry) ? evidenceEntry : join(here, 'novatube4k-entry.js')));
 const RAW = 'AABBCCDDEE31', RAW2 = 'AABBCCDDEE32';
 const KEY = randomBytes(32).toString('hex'), KEY2 = randomBytes(32).toString('hex');
 const adminSecret = randomBytes(32).toString('hex');

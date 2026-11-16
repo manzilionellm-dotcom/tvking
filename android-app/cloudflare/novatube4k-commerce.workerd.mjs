@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 // Entrée de production exacte, Workerd + D1 locaux. Tous les appels Stripe
 // sont interceptés avant le réseau ; aucune carte ni clé réelle n'est utilisée.
 import assert from 'node:assert/strict';
@@ -8,7 +9,9 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { Miniflare, Log, LogLevel } from 'miniflare';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const candidate = resolve(process.argv[2] || join(here, '../../../novatube-commerce-evidence/backend-release/novatube4k-live-entry.js'));
+// Bundle de preuve s'il est présent, sinon l'entrée reproductible du dépôt.
+const evidenceEntry = join(here, '../../../novatube-commerce-evidence/backend-release/novatube4k-live-entry.js');
+const candidate = resolve(process.argv[2] || (existsSync(evidenceEntry) ? evidenceEntry : join(here, 'novatube4k-entry.js')));
 const RAW = 'AABBCCDDEE91', KEY = randomBytes(32).toString('hex');
 const RAW2 = 'AABBCCDDEE92', KEY2 = randomBytes(32).toString('hex');
 const secret = 'whsec_' + randomBytes(24).toString('hex');
