@@ -31,6 +31,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/app/build_info.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/data/novatube_identity.dart';
+import '../../../core/blackbox/black_box_redaction.dart';
 import 'subscription_backend.dart';
 
 /// Réponse brute d'une route NovaTube (code HTTP + corps JSON s'il existe).
@@ -127,8 +128,10 @@ class NovatubeAtlas {
   /// le serveur masque aussi la MAC brute).
   Future<bool> uploadBlackbox(String text) async {
     try {
+      final clean = prepareBlackBoxUpload(text, enabled: true);
+      if (clean == null) return false;
       final NovatubeReply r =
-          await post('blackbox', <String, Object?>{'text': text});
+          await post('blackbox', <String, Object?>{'text': clean});
       return r.status == 200;
     } catch (_) {
       return false;
