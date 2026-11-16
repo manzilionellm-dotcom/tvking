@@ -166,6 +166,7 @@ class XtreamClient {
   Future<List<Channel>> fetchLiveChannels({
     required int playlistId,
     Map<String, String>? categories,
+    void Function(List<Channel>)? onFirstChannels,
   }) async {
     final String host = Uri.tryParse(_baseUrl)?.host ?? _baseUrl;
     final String prefix = '$_baseUrl/$username/$password/';
@@ -205,19 +206,46 @@ class XtreamClient {
     // Vrai si le bloc a été COUPÉ en route (et non refusé pour sa taille) :
     // le repli par catégorie doit alors être complet, cf. plus bas.
     bool wholeInterrupted = false;
+    final Future<Map<String, String>> categoryNames = categories == null
+        ? fetchLiveCategories()
+        : Future<Map<String, String>>.value(categories);
+    bool published = false;
+    void publish(List<Channel> items) {
+      if (published || items.isEmpty || onFirstChannels == null) return;
+      published = true;
+      onFirstChannels(List<Channel>.unmodifiable(items.take(48)));
+    }
+
+    // Un seul petit échantillon du même GET suffit à rendre le Direct utilisable.
+    // Le décodeur et les noms de catégories sont les mêmes que pour la liste finale.
+    Future<void> readFirst(Uint8List bytes) async {
+      try {
+        final names = await categoryNames;
+        if (!receivingCatalog) return;
+        final part = await compute(_mapLiveStreamsInIsolate, _LiveStreamsJob(
+          payload: TransferableTypedData.fromList(<Uint8List>[bytes]),
+          categories: names, playlistId: playlistId, streamUrlPrefix: prefix,
+          maxChannels: 48, prefixOnly: true,
+        ));
+        if (receivingCatalog) publish(part.channels);
+      } on Exception {
+        // Échantillon incomplet : l'import normal reste seul juge du catalogue.
+      }
+    }
+
     List<Object?>? catalog;
     try {
       catalog = await Future.wait<Object?>(
         <Future<Object?>>[
-          categories == null
-              ? fetchLiveCategories()
-              : Future<Map<String, String>>.value(categories),
+          categoryNames,
           _getWholeCatalog(
             singleShotMax,
             onBytes: (int bytes) {
               if (receivingCatalog) ImportProgressBus.downloading(bytes);
             },
             onInterrupted: () => wholeInterrupted = true,
+            onPrefix: onFirstChannels == null
+                ? null : (bytes) => unawaited(readFirst(bytes)),
           ),
         ],
         eagerError: true,
@@ -307,6 +335,7 @@ class XtreamClient {
           }
           epgChannelIds.addAll(mapped.epgIds);
         }
+        if (onFirstChannels != null) publish(channels);
         ImportProgressBus.category(end, list.length, channels.length);
       }
     }
@@ -331,12 +360,14 @@ class XtreamClient {
     int softMax, {
     required void Function(int received) onBytes,
     required void Function() onInterrupted,
+    void Function(Uint8List)? onPrefix,
   }) async {
     int received = 0;
     try {
       return await _getBytes(
         _buildUri(action: 'get_live_streams'),
         softMax: softMax,
+        onPrefix: onPrefix,
         idleTimeout: true,
         onBytes: (int bytes) {
           received = bytes;
@@ -516,6 +547,7 @@ class XtreamClient {
   Future<Uint8List?> _getBytes(Uri uri,
       {int? softMax,
       void Function(int received)? onBytes,
+      void Function(Uint8List)? onPrefix,
       bool idleTimeout = false}) async {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
@@ -544,6 +576,7 @@ class XtreamClient {
             kMaxXtreamJsonBytes,
             softMax: softMax,
             onBytes: onBytes,
+            onPrefix: onPrefix,
             // Le `.timeout` ci-dessous abandonne l'attente, pas la lecture :
             // sans cette borne, un bloc lent mais continu continuait de se
             // télécharger en mémoire PENDANT le repli par catégorie.
@@ -577,7 +610,11 @@ class XtreamClient {
       Stream<List<int>> stream, int maxBytes,
       {int? softMax,
       void Function(int received)? onBytes,
+      void Function(Uint8List)? onPrefix,
       Duration? maxDuration}) async {
+    // On ne conserve jamais plus de 16 Kio en plus du corps déjà borné.
+    final BytesBuilder? prefix = onPrefix == null ? null : BytesBuilder();
+    bool sent = false;
     final BytesBuilder builder = BytesBuilder(copy: false);
     final Stopwatch clock = Stopwatch()..start();
     int total = 0;
@@ -597,6 +634,14 @@ class XtreamClient {
           'Source Xtream trop volumineuse (> ${maxBytes ~/ (1024 * 1024)} Mo). '
           'Filtre les catégories côté fournisseur.',
         );
+      }
+      if (!sent && prefix != null) {
+        final int remaining = 16384 - prefix.length;
+        prefix.add(chunk.length <= remaining ? chunk : chunk.sublist(0, remaining));
+        if (prefix.length >= 4096) {
+          sent = true;
+          onPrefix!(prefix.takeBytes());
+        }
       }
       builder.add(chunk);
     }
@@ -673,7 +718,9 @@ class _LiveStreamsJob {
     required this.playlistId,
     required this.streamUrlPrefix,
     required this.maxChannels,
+    this.prefixOnly = false,
   });
+  final bool prefixOnly;
   final TransferableTypedData payload;
   final Map<String, String> categories;
   final int playlistId;
@@ -771,6 +818,7 @@ _LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
       return _LiveStreamsResult(channels, epgIds);
     }
 
+    if (job.prefixOnly) return _LiveStreamsResult(channels, epgIds);
     // Forme rare `{"data": [...]}` : ancien chemin (décodage complet).
     // Décodeur UTF-8 → JSON FUSIONNÉ de dart:convert : parse le JSON
     // directement depuis les octets, sans String intermédiaire.
@@ -793,6 +841,9 @@ _LiveStreamsResult _mapLiveStreamsInIsolate(_LiveStreamsJob job) {
     }
     return _LiveStreamsResult(channels, epgIds);
   } on FormatException catch (e) {
+    // Une coupure au milieu du dernier objet est normale pour l'échantillon.
+    // La réponse entière passe toujours par la validation stricte ci-dessous.
+    if (job.prefixOnly) return _LiveStreamsResult(channels, epgIds);
     throw XtreamException(
       'Réponse non-JSON sur action=get_live_streams : ${e.message}',
     );

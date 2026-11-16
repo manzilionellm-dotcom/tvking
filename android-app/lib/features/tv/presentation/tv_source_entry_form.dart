@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/data/import_progress.dart';
@@ -168,6 +169,9 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
     });
     FocusScope.of(context).unfocus();
     bool added = false;
+    bool returnedEarly = false;
+    final messenger = kNovatubeTv ? ScaffoldMessenger.maybeOf(context) : null;
+    final String lateError = kNovatubeTv ? context.l10n.tvConnectError : '';
     try {
       await RemoteSourceRepository.runUserImport<void>(() async {
         if (mounted) setState(() => _importStarted = true);
@@ -180,6 +184,14 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               serverUrl: draft.serverUrl!,
               username: draft.username!,
               password: draft.password!,
+              onFirstChannels: !kNovatubeTv ? null : () {
+                if (!mounted || widget.onAdded == null ||
+                    ModalRoute.of(context)?.isCurrent != true) {
+                  return;
+                }
+                returnedEarly = true;
+                widget.onAdded!();
+              },
             ),
           );
         } else {
@@ -201,6 +213,9 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         'ajout source ouverte échoué (${error.runtimeType})',
       );
       if (mounted) setState(() => _error = 'connect_failed');
+      if (returnedEarly && messenger?.mounted == true) {
+        messenger!.showSnackBar(SnackBar(content: Text(lateError)));
+      }
     } finally {
       // Le wrapper du dépôt a déjà nettoyé le bus AVANT de libérer la file.
       if (mounted) {
@@ -210,7 +225,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
         });
       }
     }
-    if (mounted && added) widget.onAdded?.call();
+    if (mounted && added && !returnedEarly) widget.onAdded?.call();
     if (mounted && !added) _refocusAfterFailure(_submitFocus);
   }
 

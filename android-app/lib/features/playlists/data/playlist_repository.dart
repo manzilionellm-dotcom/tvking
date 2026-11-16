@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -705,6 +706,7 @@ class PlaylistRepository {
     required String password,
     String? originM3uUrl,
     http.Client? httpClient,
+    VoidCallback? onFirstChannels,
     bool restoreDeleted = true,
   }) async {
     if (restoreDeleted) {
@@ -751,6 +753,7 @@ class PlaylistRepository {
         xtream,
         playlistId: playlistId,
         wantEpg: newPlaylist.epgUrl != null,
+        onFirstChannels: onFirstChannels,
       );
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -779,6 +782,9 @@ class PlaylistRepository {
       if (playlistId != null) {
         BlackBox.instance.info('DB', 'liste $playlistId supprimée (import Xtream échoué)');
         await _deletePlaylist(playlistId);
+        if (kNovatubeTv && _channelsCache.any((c) => c.playlistId == playlistId)) {
+          await _emitCurrentState();
+        }
       }
       rethrow;
     } finally {
@@ -1128,9 +1134,25 @@ class PlaylistRepository {
     XtreamClient xtream, {
     required int playlistId,
     required bool wantEpg,
+    VoidCallback? onFirstChannels,
   }) async {
+    final String owner = ActiveProfile.instance.id;
+    final int revision = _stateRevision;
+    final bool early = kNovatubeTv && mergeAllPlaylists && _channelsCache.isEmpty;
     final List<Channel> channels = await xtream.fetchLiveChannels(
       playlistId: playlistId,
+      onFirstChannels: !early ? null : (first) {
+        // Le lot reste en mémoire. Une suppression, un autre profil ou une
+        // autre liste arrivée entre-temps ont toujours priorité.
+        if (owner != ActiveProfile.instance.id ||
+            revision != _stateRevision ||
+            _channelsCache.isNotEmpty) {
+          return;
+        }
+        _channelsCache = first;
+        _channelsController.add(first);
+        onFirstChannels?.call();
+      },
     );
     if (channels.isEmpty) {
       // Compte sans chaîne live → on lève ; le `catch` de l'appelant retire l'orpheline.
