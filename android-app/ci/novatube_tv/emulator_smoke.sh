@@ -90,13 +90,13 @@ adb -s "$serial" shell wm size 1920x1080
 adb -s "$serial" shell wm density 320
 
 step "Hors réseau (aucun contact avec le serveur de production)"
+# Le Wi-Fi reste « connecté » (l'app se comporte comme chez un client), mais
+# le pare-feu de la box REJETTE toute sortie sauf la boucle locale : ni le
+# serveur de production, ni Internet ne sont joignables. Seul un serveur
+# local de test (adb reverse, phase média) l'est.
 adb -s "$serial" root > "$out/adb-root.txt" 2>&1
 adb -s "$serial" wait-for-device
 test "$(adb -s "$serial" shell id -u | tr -d '\r')" = 0
-adb -s "$serial" shell settings put global airplane_mode_on 1
-adb -s "$serial" shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true > /dev/null
-adb -s "$serial" shell svc wifi disable
-adb -s "$serial" shell svc data disable
 for fw in iptables ip6tables; do
   adb -s "$serial" shell "$fw" -w -I OUTPUT 1 '!' -o lo -j REJECT
   adb -s "$serial" shell "$fw" -w -C OUTPUT '!' -o lo -j REJECT
@@ -151,6 +151,20 @@ adb -s "$serial" shell am start -W -n "$component" > "$out/demarrage-2.txt" 2>&1
 sleep 30
 alive "réouverture"
 shot 05-reouverture
+
+if [[ -n "${NOVATUBE_TEST_MEDIA:-}" ]]; then
+  step "Phase média : import M3U HTTP, Direct 3 zones, lecture"
+  if bash "$(dirname "$(readlink -f "$0")")/emulator_media.sh" \
+      "$serial" "$out" "$pkg" "$NOVATUBE_TEST_MEDIA"; then
+    step "Phase média : OK"
+    echo ok > "$out/phase-media.txt"
+  else
+    # Non bloquant : les captures montrent où le parcours s'est arrêté.
+    # Un PLANTAGE reste bloquant (contrôle ci-dessous, sur toute la session).
+    step "Phase média : NON CONCLUANTE (voir captures 06 à 13)"
+    echo echec > "$out/phase-media.txt"
+  fi
+fi
 
 step "Recherche de plantages"
 adb -s "$serial" logcat -d -b crash > "$out/tampon-crash.txt" 2>&1 || true
