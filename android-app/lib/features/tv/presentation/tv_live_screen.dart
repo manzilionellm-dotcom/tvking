@@ -93,7 +93,9 @@ String _tvStripCodec(String s) {
 }
 
 class TvLiveScreen extends StatefulWidget {
-  const TvLiveScreen({super.key});
+  const TvLiveScreen({this.openFavorites = false, super.key});
+
+  final bool openFavorites;
 
   @override
   State<TvLiveScreen> createState() => _TvLiveScreenState();
@@ -251,6 +253,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.openFavorites) _selectedCat = _kFavCat;
     TvActivity.enter();
     if (!kNovatubeTv) {
       VipCountriesRepository.instance.addListener(_onVipChanged);
@@ -521,7 +524,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
         for (final code in VipCountriesRepository.instance.current) '$_vipPrefix$code',
     ];
     if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
-    if (_favCh.isNotEmpty) cats.add(_kFavCat);
+    if (widget.openFavorites || _favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
     if (_forYouCh.isNotEmpty) cats.add(_kForYouCat);
     cats.addAll(_cats);

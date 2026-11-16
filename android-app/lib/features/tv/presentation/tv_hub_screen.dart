@@ -108,7 +108,7 @@ import 'tv_shell.dart';
 import 'tv_sources_screen.dart';
 
 /// Les tuiles de l'accueil, de gauche à droite.
-enum _Tile { live, films, series, guide, server, settings }
+enum _Tile { live, films, series, guide, favorites, server, settings }
 
 class TvHubScreen extends StatefulWidget {
   const TvHubScreen({super.key});
@@ -1262,7 +1262,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
         orElse: () => all.first,
       );
       final String user = (p.xtreamUsername ?? '').trim();
-      final String one = user.isEmpty ? p.name : '$user · ${p.name}';
+      final String one = kNovatubeTv || user.isEmpty ? p.name : '$user · ${p.name}';
       // Mode fusion (TV) : toutes les listes sont affichées ensemble → on
       // l'indique sobrement (« … +2 ») sans changer la mise en page.
       return all.length > 1 ? '$one +${all.length - 1}' : one;
@@ -1276,6 +1276,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
     switch (t) {
       case _Tile.live:
         page = const TvLiveScreen();
+      case _Tile.favorites:
+        page = const TvLiveScreen(openFavorites: true);
       case _Tile.server:
         page = const TvSourcesScreen();
       case _Tile.settings:
@@ -1301,8 +1303,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
         return (icon: Icons.video_library_rounded, label: c.l10n.tvNavSeries);
       case _Tile.guide:
         return (icon: Icons.grid_view_rounded, label: c.l10n.tvNavGuide);
+      case _Tile.favorites:
+        return (icon: Icons.star_rounded, label: c.l10n.navFavorites);
       case _Tile.server:
-        return (icon: Icons.dns_rounded, label: c.l10n.tvNavServer);
+        return (icon: Icons.dns_rounded, label: kNovatubeTv ? c.l10n.playlistsTitle : c.l10n.tvNavServer);
       case _Tile.settings:
         return (icon: Icons.settings_rounded, label: c.l10n.tvNavSettings);
     }
@@ -1365,7 +1369,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
           spacing: TvDimens.rowGap,
           runSpacing: TvDimens.rowGap,
           children: <Widget>[
-            for (final _Tile tile in _Tile.values)
+            for (final _Tile tile in _Tile.values.where((tile) => kNovatubeTv ? tile != _Tile.guide : tile != _Tile.favorites))
               TextButton.icon(
                 onPressed: () => _openTile(tile),
                 icon: Icon(_tileMeta(context, tile).icon, size: TvDimens.title),
@@ -1585,6 +1589,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                     onLive: () => _openTile(_Tile.live),
                                     onFilms: () => _openTile(_Tile.films),
                                     onSeries: () => _openTile(_Tile.series),
+                                    onFavorites: kNovatubeTv ? () => _openTile(_Tile.favorites) : null,
                                     onServer: () => _openTile(_Tile.server),
                                     onSettings: () => _openTile(_Tile.settings),
                                   );

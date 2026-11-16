@@ -50,6 +50,7 @@ class TvCinematicHome extends StatelessWidget {
     required this.onLive,
     required this.onFilms,
     required this.onSeries,
+    this.onFavorites,
     required this.onServer,
     required this.onSettings,
   });
@@ -60,6 +61,7 @@ class TvCinematicHome extends StatelessWidget {
   final VoidCallback onLive;
   final VoidCallback onFilms;
   final VoidCallback onSeries;
+  final VoidCallback? onFavorites;
   final VoidCallback onServer;
   final VoidCallback onSettings;
 
@@ -101,9 +103,12 @@ class TvCinematicHome extends StatelessWidget {
                 label: context.l10n.tvNavSeries,
                 onSelect: onSeries,
               ),
+              if (onFavorites != null)
+                _Chip(icon: Icons.star_rounded, label: context.l10n.navFavorites,
+                  onSelect: onFavorites!),
               _Chip(
                 icon: Icons.dns_rounded,
-                label: context.l10n.tvNavServer,
+                label: onFavorites == null ? context.l10n.tvNavServer : context.l10n.playlistsTitle,
                 onSelect: onServer,
               ),
               _Chip(
