@@ -555,6 +555,7 @@
   "tvFieldUser": "Jina la mtumiaji",
   "tvFieldPass": "Nenosiri",
   "tvAddListError": "Jaza seva, jina la mtumiaji na nenosiri.",
+  "novaPriceInfo": "Bei ya leseni kwa taarifa ni €9.99.",
   "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Seva haipatikani. Kagua muunganisho wako na ujaribu tena.",
   "novaSourceTimeout": "Seva haikujibu kwa wakati. Jaribu tena.",

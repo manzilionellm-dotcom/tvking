@@ -1995,6 +1995,7 @@
   "tvFieldUser": "Identifiant",
   "tvFieldPass": "Mot de passe",
   "tvAddListError": "Remplis le serveur, l'identifiant et le mot de passe.",
+  "novaPriceInfo": "Prix indicatif de la licence : 9,99 €.",
   "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Serveur injoignable. Vérifie ta connexion et réessaie.",
   "novaSourceTimeout": "Le serveur met trop de temps à répondre. Réessaie.",

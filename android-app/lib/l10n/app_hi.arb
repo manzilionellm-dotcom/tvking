@@ -1993,6 +1993,7 @@
   "tvFieldUser": "यूज़रनेम",
   "tvFieldPass": "पासवर्ड",
   "tvAddListError": "सर्वर, यूज़रनेम और पासवर्ड भरें।",
+  "novaPriceInfo": "जानकारी के लिए लाइसेंस की कीमत €9.99 है।",
   "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "सर्वर से कनेक्ट नहीं हो सका। अपना कनेक्शन जाँचें और फिर कोशिश करें।",
   "novaSourceTimeout": "सर्वर ने समय पर जवाब नहीं दिया। फिर कोशिश करें।",

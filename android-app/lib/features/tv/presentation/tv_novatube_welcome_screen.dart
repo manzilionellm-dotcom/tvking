@@ -49,7 +49,9 @@ import 'tv_components.dart';
 import 'tv_shell.dart';
 
 class TvNovatubeWelcomeScreen extends StatefulWidget {
-  const TvNovatubeWelcomeScreen({super.key});
+  const TvNovatubeWelcomeScreen({this.licenseOnly = false, super.key});
+
+  final bool licenseOnly;
 
   @override
   State<TvNovatubeWelcomeScreen> createState() =>
@@ -150,10 +152,11 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                     const TvLogo(width: 300),
                     const SizedBox(height: 22),
                     Text(
-                      l10n.novatubeWelcomeTitle,
+                      widget.licenseOnly ? l10n.novatubeCheckAccess : l10n.novatubeWelcomeTitle,
                       textAlign: TextAlign.center,
                       style: t.display(34, color: t.text),
                     ),
+                    if (!widget.licenseOnly) ...[
                     const SizedBox(height: 10),
                     Text(
                       l10n.novatubeWelcomeSubtitle,
@@ -173,6 +176,7 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                       entries[0],
                       const SizedBox(height: 16),
                       entries[1],
+                    ],
                     ],
                     const SizedBox(height: 30),
                     TvCard(
@@ -230,11 +234,15 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                     SizedBox(
                       width: 360,
                       child: TvCtaButton(
+                        autofocus: widget.licenseOnly,
                         label: _busy ? l10n.tvChecking : l10n.novatubeCheckAccess,
                         onSelect: _busy ? null : _checkAccess,
                       ),
                     ),
                     const SizedBox(height: 22),
+                    if (widget.licenseOnly)
+                      Text(l10n.novaPriceInfo, textAlign: TextAlign.center,
+                        style: t.ui(18, color: t.text)),
                     Text(
                       l10n.novatubePlayerNotice,
                       textAlign: TextAlign.center,

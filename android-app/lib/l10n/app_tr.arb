@@ -1993,6 +1993,7 @@
   "tvFieldUser": "Kullanıcı adı",
   "tvFieldPass": "Şifre",
   "tvAddListError": "Sunucu, kullanıcı adı ve şifreyi doldur.",
+  "novaPriceInfo": "Bilgi amaçlı lisans fiyatı: 9,99 €.",
   "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Sunucuya ulaşılamıyor. Bağlantınızı kontrol edip tekrar deneyin.",
   "novaSourceTimeout": "Sunucu zamanında yanıt vermedi. Tekrar deneyin.",

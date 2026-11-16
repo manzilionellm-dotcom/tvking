@@ -555,6 +555,7 @@
   "tvFieldUser": "اسم المستخدم",
   "tvFieldPass": "كلمة المرور",
   "tvAddListError": "املأ الخادم واسم المستخدم وكلمة المرور.",
+  "novaPriceInfo": "سعر الترخيص للاستعلام: ٩٫٩٩ يورو.",
   "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "تعذر الاتصال بالخادم. تحقق من اتصالك وحاول مجددًا.",
   "novaSourceTimeout": "تأخر الخادم في الرد. حاول مجددًا.",

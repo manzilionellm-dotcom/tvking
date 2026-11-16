@@ -555,6 +555,7 @@
   "tvFieldUser": "Brukernavn",
   "tvFieldPass": "Passord",
   "tvAddListError": "Fyll inn server, brukernavn og passord.",
+  "novaPriceInfo": "Veiledende lisenspris: 9,99 €.",
   "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Får ikke kontakt med serveren. Sjekk forbindelsen og prøv igjen.",
   "novaSourceTimeout": "Serveren svarte ikke i tide. Prøv igjen.",

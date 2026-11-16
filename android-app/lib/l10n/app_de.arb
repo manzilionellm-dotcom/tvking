@@ -1993,6 +1993,7 @@
   "tvFieldUser": "Benutzername",
   "tvFieldPass": "Passwort",
   "tvAddListError": "Fülle Server, Benutzername und Passwort aus.",
+  "novaPriceInfo": "Lizenzpreis zur Information: 9,99 €.",
   "novaSourceShortcuts": "http://|.com|/get.php?|username=|&password=|&type=m3u_plus",
   "novaSourceNetwork": "Server nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
   "novaSourceTimeout": "Der Server antwortet zu langsam. Versuche es erneut.",
