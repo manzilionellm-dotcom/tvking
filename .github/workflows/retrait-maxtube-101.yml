@@ -1,0 +1,42 @@
+name: Retirer la préversion MAXTUBE 1.0.1
+on:
+  push:
+    branches: [retrait/maxtube-101-20261117]
+
+permissions:
+  contents: write
+
+jobs:
+  retrait:
+    if: github.repository == 'manzilionellm-dotcom/tvking'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Vérifier le téléchargement public de NovaTube TV
+        env:
+          APK_SHA: b6ef0db61ecd97c4a6a84714483a4041f9f591e6b382193335a95f0f3a015591
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --max-time 120 https://novatube.zuno8k.com/novatube.apk -o NovaTube-TV.apk
+          echo "$APK_SHA  NovaTube-TV.apk" | sha256sum --check
+          curl -fsSL --retry 3 --max-time 30 https://novatube.zuno8k.com/version.json |
+            jq -e --arg sha "$APK_SHA" '.sha256 == $sha and .package == "com.sevenmotion.novatube.tv"'
+      - name: Retirer la préversion des téléchargements publics
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APK_SHA: 68dc23fba7e39ae6f58a411f677fd00b7434f288636efa0d5e1e778ba48da272
+        run: |
+          set -euo pipefail
+          release="repos/$GH_REPO/releases/448729754"
+          tag=maxtube-v1.0.1-68dc23fb
+          gh api "$release" > release.json
+          jq -e --arg tag "$tag" --arg sha "sha256:$APK_SHA" '
+            .tag_name == $tag and .prerelease == true and
+            (.assets | length == 1) and .assets[0].name == "MAXTUBE-1.0.1.apk" and
+            .assets[0].size == 60264699 and .assets[0].digest == $sha
+          ' release.json
+          if jq -e '.draft == false' release.json >/dev/null; then
+            gh api -X PATCH "$release" -F draft=true --jq '{tag_name,draft}'
+          fi
+          gh api "$release" | jq -e --arg tag "$tag" '.draft == true and .tag_name == $tag'
