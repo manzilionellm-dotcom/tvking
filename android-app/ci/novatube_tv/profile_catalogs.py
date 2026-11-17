@@ -3,6 +3,7 @@ import contextlib
 import http.server
 import json
 from pathlib import Path
+import re
 import ssl
 import sqlite3
 import tempfile
@@ -25,6 +26,30 @@ if urllib.parse.urlsplit(base).hostname != '127.0.0.1':
 
 def adb(*args):
     return subprocess.check_output(['adb', '-s', SERIAL, *args], text=True, timeout=55)
+
+
+def preparer_demarrage(launcher_package):
+    # L'arrêt de l'activité au premier plan peut lancer le HOME pendant que
+    # am start -W attend NovaTube et faire attribuer le délai au lanceur.
+    adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
+    limit = time.monotonic() + 40
+    while time.monotonic() < limit:
+        windows = adb('shell', 'dumpsys', 'window')
+        if any('mCurrentFocus=' in line and launcher_package + '/' in line for line in windows.splitlines()):
+            activities = adb('shell', 'dumpsys', 'activity', 'activities')
+            if any('mResumedActivity' in line and launcher_package + '/' in line
+                   for line in activities.splitlines()):
+                break
+        time.sleep(.5)
+    else:
+        raise RuntimeError('Le lanceur Android ne détient pas le focus avant la mesure.')
+    adb('shell', 'am', 'force-stop', PKG)
+    # pidof renvoie 1 lorsqu'il ne trouve pas le processus.
+    limit = time.monotonic() + 10
+    while adb('shell', f'pidof {PKG} || test $? -eq 1').strip():
+        if time.monotonic() >= limit:
+            raise RuntimeError('Le processus NovaTube existe encore avant la mesure.')
+        time.sleep(.25)
 
 
 def requete(method, path, body=None, token=None):
@@ -165,13 +190,18 @@ with contextlib.ExitStack() as stack:
         stack.callback(server.shutdown)
         adb('reverse', f'tcp:{port}', f'tcp:{port}')
     cold = []
+    home = adb('shell', 'cmd', 'package', 'resolve-activity', '--brief',
+               '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.HOME')
+    launcher = home.strip().splitlines()[-1].split('/')[0]
+    if not re.fullmatch(r'[a-zA-Z][\w.]+', launcher) or launcher == PKG or '/' not in home:
+        raise RuntimeError('Le paquet du lanceur Android est introuvable.')
     for essai in range(1, 6):
-        adb('shell', 'am', 'force-stop', PKG)
+        preparer_demarrage(launcher)
         result = adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
         (out / f'demarrage-profil-{essai}.txt').write_text(result)
         tags = dict(line.split(': ', 1) for line in result.splitlines() if ': ' in line)
-        if tags.get('Status') != 'ok' or tags.get('LaunchState') != 'COLD':
-            raise RuntimeError('Le démarrage à froid Android n’est pas confirmé.')
+        if tags.get('Status') != 'ok' or tags.get('LaunchState') != 'COLD' or tags.get('Activity') != COMPONENT:
+            raise RuntimeError(f'Essai {essai} : Android ne confirme pas le démarrage à froid de NovaTube.')
         cold.append(int(tags['TotalTime']))
         time.sleep(3)
     print('Démarrage profil médian (ms)', statistics.median(cold), flush=True)
@@ -229,12 +259,12 @@ with contextlib.ExitStack() as stack:
             adb('shell', 'for i in $(seq 1 35); do input keyevent KEYCODE_DPAD_DOWN; done')
             mesure[colonne] = frames(label + '-' + colonne)
         (out / (label + '-memoire.txt')).write_text(adb('shell','dumpsys','meminfo',PKG))
-        adb('shell','input','keyevent','KEYCODE_BACK')
-        time.sleep(1)
-        # Rétablit le focus de départ sur l'accueil avant la prochaine liste.
-        adb('shell','am','force-stop',PKG)
-        adb('shell','am','start','-W','-n',COMPONENT)
-        time.sleep(4)
         measures['catalogues'][label] = mesure
         (out / 'mesures-profil.json').write_text(json.dumps(measures, indent=2))
         print(label, json.dumps(mesure), flush=True)
+        adb('shell','input','keyevent','KEYCODE_BACK')
+        time.sleep(1)
+        # Rétablit le focus de départ sur l'accueil avant la prochaine liste.
+        preparer_demarrage(launcher)
+        adb('shell','am','start','-W','-n',COMPONENT)
+        time.sleep(4)
