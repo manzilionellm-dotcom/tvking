@@ -1,0 +1,101 @@
+name: NovaTube MAX — intégration Atlas isolée
+'on':
+  push:
+    branches:
+    - qa/novatube-max-atlas-20261117
+permissions:
+  contents: read
+env:
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  ZUNO_APP_ID: com.sevenmotion.novatube.max
+  ZUNO_APP_LABEL: NovaTube MAX
+  NOVATUBE_MAX: 'true'
+  NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.max
+jobs:
+  atlas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: dc7dc995727a1b0acc67b38b896cc9d278b44d0d
+    - name: Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Flutter 3.47.7 (même version que Zuno TV)
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: true
+    - name: SDK Android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Licences Android
+      run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+      working-directory: android-app
+    - name: Manifeste et Gradle TV (scripts Zuno, identité NovaTube)
+      run: |
+        set -e
+        python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+        cp ci/proguard-rules.pro android/app/proguard-rules.pro
+        python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+        grep -q 'applicationId = "com.sevenmotion.novatube.max"' android/app/build.gradle.kts
+        grep -q 'android:label="NovaTube MAX"' android/app/src/main/AndroidManifest.xml
+        python3 ci/novatube_tv/prepare_max_play.py
+      working-directory: android-app
+    - name: Préférences compatibles box Android 5 (identique à Zuno TV)
+      run: |
+        python3 - <<'PYEOF'
+        from pathlib import Path
+        path = Path('pubspec.yaml')
+        source = path.read_text(encoding='utf-8')
+        anchor = '  shared_preferences: ^2.3.4\n'
+        if source.count(anchor) != 1 or '  shared_preferences_android:' in source:
+            raise SystemExit('Contrainte SharedPreferences inattendue : vérifier le pin TV.')
+        source = source.replace(anchor, anchor + '  shared_preferences_android: 2.5.0\n', 1)
+        path.write_text(source, encoding='utf-8')
+        PYEOF
+      working-directory: android-app
+    - name: Dépendances
+      run: flutter pub get
+      working-directory: android-app
+    - name: Préparer l'édition NovaTube (logo, nom, bannière, lancement)
+      run: |
+        python3 -m pip install --quiet Pillow
+        python3 ci/novatube_tv/make_brand_assets.py
+        set -e
+        python3 ci/novatube_tv/prepare_build.py
+        flutter pub get
+        flutter gen-l10n
+      working-directory: android-app
+    - name: Code serveur Atlas NovaTube (lecture seule, routes /api/novatube4k)
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 77ce78f49b65f674e8493e8573a6dcc7b62eae6d
+        path: atlas
+        persist-credentials: false
+        sparse-checkout: android-app/cloudflare
+    - name: Node 22
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      with:
+        node-version: '22'
+    - name: Lancer l'Atlas local (vrai code serveur, base vide, aucun réseau sortant)
+      run: |
+        set -euo pipefail
+        (cd atlas/android-app/cloudflare && npm ci --no-audit --no-fund)
+        ATLAS_PORT=8788 nohup node android-app/ci/novatube_tv/atlas_local_server.mjs \
+          atlas/android-app/cloudflare "$RUNNER_TEMP/atlas.json" > "$RUNNER_TEMP/atlas.log" 2>&1 &
+        for i in $(seq 1 90); do grep -q 'PRÊT' "$RUNNER_TEMP/atlas.log" && break; sleep 1; done
+        grep 'PRÊT' "$RUNNER_TEMP/atlas.log"
+    - name: Mesurer les commandes et la synchronisation du client MAX contre Atlas local
+      working-directory: android-app
+      env:
+        NOVATUBE_ATLAS_LOCAL: ${{ runner.temp }}/atlas.json
+      run: |
+        flutter test --no-pub --dart-define=NOVATUBE_TV=true --dart-define=NOVATUBE_MAX=true --dart-define=PLAY_BUILD=true test/novatube_tv/atlas_local_integration_test.dart test/novatube_tv/novatube_panel_list_test.dart
+
