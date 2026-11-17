@@ -6,6 +6,11 @@ out=$(realpath -m "$2")
 mkdir -p "$out"
 sdk=${ANDROID_SDK_ROOT:-$ANDROID_HOME}
 export PATH="$sdk/platform-tools:$sdk/emulator:$PATH"
+# Flutter et sudo peuvent choisir des répertoires AVD différents sur le runner.
+# La création et le démarrage reçoivent le même chemin explicite.
+export ANDROID_USER_HOME="$RUNNER_TEMP/maxtube-android"
+export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+mkdir -p "$ANDROID_AVD_HOME"
 pkg=com.sevenmotion.novatube.max
 serial=emulator-5554
 avd=""
@@ -19,7 +24,7 @@ sudo ip -n "$net" -brief address show | tee "$out/reseau-hote.txt"
 test "$(sudo ip -n "$net" -o link show | wc -l)" -eq 1
 test -z "$(sudo ip -n "$net" route show default)$(sudo ip -n "$net" -6 route show default)"
 isolated() {
-  sudo ip netns exec "$net" setpriv --reuid="$uid" --regid="$gid" --init-groups env HOME="$HOME" PATH="$PATH" ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" "$@"
+  sudo ip netns exec "$net" setpriv --reuid="$uid" --regid="$gid" --init-groups env HOME="$HOME" PATH="$PATH" ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" ANDROID_USER_HOME="$ANDROID_USER_HOME" ANDROID_AVD_HOME="$ANDROID_AVD_HOME" "$@"
 }
 serial_adb() { isolated "$sdk/platform-tools/adb" -s "$serial" "$@"; }
 stop_device() {
@@ -66,7 +71,8 @@ PY
   avdmanager list device > "$out/peripheriques-$device.log"
   label=pixel_2
   if [[ "$device" == television ]] && grep -q '"tv_1080p"' "$out/peripheriques-$device.log"; then label=tv_1080p; fi
-  printf 'no\n' | avdmanager create avd --force -n "$avd" -k "$image" -d "$label" > "$out/avd-$device.log" 2>&1
+  printf 'no\n' | avdmanager create avd --force -n "$avd" -p "$ANDROID_AVD_HOME/$avd.avd" -k "$image" -d "$label" > "$out/avd-$device.log" 2>&1
+  test -s "$ANDROID_AVD_HOME/$avd.ini"
   isolated "$sdk/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader -accel on -memory 3072 -cores 2 -camera-back none -camera-front none > "$out/emulator-$device.log" 2>&1 &
   emulator_pid=$!
   for _ in {1..110}; do
