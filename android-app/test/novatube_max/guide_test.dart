@@ -34,7 +34,7 @@ void main() {
 
   testWidgets('Guide MAX, programme à venir, archive expirée et replay à la télécommande',
       (tester) async {
-    expect(kNovatubeTvName, 'NovaTube MAX');
+    expect(kNovatubeTvName, 'MAXTUBE');
     BoxMemoryBudget.debugTier = BoxRamTier.roomy;
     addTearDown(() => BoxMemoryBudget.debugTier = null);
     tester.view.physicalSize = const Size(1280, 720);

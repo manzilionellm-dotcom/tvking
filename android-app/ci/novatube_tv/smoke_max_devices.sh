@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Démarrage de la même livraison Play sur Android tactile et Android TV.
-set -euo pipefail
+set -Eeuo pipefail
 apk=$(realpath "$1")
 out=$(realpath -m "$2")
 mkdir -p "$out"
@@ -9,17 +9,42 @@ export PATH="$sdk/platform-tools:$sdk/emulator:$PATH"
 pkg=com.sevenmotion.novatube.max
 serial=emulator-5554
 avd=""
-serial_adb() { adb -s "$serial" "$@"; }
+# L’image Android TV de Google utilise un adbd sans root. Isoler le réseau du
+# processus hôte avant de lancer la TV conserve le système Android officiel.
+net="novatube-max-qa"
+uid=$(id -u); gid=$(id -g)
+sudo ip netns add "$net"
+sudo ip -n "$net" link set lo up
+sudo ip -n "$net" -brief address show | tee "$out/reseau-hote.txt"
+test "$(sudo ip -n "$net" -o link show | wc -l)" -eq 1
+test -z "$(sudo ip -n "$net" route show default)$(sudo ip -n "$net" -6 route show default)"
+isolated() {
+  sudo ip netns exec "$net" setpriv --reuid="$uid" --regid="$gid" --init-groups env HOME="$HOME" PATH="$PATH" ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" "$@"
+}
+serial_adb() { isolated "$sdk/platform-tools/adb" -s "$serial" "$@"; }
 stop_device() {
   if [[ -n "$avd" ]]; then
-    serial_adb emu kill > /dev/null 2>&1 || true
+    isolated timeout 5s "$sdk/platform-tools/adb" -s "$serial" emu kill >/dev/null 2>&1 || true
+    if [[ -n "${emulator_pid:-}" ]]; then kill "$emulator_pid" 2>/dev/null || true; fi
     if [[ -n "${emulator_pid:-}" ]]; then wait "$emulator_pid" || true; fi
     avdmanager delete avd -n "$avd" > /dev/null 2>&1 || true
     avd=""
   fi
 }
-trap stop_device EXIT
-for device in tactile television; do
+diagnostic() {
+  rc=$?
+  if ((rc)); then
+    echo "Échec du contrôle en ligne $1 (code $rc)" > "$out/etape-echec.txt"
+    tail -40 "$out/emulator-${device:-tactile}.log" 2>/dev/null || true
+    df -h /
+    isolated timeout 4s "$sdk/platform-tools/adb" devices || true
+    isolated timeout 6s "$sdk/platform-tools/adb" -s "$serial" logcat -d -b crash > "$out/plantages.log" 2>/dev/null || true
+  fi
+  return "$rc"
+}
+trap 'diagnostic "$LINENO"' ERR
+trap 'stop_device; sudo ip netns delete "$net" || true' EXIT
+for device in television tactile; do
   if [[ "$device" == tactile ]]; then
     image='system-images;android-30;google_apis;x86_64'
   else
@@ -30,23 +55,36 @@ import re,sys
 packages=set(re.findall(r'system-images;android-(\d+);(android-tv|google-tv);x86_64\b',Path(sys.argv[1]).read_text()))
 candidates=sorted((int(api), tag) for api,tag in packages if 28<=int(api)<=36)
 if not candidates: raise SystemExit('Aucune image Android TV x86_64 dans le SDK')
-api,tag=candidates[0];print(f'system-images;android-{api};{tag};x86_64')
+api,tag=min(candidates,key=lambda x:(x[1]!="android-tv",abs(x[0]-30),-x[0]));print(f'system-images;android-{api};{tag};x86_64')
 PY
 )
   fi
+  echo "Installation de $image"
+  df -h /
   sdkmanager emulator platform-tools "$image" > "$out/sdk-$device.log"
   avd=max-$device
-  printf 'no\n' | avdmanager create avd --force -n "$avd" -k "$image" > "$out/avd-$device.log" 2>&1
-  "$sdk/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader_indirect -memory 2048 -cores 2 > "$out/emulator-$device.log" 2>&1 &
+  avdmanager list device > "$out/peripheriques-$device.log"
+  label=pixel_2
+  if [[ "$device" == television ]] && grep -q '"tv_1080p"' "$out/peripheriques-$device.log"; then label=tv_1080p; fi
+  printf 'no\n' | avdmanager create avd --force -n "$avd" -k "$image" -d "$label" > "$out/avd-$device.log" 2>&1
+  isolated "$sdk/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader -accel on -memory 3072 -cores 2 -camera-back none -camera-front none > "$out/emulator-$device.log" 2>&1 &
   emulator_pid=$!
-  for _ in {1..60}; do
-    if [[ "$(serial_adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then break; fi
-    sleep 3
+  for _ in {1..110}; do
+    kill -0 "$emulator_pid"
+    if [[ "$(isolated timeout 6s "$sdk/platform-tools/adb" -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then break; fi
+    sleep 4
   done
-  test "$(serial_adb shell getprop sys.boot_completed | tr -d '\r')" = 1
-  serial_adb root > /dev/null
-  serial_adb wait-for-device
-  for fw in iptables ip6tables; do serial_adb shell "$fw" -w -I OUTPUT 1 '!' -o lo -j REJECT; done
+  test "$(isolated timeout 6s "$sdk/platform-tools/adb" -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1
+  serial_adb shell id > "$out/identite-android.log"
+  serial_adb shell settings put global device_provisioned 1
+  serial_adb shell settings put secure user_setup_complete 1
+  serial_adb shell input keyevent KEYCODE_WAKEUP
+  serial_adb shell wm dismiss-keyguard
+  serial_adb shell settings put global window_animation_scale 0
+  serial_adb shell settings put global transition_animation_scale 0
+  serial_adb shell settings put global animator_duration_scale 0
+  serial_adb shell svc power stayon true
+  test -z "$(sudo ip -n "$net" route show default)$(sudo ip -n "$net" -6 route show default)"
   serial_adb shell input keyevent 82
   serial_adb install -g -r "$apk" | grep -q Success
   category=android.intent.category.LAUNCHER
@@ -77,10 +115,26 @@ PY
       if grep -Eiq 'M3U|Xtream|Bienvenue|Welcome' "$out/ocr-$form.txt"; then visible=true; break; fi
       sleep 2
     done
+    if [[ "$visible" != true ]]; then cat "$out/ocr-$form.txt"; fi
     test "$visible" = true
     serial_adb shell pidof "$pkg" >/dev/null
+    serial_adb shell dumpsys activity activities > "$out/activite-$form.log"
+    grep -Ei 'topResumedActivity|mResumedActivity|ResumedActivity' "$out/activite-$form.log" | grep -F "$pkg" >/dev/null
     if serial_adb logcat -b crash -d | grep -Eq 'FATAL EXCEPTION|Fatal signal'; then exit 1; fi
     echo "$form - $image - $category - accueil Flutter affiche" | tee -a "$out/demarrages.txt"
+    if [[ "$form" == television ]]; then
+      serial_adb shell input keyevent KEYCODE_DPAD_CENTER
+      sleep 4
+      serial_adb exec-out screencap -p > "$out/telecommande-ok.png"
+      tesseract "$out/telecommande-ok.png" "$out/telecommande-ok" --psm 11 >/dev/null 2>&1 || true
+      for press in 1 2; do
+        serial_adb shell input keyevent KEYCODE_BACK
+        sleep 2
+        serial_adb exec-out screencap -p > "$out/telecommande-retour-$press.png"
+        tesseract "$out/telecommande-retour-$press.png" "$out/telecommande-retour-$press" --psm 11 >/dev/null 2>&1 || true
+        if grep -Eiq 'Welcome to MAXTUBE|Bienvenue sur MAXTUBE' "$out/telecommande-retour-$press.txt"; then break; fi
+      done
+    fi
   done
   stop_device
   if [[ "$device" == tactile ]]; then sdkmanager --uninstall "$image" >/dev/null; fi

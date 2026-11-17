@@ -1,8 +1,8 @@
-name: NovaTube MAX — bundle Play et tests privés
+name: MAXTUBE Android TV — bundle Play et tests privés
 'on':
   push:
     branches:
-    - qa/novatube-max-play-20261117
+    - feature/maxtube-android-tv-20261117
   workflow_dispatch: {}
 permissions:
   contents: read
@@ -10,7 +10,7 @@ env:
   CI: 'true'
   FLUTTER_SUPPRESS_ANALYTICS: 'true'
   ZUNO_APP_ID: com.sevenmotion.novatube.max
-  ZUNO_APP_LABEL: NovaTube MAX
+  ZUNO_APP_LABEL: MAXTUBE
   NOVATUBE_MAX: 'true'
   NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.max
 jobs:
@@ -51,7 +51,7 @@ jobs:
         cp ci/proguard-rules.pro android/app/proguard-rules.pro
         python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
         grep -q 'applicationId = "com.sevenmotion.novatube.max"' android/app/build.gradle.kts
-        grep -q 'android:label="NovaTube MAX"' android/app/src/main/AndroidManifest.xml
+        grep -q 'android:label="MAXTUBE"' android/app/src/main/AndroidManifest.xml
         python3 ci/novatube_tv/prepare_max_play.py
       working-directory: android-app
     - &id007
@@ -116,7 +116,7 @@ jobs:
     - name: Icône, bannière Android TV et écran de lancement NovaTube
       run: |
         set -e
-        dart run flutter_launcher_icons -f flutter_launcher_icons_novatube_tv.yaml
+        dart run flutter_launcher_icons -f flutter_launcher_icons_maxtube.yaml
         python3 ci/tv/apply_splash.py
         python3 ci/novatube_tv/prepare_build.py --splash-color
       working-directory: android-app
@@ -133,12 +133,12 @@ jobs:
         keyAlias=intermediate
         keyPassword=%s
         ' "$pw" "$pw" > android/key.properties
-    - name: Assembler NovaTube MAX Play multiformat
+    - name: Assembler MAXTUBE Play multiformat
       working-directory: android-app
       run: |
         set -euo pipefail
         flutter build appbundle --release --no-tree-shake-icons --android-skip-build-dependency-validation \
-          --target-platform android-arm,android-arm64,android-x64 --build-number=1 --build-name=1.0.0 \
+          --target-platform android-arm,android-arm64,android-x64 --build-number=2 --build-name=1.0.1 \
           --obfuscate --split-debug-info=build/symbols --dart-define=NOVATUBE_TV=true \
           --dart-define=NOVATUBE_MAX=true --dart-define=PLAY_BUILD=true \
           --dart-define=APP_BUILD_TS="$(date +%s)" --dart-define=GIT_SHA="${{ github.sha }}" --target=lib/main_tv.dart
@@ -215,6 +215,8 @@ jobs:
           ${{ runner.temp }}/controle-max/demarrages.txt
           ${{ runner.temp }}/controle-max/start-*.log
           ${{ runner.temp }}/controle-max/ocr-*.txt
+          ${{ runner.temp }}/controle-max/telecommande-*.txt
+          ${{ runner.temp }}/controle-max/*.png
         if-no-files-found: ignore
   tests:
     runs-on: ubuntu-latest

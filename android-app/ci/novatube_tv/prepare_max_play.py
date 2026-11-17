@@ -1,4 +1,4 @@
-"""Prépare exclusivement le manifeste du nouveau package NovaTube MAX Play."""
+"""Prépare exclusivement le manifeste du nouveau package MAXTUBE Play."""
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -13,8 +13,8 @@ def prepare(path):
     root = ET.parse(path).getroot()
     app = root.find('application')
     activity = app.find('activity')
-    if app.get(A + 'label') != 'NovaTube MAX':
-        raise ValueError('Ce manifeste ne correspond pas à NovaTube MAX')
+    if app.get(A + 'label') != 'MAXTUBE':
+        raise ValueError('Ce manifeste ne correspond pas à MAXTUBE')
     names = {node.get(A + 'name') for node in activity.findall('intent-filter/category')}
     for name in ('LAUNCHER', 'LEANBACK_LAUNCHER'):
         category = 'android.intent.category.' + name

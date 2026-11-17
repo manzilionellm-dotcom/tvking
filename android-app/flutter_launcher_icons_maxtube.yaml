@@ -1,0 +1,9 @@
+# Le logo MAXTUBE est déjà centré dans la zone sûre du masque adaptatif.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/branding/novatube_tv_icon.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/branding/novatube_tv_icon_fg.png"
+  adaptive_icon_foreground_inset: 0
+  min_sdk_android: 21

@@ -66,7 +66,7 @@ def wordmark(width: int, height: int) -> Image.Image:
     draw = ImageDraw.Draw(img)
     size = int(h * 0.62)
     font = _font(size)
-    nova, tube = 'Nova', 'Tube MAX' if os.environ.get('NOVATUBE_MAX') == 'true' else 'Tube'
+    nova, tube = 'Nova', 'Tube'
     if tube.endswith(' MAX'):
         size = min(size, int(w * 0.94 / (0.8 + draw.textlength(nova + tube, font=font) / size)))
         font = _font(size)
@@ -132,16 +132,48 @@ def icon_full(size: int) -> Image.Image:
     return img.convert('RGB')
 
 
+def maxtube_images() -> dict[str, Image.Image]:
+    """Décline le fichier du propriétaire pour les formats carrés et TV Android."""
+    source = Image.open(Path(__file__).with_name('maxtube-logo.jpg')).convert('RGB')
+    if source.size != (1536, 1536):
+        raise ValueError('La source du logo MAXTUBE doit mesurer 1536 × 1536.')
+    # Le cartouche carré reste entier sur l’icône classique. Le cadrage
+    # horizontal garde la ligne verte et tout le lettrage pour le téléviseur.
+    mark = source.crop((150, 455, 1400, 1045))
+
+    def centered(canvas_size, mark_width, background):
+        canvas = Image.new('RGBA', canvas_size, background)
+        height = round(mark.height * mark_width / mark.width)
+        scaled = mark.resize((mark_width, height), Image.Resampling.LANCZOS)
+        canvas.paste(scaled, ((canvas.width - mark_width) // 2,
+                              (canvas.height - height) // 2))
+        return canvas
+
+    black = (0, 0, 0, 255)
+    clear = (0, 0, 0, 0)
+    return {
+        'novatube_tv_wordmark.png': centered((1200, 390), 820, clear),
+        'novatube_tv_splash.png': centered((640, 250), 505, clear),
+        'novatube_tv_icon.png': source.resize((1024, 1024), Image.Resampling.LANCZOS),
+        'novatube_tv_icon_fg.png': centered((1024, 1024), 590, clear),
+        'novatube_tv_banner.png': centered((320, 180), 278, black).convert('RGB'),
+        'novatube_tv_banner_2x.png': centered((640, 360), 556, black).convert('RGB'),
+    }
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
-    outputs = {
-        'novatube_tv_wordmark.png': wordmark(1600, 400),
-        'novatube_tv_splash.png': wordmark(640, 160),
-        'novatube_tv_icon.png': icon_full(1024),
-        'novatube_tv_icon_fg.png': icon_foreground(1024, 0.42),
-        'novatube_tv_banner.png': banner(320, 180),
-        'novatube_tv_banner_2x.png': banner(640, 360),
-    }
+    if os.environ.get('NOVATUBE_MAX') == 'true':
+        outputs = maxtube_images()
+    else:
+        outputs = {
+            'novatube_tv_wordmark.png': wordmark(1600, 400),
+            'novatube_tv_splash.png': wordmark(640, 160),
+            'novatube_tv_icon.png': icon_full(1024),
+            'novatube_tv_icon_fg.png': icon_foreground(1024, 0.42),
+            'novatube_tv_banner.png': banner(320, 180),
+            'novatube_tv_banner_2x.png': banner(640, 360),
+        }
     for name, image in outputs.items():
         # optimize=True : PNG plus léger, contenu identique.
         image.save(OUT / name, optimize=True)
