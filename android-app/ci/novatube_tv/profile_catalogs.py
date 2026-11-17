@@ -4,6 +4,8 @@ import http.server
 import json
 from pathlib import Path
 import ssl
+import sqlite3
+import tempfile
 import statistics
 import subprocess
 import sys
@@ -42,7 +44,7 @@ def donnees(taille, https):
     for i in range(taille):
         lignes.extend([f'#EXTINF:-1 tvg-id="m{i}" tvg-logo="{origine}/logo/{i % 240}.png" '
                        f'group-title="Groupe {i % 40}",Canal {i + 1}',
-                       'http://127.0.0.1:8080/live/mire1/index.m3u8'])
+                       f'{origine}/live/mire1/index.m3u8?lot={taille}&chaine={i}'])
     return ('\n'.join(lignes) + '\n').encode()
 
 
@@ -53,7 +55,21 @@ logo = (Path(MEDIA) / 'logos' / 'mire1.png').read_bytes()
 
 class Listes(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.startswith('/logo/'):
+        path = urllib.parse.urlsplit(self.path).path
+        if path.startswith('/live/mire1/'):
+            # Un seul jeu de mires, avec une adresse propre à chaque chaîne.
+            # Les segments HLS restent servis pendant toute la navigation.
+            nom = path.removeprefix('/live/mire1/')
+            if nom != 'index.m3u8' and not (nom.startswith('seg') and nom[3:-3].isdigit() and nom.endswith('.ts')):
+                self.send_error(404)
+                return
+            fichier = Path(MEDIA) / 'live' / 'mire1' / nom
+            if not fichier.is_file():
+                self.send_error(404)
+                return
+            data = fichier.read_bytes()
+            mime = 'application/vnd.apple.mpegurl' if nom.endswith('m3u8') else 'video/mp2t'
+        elif path.startswith('/logo/'):
             data = logo
             mime = 'image/png'
         else:
@@ -74,6 +90,28 @@ class Listes(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *args):
         pass
+
+
+def catalogue_enregistre(url, taille):
+    # La phase utilise une box jetable et adb root. Lire une copie locale
+    # permet de vérifier les données indépendamment du reçu du panel.
+    rel = f'/data/user/0/{PKG}/app_flutter/tv_king.db'
+    with tempfile.TemporaryDirectory() as tmp:
+        fichier = Path(tmp) / 'tv_king.db'
+        for suffixe in ('', '-wal'):
+            if suffixe and adb('shell', f'if [ -f {rel}{suffixe} ]; then echo oui; fi').strip() != 'oui':
+                continue
+            with Path(str(fichier) + suffixe).open('wb') as copie:
+                subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'cat', rel + suffixe],
+                               stdout=copie, check=True, timeout=40)
+        with contextlib.closing(sqlite3.connect(fichier)) as db:
+            origine = url.rsplit('/', 1)[0]
+            motif = f'{origine}/live/mire1/index.m3u8?lot={taille}&chaine=%'
+            resultat = db.execute('SELECT COUNT(*), COUNT(DISTINCT category), COUNT(DISTINCT stream_url) '
+                                  'FROM channels WHERE stream_url LIKE ?', (motif,)).fetchone()
+    if resultat != (taille, 40, taille):
+        raise RuntimeError(f'Catalogue attendu {taille}, trouvé {resultat}')
+    return dict(zip(('chaines', 'categories', 'adresses_distinctes'), resultat))
 
 
 def frames(label):
@@ -162,16 +200,28 @@ with contextlib.ExitStack() as stack:
         if requests.get((tls, n), 0) < 1:
             raise RuntimeError('Aucune requête du profil Android pour ' + label)
         mesure = {'panel_confirmation_ms': round((time.monotonic()-start)*1000),
-                  'requetes': requests[tls, n], 'import': frames(label + '-import')}
-        # L'accueil après l'import affiche Direct au focus initial. Le parcours
-        # média qui précède vérifie visuellement ce même composant.
-        adb('shell', 'input', 'keyevent', 'KEYCODE_DPAD_CENTER')
-        time.sleep(3)
-        with (out / (label + '-direct.png')).open('wb') as screen:
-            subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'screencap', '-p'],
-                           stdout=screen, check=True)
-        subprocess.run(['python3', str(Path(__file__).with_name('screen_label.py')),
-                        str(out / (label + '-direct.png')), 'canal|groupe', '0','1'],check=True)
+                  'requetes': requests[tls, n], 'import': frames(label + '-import'),
+                  'catalogue_verifie': catalogue_enregistre(url, n)}
+        # La première tuile peut être une recommandation. Ouvrir le Direct
+        # sur le libellé visible, puis confirmer le contenu de la liste.
+        def ecran(fichier):
+            with fichier.open('wb') as image:
+                subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'screencap', '-p'],
+                               stdout=image, check=True)
+        from screen_label import chercher
+        def trouver(motif, fichier):
+            for _ in range(10):
+                ecran(fichier)
+                point = chercher(str(fichier), motif, 0, 1)
+                if point:
+                    return point
+                time.sleep(.5)
+            raise RuntimeError(f'Libellé {motif} absent sur la capture {fichier.name}')
+        accueil = out / (label + '-accueil.png')
+        x, y = trouver('live|direct', accueil)
+        adb('shell', 'input', 'tap', str(x), str(y))
+        direct = out / (label + '-direct.png')
+        trouver('canal|groupe', direct)
         for colonne, touch in [('chaines',None),('categories','KEYCODE_DPAD_LEFT')]:
             if touch:
                 adb('shell', 'input', 'keyevent', touch)

@@ -58,6 +58,12 @@ wait_word() {
   step "Libellé introuvable après attente : $1"
   return 1
 }
+wait_home() {
+  # Le texte de la tuile sélectionnée change de contraste. Ces deux repères
+  # de l'accueil restent lisibles quel que soit le bouton qui a le focus.
+  wait_word 'tonight'
+  word 'favorites|playlists|settings' >/dev/null
+}
 tap_word() {
   wait_word "$@"
   local x y
@@ -67,8 +73,8 @@ tap_word() {
 }
 key KEYCODE_ENTER 2
 grab
-if ! word 'movies|films' >/dev/null; then key KEYCODE_DPAD_CENTER 2; fi
-wait_word 'movies|films'
+if ! word 'tonight' >/dev/null; then key KEYCODE_DPAD_CENTER 2; fi
+wait_home
 alive "accueil après import"
 shot 09-apres-import
 
@@ -95,7 +101,7 @@ key KEYCODE_BACK 3
 wait_word 'mire|barres'
 shot 14-retour-direct
 key KEYCODE_BACK 3
-wait_word 'movies|films'
+wait_home
 
 # Les captures sont faites après l’ouverture de chaque page, jamais sur le
 # simple focus de sa tuile. Les données du fournisseur sont toutes générées.
@@ -106,6 +112,10 @@ for page in 'movies|films:15-films' 'series:16-series' 'playlists|lists|sources:
   alive "$fichier"
   grab
   if word 'tonight' >/dev/null; then step "La tuile $label ne s’est pas ouverte"; exit 1; fi
+  case "$fichier" in
+    15-films) wait_word 'horizon' ;;
+    16-series) wait_word 'aurora' ;;
+  esac
   shot "$fichier"
   if [[ "$fichier" == 18-reglages ]]; then
     key KEYCODE_DPAD_CENTER 3
@@ -114,7 +124,7 @@ for page in 'movies|films:15-films' 'series:16-series' 'playlists|lists|sources:
     key KEYCODE_BACK 2
   fi
   key KEYCODE_BACK 3
-  wait_word 'movies|films'
+  wait_home
 done
 rm -f "$out/instant.png"
 step "Ce que l'application a réellement demandé au serveur local"

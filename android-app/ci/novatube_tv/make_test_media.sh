@@ -13,11 +13,11 @@
 #    live/mire1/index.m3u8   HLS 1080p25 H.264 + AAC stéréo (« testsrc2 »)
 #    live/mire2/index.m3u8   HLS 1080p25 H.264 + AAC (barres SMPTE HD)
 #    logos/mire{1,2,3}.png   logos 256×256
-#    novatube-test.m3u       3 chaînes, 2 catégories, avec logos
+#    novatube-test.m3u       3 chaînes, 1 film et 1 épisode générés, avec logos
 # =========================================================
 set -euo pipefail
 dir="$(mkdir -p "$1" && readlink -f "$1")"
-mkdir -p "$dir/live/mire1" "$dir/live/mire2" "$dir/logos"
+mkdir -p "$dir/live/mire1" "$dir/live/mire2" "$dir/logos" "$dir/movie" "$dir/series"
 
 hls() { # $1 = source vidéo lavfi, $2 = dossier de sortie
   ffmpeg -hide_banner -loglevel error -y \
@@ -35,6 +35,11 @@ ffmpeg -hide_banner -loglevel error -y -f lavfi -i "testsrc=size=256x256:rate=1"
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i "smptebars=size=256x256:rate=1" -frames:v 1 "$dir/logos/mire2.png"
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i "color=c=0x0B2A24:size=256x256:rate=1" -frames:v 1 "$dir/logos/mire3.png"
 
+# Les deux titres de contrôle contiennent seulement la mire locale déjà créée.
+ffmpeg -hide_banner -loglevel error -y -i "$dir/live/mire2/index.m3u8" \
+  -c copy -movflags +faststart "$dir/movie/horizon.mp4"
+ln -f "$dir/movie/horizon.mp4" "$dir/series/aurora.mp4"
+
 base="http://127.0.0.1:8080"
 cat > "$dir/novatube-test.m3u" <<EOF
 #EXTM3U
@@ -44,5 +49,9 @@ $base/live/mire1/index.m3u8
 $base/live/mire2/index.m3u8
 #EXTINF:-1 tvg-id="test.mire3" tvg-logo="$base/logos/mire3.png" group-title="Démo",Mire de test (copie)
 $base/live/mire1/index.m3u8
+#EXTINF:-1 tvg-id="test.film" tvg-logo="$base/logos/mire2.png" group-title="Z Films",Horizon
+$base/movie/horizon.mp4
+#EXTINF:-1 tvg-id="test.episode" tvg-logo="$base/logos/mire3.png" group-title="Z Series",Aurora S01E01
+$base/series/aurora.mp4
 EOF
 ls -R "$dir" | head -20
