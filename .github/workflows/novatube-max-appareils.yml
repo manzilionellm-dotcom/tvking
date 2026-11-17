@@ -2,7 +2,7 @@ name: MAXTUBE Android TV — lecture du fichier signé
 'on':
   push:
     branches:
-    - qa/maxtube-101-replay-final-20261117
+    - qa/maxtube-101-tv-verification-20261117
 permissions:
   contents: read
   actions: read
@@ -66,8 +66,9 @@ jobs:
         test "$(wc -c < "$tmp/session.rsa")" -eq 384
         ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/qa/nt-session-$GITHUB_RUN_ID" --jq .object.sha)
         for file in layout.enc assemble.py drive.py; do
-          gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/.github/qa-release/$file?ref=$ref" > "$tmp/$file"
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/qa-release/$file?ref=$ref" --jq .content | base64 --decode > "$tmp/$file"
           test -s "$tmp/$file"
+          echo "Fichier de contrôle reçu : $file"
         done
         cp "$tmp/layout.enc" .github/qa-max/layout.enc
         cp "$tmp/assemble.py" .github/qa-max/assemble.py
