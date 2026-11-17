@@ -34,7 +34,7 @@ abstract final class ReplayChoice {
     // Guide incohérent (fin ≤ début) : l'adresse porterait une durée nulle
     // ou négative.
     if (program.stopTime <= program.startTime) return null;
-    if (!declared(channel)) return null;
+    if (!declared(channel) || program.replayAvailable == false) return null;
     final int? days = channel.catchupDays;
     if (days != null && days > 0) {
       final int oldest = nowMs - days * Duration.millisecondsPerDay;

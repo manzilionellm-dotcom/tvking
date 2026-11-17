@@ -17,10 +17,14 @@ class EpgProgram {
     this.description,
     this.category,
     this.iconUrl,
+    this.replayAvailable,
   });
 
   /// ID de la chaîne (correspond à `Channel.id`, typiquement tvg-id M3U).
   final String channelId;
+
+  /// Indication explicite du fournisseur pour cette émission, si connue.
+  final bool? replayAvailable;
 
   /// Début et fin du programme (millisecondes epoch UTC).
   final int startTime;
@@ -94,6 +98,7 @@ class EpgProgram {
       description: map['description'] as String?,
       category: map['category'] as String?,
       iconUrl: map['icon_url'] as String?,
+      replayAvailable: map['replay_available'] == null ? null : map['replay_available'] == 1,
     );
   }
 }

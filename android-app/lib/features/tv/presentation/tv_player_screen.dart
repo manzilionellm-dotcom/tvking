@@ -663,6 +663,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   String? _archiveStream;
   EpgProgram? _lastWatchedProgram;
   String? _lastWatchedProfile;
+  int? _lastWatchedSource;
   bool _historyLookup = false;
 
   // Uniquement des métadonnées locales. Une erreur du guide ne doit jamais
@@ -672,6 +673,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (_historyLookup || !_appActive || !_everShownFrame || _fatal ||
         _zapHolding || _casting || _buffering || !_controller.isPlaying) return;
     final bool replay = _catchup;
+    final int? sourceId = _current.playlistId;
     final String id = _current.id;
     final String profile = ActiveProfile.instance.id;
     final DateTime now = DateTime.now();
@@ -679,17 +681,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         ? _archiveFromGuide : null;
     if (replay && (archive == null || archive.channelId != id)) return;
     final EpgProgram? last = _lastWatchedProgram;
-    if (_lastWatchedProfile == profile && last != null && last.channelId == id &&
+    if (_lastWatchedProfile == profile && _lastWatchedSource == sourceId && last != null && last.channelId == id &&
         (replay ? last.startTime == archive!.startTime : last.isLiveAt(now))) return;
     _historyLookup = true;
     try {
       final EpgProgram? program = archive ?? await EpgRepository.instance.currentProgram(id);
       if (program == null || (!replay && !program.isLiveAt(now)) ||
-          ActiveProfile.instance.id != profile || (mounted && (_current.id != id ||
+          ActiveProfile.instance.id != profile || (mounted && (_current.id != id || _current.playlistId != sourceId ||
           _catchup != replay || (replay && _archiveFromGuide != archive)))) return;
-      await RecentlyWatchedRepository.instance.recordProgram(profile, program, now);
+      await RecentlyWatchedRepository.instance.recordProgram(profile, program, now, sourceId: sourceId);
       _lastWatchedProgram = program;
       _lastWatchedProfile = profile;
+      _lastWatchedSource = sourceId;
     } catch (_) {
       // La prochaine observation réessaiera si le guide est disponible.
     } finally {

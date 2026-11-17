@@ -81,12 +81,14 @@ class RecentlyWatchedRepository {
     if (kNovatubeMax) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS $_programs (
-          profile_id TEXT NOT NULL, channel_id TEXT NOT NULL,
+          profile_id TEXT NOT NULL, source_id INTEGER NOT NULL, channel_id TEXT NOT NULL,
           start_time INTEGER NOT NULL, stop_time INTEGER NOT NULL,
-          title TEXT NOT NULL, watched_at INTEGER NOT NULL,
-          PRIMARY KEY (profile_id, channel_id, start_time)
+          title TEXT NOT NULL, watched_at INTEGER NOT NULL, replay_available INTEGER,
+          PRIMARY KEY (profile_id, source_id, channel_id, start_time)
         )
       ''');
+      await db.execute('CREATE TRIGGER IF NOT EXISTS nova_history_source_delete '
+          'AFTER DELETE ON playlists BEGIN DELETE FROM $_programs WHERE source_id = OLD.id; END');
       await db.execute('CREATE INDEX IF NOT EXISTS idx_nova_program_time '
           'ON $_programs(profile_id, watched_at DESC)');
     }
@@ -186,7 +188,7 @@ class RecentlyWatchedRepository {
   /// Une émission réellement vue, même après la disparition de son guide.
   /// Le profil est capturé à l'écran, avant toute lecture asynchrone de l'EPG.
   Future<void> recordProgram(
-    String profileId, EpgProgram program, DateTime watchedAt,
+    String profileId, EpgProgram program, DateTime watchedAt, {int? sourceId}
   ) async {
     if (!kNovatubeMax || FlavorConfig.current.adultOnly ||
         program.title.trim().isEmpty || program.stopTime <= program.startTime) {
@@ -197,7 +199,8 @@ class RecentlyWatchedRepository {
     await db.transaction((txn) async {
       if (profileId != ActiveProfile.instance.id) return;
       await txn.insert(_programs, <String, Object?>{
-        'profile_id': profileId, 'channel_id': program.channelId,
+        'profile_id': profileId, 'channel_id': program.channelId, 'source_id': sourceId ?? 0,
+        'replay_available': program.replayAvailable == null ? null : (program.replayAvailable! ? 1 : 0),
         'start_time': program.startTime, 'stop_time': program.stopTime,
         'title': program.title, 'watched_at': watchedAt.millisecondsSinceEpoch,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -207,13 +210,13 @@ class RecentlyWatchedRepository {
     });
   }
 
-  Future<List<EpgProgram>> watchedPrograms(String channelId) async {
+  Future<List<EpgProgram>> watchedPrograms(String channelId, {int? sourceId}) async {
     if (!kNovatubeMax || FlavorConfig.current.adultOnly) return [];
     final String profileId = ActiveProfile.instance.id;
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
-    final rows = await db.query(_programs, where: 'profile_id = ? AND channel_id = ?',
-        whereArgs: [profileId, channelId], orderBy: 'watched_at DESC, rowid DESC');
+    final rows = await db.query(_programs, where: 'profile_id = ? AND source_id = ? AND channel_id = ?',
+        whereArgs: [profileId, sourceId ?? 0, channelId], orderBy: 'watched_at DESC, rowid DESC');
     if (profileId != ActiveProfile.instance.id) return [];
     return rows.map(EpgProgram.fromMap).toList(growable: false);
   }
@@ -279,7 +282,8 @@ class RecentlyWatchedRepository {
         whereArgs: part,
       );
       if (kNovatubeMax) {
-        await db.delete(_programs, where: 'channel_id IN ($marks)', whereArgs: part);
+        await db.delete(_programs, where: 'channel_id IN ($marks) AND '
+            '(source_id = 0 OR source_id NOT IN (SELECT id FROM playlists))', whereArgs: part);
       }
     }
     await _reload();

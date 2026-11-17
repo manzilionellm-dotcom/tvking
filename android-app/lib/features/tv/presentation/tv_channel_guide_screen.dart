@@ -26,6 +26,7 @@ import '../../profiles/data/active_profile.dart';
 import 'tv_localized_format.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
+import '../../epg/data/novatube_max_channel_guide.dart';
 import '../../epg/domain/epg_program.dart';
 import '../../epg/domain/replay_choice.dart';
 import '../../missed_show/domain/missed_summary.dart';
@@ -67,6 +68,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
   /// défilement D-pad ne « saute » pas.
   static const double _rowExtent = 96;
 
+  NovaMaxChannelGuide _providerGuide = NovaMaxChannelGuide();
   NovaGuideSection _section = NovaGuideSection.upcoming;
   late Future<List<EpgProgram>> _future = _load();
   final ScrollController _scroll = ScrollController();
@@ -87,7 +89,10 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
       return (widget.loadPrograms ?? EpgRepository.instance.todayPrograms)(id);
     }
     if (_section == NovaGuideSection.watched) {
-      return (widget.loadHistory ?? RecentlyWatchedRepository.instance.watchedPrograms)(id);
+      final custom = widget.loadHistory;
+      return custom != null ? custom(id) : RecentlyWatchedRepository.instance.watchedPrograms(
+        id, sourceId: widget.channel.playlistId,
+      );
     }
     final bool past = _section == NovaGuideSection.past;
     final DateTime now = DateTime.now();
@@ -100,8 +105,13 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
     final items = load == null ? await EpgRepository.instance.programsBetween(id, from, to)
         : await load(id);
     final nowMs = now.millisecondsSinceEpoch;
-    final kept = items.where((p) => p.stopTime > from && p.startTime < to &&
-        (!past || p.stopTime <= nowMs)).toList();
+    bool inWindow(EpgProgram p) => p.stopTime > from && p.startTime < to &&
+        (!past || p.stopTime <= nowMs);
+    final kept = items.where(inWindow).toList();
+    if (load == null && kept.isEmpty) {
+      final remote = await _providerGuide.load(widget.channel);
+      kept.addAll(remote.where(inWindow));
+    }
     kept.sort((a, b) => past ? b.startTime.compareTo(a.startTime) : a.startTime.compareTo(b.startTime));
     return kept;
   }
@@ -190,6 +200,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
   @override
   void dispose() {
     if (kNovatubeMax) ActiveProfile.instance.listenable.removeListener(_retry);
+    _providerGuide.dispose();
     _scroll.dispose();
     _retryNode.dispose();
     for (final FocusNode n in _nodes.values) {
@@ -199,6 +210,8 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
   }
 
   void _retry() {
+    _providerGuide.dispose();
+    _providerGuide = NovaMaxChannelGuide();
     _didFocusLive = false;
     _didFocusRetry = false;
     setState(() => _future = _load());

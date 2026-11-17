@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:tv_king/core/app/box_memory_budget.dart';
@@ -17,6 +18,7 @@ import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
   final now = DateTime.now();
   EpgProgram show(String title, int hours, {String id = 'max-channel'}) {
     final start = now.add(Duration(hours: hours)).millisecondsSinceEpoch;

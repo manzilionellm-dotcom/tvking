@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
@@ -10,6 +11,7 @@ import 'package:tv_king/features/tv/presentation/novatube_max_m3u_batch.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
 
   test('Les dix profils sont conservés après relecture du catalogue', () {
     var catalog = ProfileCatalog.fresh();

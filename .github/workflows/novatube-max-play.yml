@@ -186,6 +186,36 @@ jobs:
         path: ${{ runner.temp }}/max-private/
         if-no-files-found: error
         retention-days: 7
+    - name: Générer un APK de contrôle à partir du bundle
+      working-directory: android-app
+      run: |
+        set -eu
+        j="$RUNNER_TEMP/max-bundletool.jar"
+        curl -fsSL --retry 3 --max-time 150 -o "$j" https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+        echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $j" | sha256sum -c -
+        sed -n 's/^storePassword=//p' android/key.properties > "$RUNNER_TEMP/max-test-pass"
+        java -jar "$j" build-apks --bundle=build/app/outputs/bundle/release/app-release.aab --output="$RUNNER_TEMP/max-test.apks" --mode=universal --ks=android/app/work.p12 --ks-key-alias=intermediate --ks-pass=file:"$RUNNER_TEMP/max-test-pass" --key-pass=file:"$RUNNER_TEMP/max-test-pass"
+        unzip -p "$RUNNER_TEMP/max-test.apks" universal.apk > "$RUNNER_TEMP/max-test.apk"
+        python3 -c 'import os,shutil;print("Espace disponible",shutil.disk_usage(os.environ["RUNNER_TEMP"]).free)'
+    - name: Démarrer MAX sur téléphone, tablette et téléviseur émulés
+      working-directory: android-app
+      run: |
+        set -eu
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends libpulse0 tesseract-ocr
+        test -c /dev/kvm
+        sudo chmod a+rw /dev/kvm
+        bash ci/novatube_tv/smoke_max_devices.sh "$RUNNER_TEMP/max-test.apk" "$RUNNER_TEMP/controle-max"
+    - name: Conserver les résultats des démarrages
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: controle-appareils-max-${{ github.sha }}
+        path: |
+          ${{ runner.temp }}/controle-max/demarrages.txt
+          ${{ runner.temp }}/controle-max/start-*.log
+          ${{ runner.temp }}/controle-max/ocr-*.txt
+        if-no-files-found: ignore
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 35
