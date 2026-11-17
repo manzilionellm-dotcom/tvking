@@ -49,6 +49,7 @@ import 'playlist_secret.dart';
 import 'profile_source_switches.dart';
 import 'local_m3u_bytes.dart';
 import 'm3u_fetcher.dart';
+import 'm3u_variant_catalog.dart';
 import 'import_progress.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
@@ -210,9 +211,11 @@ class PlaylistRepository {
   /// Le téléphone garde le comportement historique (une active à la fois).
   static bool mergeAllPlaylists = false;
 
-  Future<List<Channel>> getAllChannels() async {
+  Future<List<Channel>> getAllChannels() => _getAllChannels({});
+
+  Future<List<Channel>> _getAllChannels(Map<String, String> guides) async {
     final Database db = await PlaylistDatabase.instance.database;
-    if (mergeAllPlaylists) return _readMergedChannels(db);
+    if (mergeAllPlaylists) return _readMergedChannels(db, guides);
 
     // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
     // marquee active, on filtre les chaines pour ne renvoyer que les
@@ -267,7 +270,7 @@ class PlaylistRepository {
   /// que favoris, récents et index restent univoques. La première occurrence
   /// garde son id d'origine → les favoris déjà enregistrés continuent de
   /// fonctionner.
-  Future<List<Channel>> _readMergedChannels(Database db) async {
+  Future<List<Channel>> _readMergedChannels(Database db, Map<String, String> guides) async {
     // Purge des orphelines (même garde-fou que le mode « active »).
     await db.delete(
       'channels',
@@ -277,6 +280,10 @@ class PlaylistRepository {
     // le client peut en activer autant qu'il veut EN MÊME TEMPS.
     final List<Channel> all =
         await _readChannelsBounded(db, null, skipHidden: true);
+    if (kNovatubeTv) {
+      final projected = await M3uVariantCatalog.read(db, all, guides);
+      return _applyFlavorFilter(projected);
+    }
     final Set<String> seen = <String>{};
     final List<Channel> out = <Channel>[];
     for (final Channel c in all) {
@@ -1164,14 +1171,17 @@ class PlaylistRepository {
     VoidCallback? onFirstChannels,
     bool Function()? isCancelled,
   }) async {
-    final publish = _firstChannelsPublisher(onFirstChannels);
+    final earlyGuides = <String, String>{};
+    final publish = _firstChannelsPublisher(onFirstChannels, guides: earlyGuides);
     final M3uParseResult parsed = await _loadAndParseM3u(
       url,
       client: client,
       playlistId: playlistId,
       onFirstLines: publish == null ? null : (bytes) async {
         final part = await M3uParser.parseBytesInBackground(bytes, playlistId: playlistId);
-        publish(part.channels);
+        final db = await PlaylistDatabase.instance.database;
+        final first = part.channels.take(48).toList(growable: false);
+        publish(await M3uVariantCatalog.read(db, first, earlyGuides));
       },
     );
     if (parsed.channels.isEmpty) {
@@ -1218,7 +1228,7 @@ class PlaylistRepository {
 
   /// Le premier lot peut ouvrir l’accueil vide pendant le téléchargement.
   /// Un changement de profil, de source ou une suppression annule ce droit.
-  void Function(List<Channel>)? _firstChannelsPublisher(VoidCallback? onReady) {
+  void Function(List<Channel>)? _firstChannelsPublisher(VoidCallback? onReady, {Map<String, String> guides = const {}}) {
     if (!kNovatubeTv || !mergeAllPlaylists || _channelsCache.isNotEmpty) return null;
     final owner = ActiveProfile.instance.id;
     final revision = _stateRevision;
@@ -1228,6 +1238,7 @@ class PlaylistRepository {
         return;
       }
       _channelsCache = channels.take(48).toList(growable: false);
+      EpgRepository.instance.setM3uVariantGuideIds(guides);
       _channelsController.add(_channelsCache);
       onReady?.call();
     };
@@ -1570,13 +1581,15 @@ class PlaylistRepository {
   Future<void> _emitCurrentState() async {
     final int revision = ++_stateRevision;
     final Stopwatch sw = Stopwatch()..start();
-    final List<Channel> channels = await getAllChannels();
+    final guides = <String, String>{};
+    final List<Channel> channels = await _getAllChannels(guides);
     final List<Playlist> playlists = await getAllPlaylists();
     if (revision != _stateRevision) return;
     BlackBox.instance.info('DB', 'lecture : ${channels.length} chaînes, ${playlists.length} liste(s) en ${sw.elapsedMilliseconds} ms');
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;
+    if (kNovatubeTv) EpgRepository.instance.setM3uVariantGuideIds(guides);
     _playlistsCache = playlists;
     // Les noms/genres/pays déjà calculés pour des chaînes qui ont quitté le
     // catalogue (liste supprimée, source changée) ne restent plus en mémoire.
