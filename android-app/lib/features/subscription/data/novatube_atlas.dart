@@ -50,8 +50,8 @@ class NovatubeAtlas {
   static const String _prefix = '/api/novatube4k/';
 
   /// Présence « riche » (modèle, version, listes sans mot de passe) : au
-  /// plus toutes les 5 minutes. La présence simple suit chaque `state`.
-  static const Duration telemetryEvery = Duration(minutes: 5);
+  /// plus une fois par minute en l’absence de commande. La présence simple suit chaque `state`.
+  static const Duration telemetryEvery = Duration(minutes: 1);
 
   @visibleForTesting
   static http.Client Function() clientFactory = http.Client.new;
@@ -60,6 +60,10 @@ class NovatubeAtlas {
 
   bool _registered = false;
   DateTime _lastTelemetry = DateTime.fromMillisecondsSinceEpoch(0);
+
+  Future<void>? _panelInFlight;
+  final Map<String, Map<String, dynamic>> _orders = {};
+  List<Map<String, dynamic>> get pendingOrders => _orders.values.toList();
 
   /// Listes servies par le panel lors du dernier `state` complet :
   /// `{ sources: [...], rev: n }`, lues par RemoteSourceRepository. `null`
@@ -89,7 +93,7 @@ class NovatubeAtlas {
         try {
           SubscriptionBackend.onStatusBody?.call(body);
         } catch (_) {}
-        if (telemetry) unawaited(_maybeTelemetry());
+        if (telemetry) unawaited(refreshPanel());
         return RemoteStatusRead(status: mapState(body), reached: true);
       }
       if (r.status == 409 && body != null) {
@@ -138,13 +142,28 @@ class NovatubeAtlas {
     }
   }
 
-  Future<void> _maybeTelemetry() async {
+  /// Sérialise les inventaires : une réponse partie avant un import ne doit
+  /// jamais écraser l’inventaire envoyé après l’enregistrement SQLite.
+  Future<void> refreshPanel({bool force = false}) async {
+    while (_panelInFlight != null) {
+      await _panelInFlight;
+    }
+    final request = _refreshPanel(force);
+    _panelInFlight = request;
+    try {
+      await request;
+    } finally {
+      _panelInFlight = null;
+    }
+  }
+
+  Future<void> _refreshPanel(bool force) async {
     final DateTime now = DateTime.now();
-    if (now.difference(_lastTelemetry) < telemetryEvery) return;
+    if (!force && now.difference(_lastTelemetry) < telemetryEvery) return;
     _lastTelemetry = now;
     try {
       final Map<String, String> info = await DeviceIdentity.instance.deviceInfo();
-      await post('panel', <String, Object?>{
+      final reply = await post('panel', <String, Object?>{
         'model': info['model'] ?? '',
         'build': info['build'] ?? '',
         'android': info['release'] ?? '',
@@ -153,16 +172,68 @@ class NovatubeAtlas {
         'platform': 'tv',
         // Inventaire SANS identifiant ni mot de passe (le serveur l'efface
         // de toute façon) : type, nom, serveur, nombre de chaînes.
-        'sources': SubscriptionBackend.sourcesInventoryForPanel(),
+        'sources': [
+          for (final source in SubscriptionBackend.sourcesInventoryForPanel())
+            Map<String, Object?>.of(source)..remove('username'),
+        ],
         'recent': SubscriptionBackend.recentInventoryForPanel(),
       });
+      final body = reply.body;
+      if (!reply.ok || body?['commands_ok'] != true || body?['commands'] is! List) return;
+      _orders.clear();
+      for (final order in (body!['commands'] as List).whereType<Map<String, dynamic>>()) {
+        final id = order['order_id'];
+        if (id is String && id.isNotEmpty) _orders[id] = order;
+      }
     } catch (_) {
       // Présence best-effort : ne bloque jamais la lecture.
     }
   }
 
+  /// L’enveloppe HTTP 200 peut contenir des refus individuels. Seuls les
+  /// reçus explicitement acceptés modifient notre copie de la file.
+  Future<void> acknowledgeOrders(Iterable<Map<String, dynamic>> orders,
+      String state, String result, {String? errorCode}) async {
+    final items = orders.toList();
+    if (items.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final version = await _appVersion();
+      for (int offset = 0; offset < items.length; offset += 20) {
+        final batch = items.skip(offset).take(20);
+        final reply = await post('orders-ack', {
+          'app_version': version,
+          'orders': [
+            for (final item in batch) {
+              'order_id': item['order_id'], 'state': state, 'result': result,
+              if (state == 'received') 'received_at': now,
+              if (state == 'applied') 'applied_at': now,
+              if (errorCode != null) 'error_code': errorCode,
+            },
+          ],
+        });
+        final results = reply.body?['results'];
+        if (!reply.ok || results is! List) continue;
+        for (final receipt in results.whereType<Map>()) {
+          final id = receipt['order_id'];
+          if (id is! String || receipt['status'] != 200 || receipt['state'] != state) continue;
+          if (state == 'received') {
+            _orders[id]?['state'] = state;
+          } else {
+            _orders.remove(id);
+          }
+        }
+      }
+    } catch (_) {
+      // Atlas renvoie les ordres en attente lors de la prochaine lecture.
+    }
+  }
+
   void _keepServedSources(Map<String, dynamic> body) {
-    if (body['sources_ok'] != true || body['sources'] is! List) return;
+    if (body['sources_ok'] != true || body['sources'] is! List) {
+      servedSources = null;
+      return;
+    }
     servedSources = <String, dynamic>{
       'sources': body['sources'],
       'rev': body['source_rev'],
@@ -278,6 +349,8 @@ class NovatubeAtlas {
   @visibleForTesting
   void resetForTesting() {
     _registered = false;
+    _orders.clear();
+    _panelInFlight = null;
     _lastTelemetry = DateTime.fromMillisecondsSinceEpoch(0);
     servedSources = null;
     recoveryCode.value = null;
