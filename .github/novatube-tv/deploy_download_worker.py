@@ -13,7 +13,7 @@
 #    3. envoyer le nouveau script (mêmes date et options de compatibilité,
 #       liaisons existantes conservées) ;
 #    4. vérifier EN LIGNE : /novatube.apk → 302 vers l'APK TV, téléchargement
-#       complet et SHA-256 identique pour MAXTUBE et /tv.apk ; /mobile.apk → même résultat qu'avant ;
+#       complet et SHA-256 identique ; /mobile.apk → même résultat qu'avant ;
 #    5. si une vérification échoue : RETOUR ARRIÈRE automatique sur l'ancien
 #       script, puis échec du job.
 #  Rien n'est affiché du jeton. Aucun autre Worker n'est touché.
@@ -38,9 +38,6 @@ DOMAIN = 'https://novatube.zuno8k.com'
 HERE = Path(__file__).resolve().parent
 TV_APK_URL = ('https://github.com/manzilionellm-dotcom/tvking/releases/download/'
               'novatube-tv-download/NovaTube-TV.apk')
-MAXTUBE_URL = ('https://github.com/manzilionellm-dotcom/tvking/releases/download/'
-               'maxtube-v1.0.1-68dc23fb/MAXTUBE-1.0.1.apk')
-MAXTUBE_SHA = '68dc23fba7e39ae6f58a411f677fd00b7434f288636efa0d5e1e778ba48da272'
 TOKEN = os.environ.get('CF_TOKEN', '')
 
 
@@ -210,16 +207,13 @@ def main() -> int:
     print(f'avant : /novatube.apk → HTTP {before[0]} {before[1]}')
 
     new = (HERE / 'download-worker.mjs').read_bytes()
-    if new != old:
-        upload(acc, new, conf)
+    upload(acc, new, conf)
+    print('nouveau script envoyé ; vérification en ligne…')
 
-    maxtube_ok = wait_for(lambda: probe('/novatube.apk') == (302, MAXTUBE_URL))
-    if maxtube_ok:
-        maxtube_ok = download_sha('/novatube.apk') == MAXTUBE_SHA
-    tv_ok = wait_for(lambda: probe('/tv.apk') == (302, TV_APK_URL))
+    tv_ok = wait_for(lambda: probe('/novatube.apk') == (302, TV_APK_URL))
     sha_ok = False
     if tv_ok:
-        got = download_sha('/tv.apk')
+        got = download_sha('/novatube.apk')
         sha_ok = got == expected
         print(f'téléchargement par le domaine : SHA-256 {got} ({"identique" if sha_ok else "DIFFÉRENT"})')
     # NovaTube mobile : /mobile.apk doit rediriger vers un APK qui n'est PAS
@@ -227,7 +221,7 @@ def main() -> int:
     # possibles entre les points de présence Cloudflare.
     def mobile_served() -> bool:
         status, location = probe('/mobile.apk')
-        return status == 302 and location not in {TV_APK_URL, MAXTUBE_URL}
+        return status == 302 and location != TV_APK_URL
     mobile_ok = wait_for(mobile_served, 60)
     if tv_ok and sha_ok and not mobile_ok and probe('/mobile.apk')[0] == 404:
         # /mobile.apk n'arrive pas au Worker (routes limitées) : on ajoute
@@ -237,8 +231,8 @@ def main() -> int:
     mobile = probe('/mobile.apk')
     print(f'après : /mobile.apk → HTTP {mobile[0]} {mobile[1]}')
 
-    if maxtube_ok and tv_ok and sha_ok:
-        print('MAXTUBE sur /novatube.apk et NovaTube TV sur /tv.apk : SHA-256 vérifiés')
+    if tv_ok and sha_ok:
+        print('✓ novatube.zuno8k.com/novatube.apk sert NovaTube TV (SHA-256 vérifié)')
         if mobile_ok:
             print('✓ NovaTube mobile conservé sur novatube.zuno8k.com/mobile.apk')
         else:
@@ -249,8 +243,6 @@ def main() -> int:
         return 0
 
     print('::warning::vérification en échec → retour arrière sur l\'ancien script')
-    if new == old:
-        die('Échec du contrôle public du téléchargement')
     upload(acc, old, conf)
     restored = wait_for(lambda: probe('/novatube.apk') == before)
     die('déploiement annulé ; ancien script ' + ('rétabli et vérifié' if restored else 'renvoyé (vérification non concluante)'))

@@ -2,7 +2,7 @@
 #  NovaTube TV — relier https://novatube.zuno8k.com/novatube.apk
 # =========================================================
 #  Demande explicite du propriétaire (16/11/2026) : l'adresse Downloader
-#  novatube.zuno8k.com/novatube.apk sert MAXTUBE ; /tv.apk conserve NovaTube TV.
+#  novatube.zuno8k.com/novatube.apk doit donner NovaTube TV.
 #
 #  1. Copie l'APK de test VÉRIFIÉ (SOURCE_TAG, publié par
 #     novatube-tv-test.yml après émulateur) dans la pré-version FIXE
@@ -98,16 +98,12 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           if ! gh release view "$FIXED_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             printf '%s\n' \
-              "**NovaTube TV — APK de TEST à adresse fixe** (adresse historique : https://novatube.zuno8k.com/tv.apk)." \
+              "**NovaTube TV — APK de TEST à adresse fixe** (pour Downloader : https://novatube.zuno8k.com/novatube.apk)." \
               "" \
               "Copie exacte du dernier APK de test vérifié par la CI (pré-version \`$SOURCE_TAG\`)." \
               "Clé de TEST : ne met pas à jour NovaTube 334.2.6 ; désinstaller une version de test précédente." > notes.md
             gh release create "$FIXED_TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
               --target "$GITHUB_SHA" --title "NovaTube TV — téléchargement fixe (TEST)" --notes-file notes.md
-          fi
-          if [[ -f sauvegarde/NovaTube-TV.apk ]] && cmp -s out/NovaTube-TV.apk sauvegarde/NovaTube-TV.apk; then
-            echo 'Le fichier historique est déjà en ligne avec l’empreinte attendue.'
-            exit 0
           fi
           touch "$RUNNER_TEMP/novatube-remplacement"
           gh release upload "$FIXED_TAG" out/NovaTube-TV.apk out/SHA256SUMS.txt \
@@ -143,7 +139,7 @@ jobs:
             --clobber --repo "$GITHUB_REPOSITORY"
           avant=$(sha256sum sauvegarde/NovaTube-TV.apk | awk '{print $1}')
           for i in $(seq 1 12); do
-            if curl --retry 2 -fsSL "https://novatube.zuno8k.com/tv.apk" -o restaure.apk && \
+            if curl --retry 2 -fsSL "https://novatube.zuno8k.com/novatube.apk" -o restaure.apk && \
               [[ "$(sha256sum restaure.apk | awk '{print $1}')" == "$avant" ]]; then
               echo 'Ancien APK de nouveau servi et vérifié.'
               exit 0
