@@ -1,0 +1,94 @@
+name: NovaTube MAX — contrôle du fichier signé sur appareils
+'on':
+  push:
+    branches:
+    - qa/novatube-max-demarrages-20261117
+permissions:
+  contents: read
+  actions: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Créer une clé temporaire réservée à ce test
+      run: |
+        set -euo pipefail
+        umask 077
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$RUNNER_TEMP/runner.pem" 2>/dev/null
+        openssl pkey -in "$RUNNER_TEMP/runner.pem" -pubout -out "$RUNNER_TEMP/runner.pub"
+    - name: Communiquer la partie publique
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: max-demande-${{ github.run_id }}
+        path: ${{ runner.temp }}/runner.pub
+        retention-days: 1
+    - name: Java de vérification
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: SDK Android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Reprendre le bundle chiffré exact du commit dc7dc995
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        github-token: ${{ github.token }}
+        run-id: '44061956653'
+        name: novatube-max-prive-dc7dc995727a1b0acc67b38b896cc9d278b44d0d
+        path: coffre
+    - name: Restituer et vérifier l’APK signé de 59 875 579 octets
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        umask 077
+        tmp="$RUNNER_TEMP"
+        for i in $(seq 1 150); do
+          if gh api "repos/$GITHUB_REPOSITORY/contents/.github/qa-session.b64?ref=qa/nt-session-$GITHUB_RUN_ID" --jq .content 2>/dev/null | base64 -d | base64 -d > "$tmp/session.rsa" && test "$(wc -c < "$tmp/session.rsa")" -eq 384; then break; fi
+          sleep 5
+        done
+        test "$(wc -c < "$tmp/session.rsa")" -eq 384
+        openssl pkeyutl -decrypt -inkey "$tmp/runner.pem" -in "$tmp/session.rsa" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -out "$tmp/session.bin"
+        rm "$tmp/runner.pem"
+        python3 - <<'RESTORE'
+        import os,sys,subprocess
+        from pathlib import Path
+        sys.path.insert(0,'.github/qa-max');from cms import cms_parts
+        wd=Path(os.environ['RUNNER_TEMP']);data=Path('coffre/NovaTube-MAX.aab.cms').read_bytes();_,iv,(a,b)=cms_parts(data)
+        f=wd/'session.bin'; keys=f.read_bytes(); assert len(keys)==64; f.unlink()
+        with (wd/'input.aab').open('wb') as out:
+         subprocess.run(['openssl','enc','-d','-aes-256-cbc','-K',keys[:32].hex(),'-iv',iv.hex()],input=data[a:b],stdout=out,check=True)
+        subprocess.run(['openssl','enc','-d','-aes-256-cbc','-pbkdf2','-in','.github/qa-max/layout.enc','-out',str(wd/'layout.gz'),'-pass','stdin'],input=keys[32:].hex().encode(),check=True)
+        RESTORE
+        original=$(cut -d ' ' -f 1 coffre/SHA256)
+        echo "$original  $tmp/input.aab" | sha256sum -c -
+        curl -fsSL --retry 3 -o "$tmp/btool.jar" https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+        echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $tmp/btool.jar" | sha256sum -c -
+        sdkmanager 'build-tools;35.0.0' >/dev/null
+        keytool -genkeypair -alias sample -keyalg RSA -keystore "$tmp/test.p12" -storepass temporary-qa-sample -validity 2 -dname 'CN=Temporary emulator sampling'
+        java -jar "$tmp/btool.jar" build-apks --bundle="$tmp/input.aab" --output="$tmp/sample.apks" --mode=universal --ks="$tmp/test.p12" --ks-key-alias=sample --ks-pass=pass:temporary-qa-sample --key-pass=pass:temporary-qa-sample --aapt2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+        unzip -p "$tmp/sample.apks" universal.apk > "$tmp/sample.apk"
+        python3 .github/qa-max/assemble.py "$tmp/sample.apk" "$tmp/layout.gz" "$tmp/final.apk"
+        "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$tmp/final.apk"
+        rm -f "$tmp/sample.apks" "$tmp/sample.apk" "$tmp/input.aab" "$tmp/test.p12" "$tmp/layout.gz"
+    - name: Démarrer le binaire signé sur les trois formats
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends libpulse0 tesseract-ocr
+        sudo chmod a+rw /dev/kvm
+        df -h /
+        bash .github/qa-max/demarrer.sh "$RUNNER_TEMP/final.apk" "$RUNNER_TEMP/controle-max"
+    - name: Conserver les diagnostics de démarrage et les captures
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: always()
+      with:
+        name: max-appareils-${{ github.run_id }}
+        path: ${{ runner.temp }}/controle-max/
+        retention-days: 7
+        if-no-files-found: ignore
