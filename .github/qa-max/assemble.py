@@ -13,5 +13,5 @@ with zipfile.ZipFile(src) as z,src.open('rb') as body,destination.open('wb') as 
         dst.write(body.read(len_apk))
 assert cur==len(static)
 with destination.open('rb') as fd: digest=hashlib.file_digest(fd,'sha256').hexdigest()
-assert digest==plan['sha']=='db585a637bb0a4672cd4019f5bd5cc178587d1f67509f9a669ec17e78e6d18df',digest
+assert digest==plan['sha']=='68dc23fba7e39ae6f58a411f677fd00b7434f288636efa0d5e1e778ba48da272',digest
 print('APK final vérifié',digest)
