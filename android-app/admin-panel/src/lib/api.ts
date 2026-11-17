@@ -830,8 +830,8 @@ export const ordersApi = {
 };
 
 export const blackboxApi = {
-  get: (mac: string) =>
-    request<BlackBoxJournal>(`/api/v1/blackbox/${encodeURIComponent(mac)}`),
+  get: (mac: string, signal?: AbortSignal) =>
+    request<BlackBoxJournal>(`/api/v1/blackbox/${encodeURIComponent(mac)}`, { signal }),
   ask: (mac: string) =>
     request<{ ok: boolean; requested_at: number }>(
       `/api/v1/blackbox/${encodeURIComponent(mac)}/ask`,
