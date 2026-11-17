@@ -122,19 +122,13 @@ PY
     grep -Ei 'topResumedActivity|mResumedActivity|ResumedActivity' "$out/activite-$form.log" | grep -F "$pkg" >/dev/null
     if serial_adb logcat -b crash -d | grep -Eq 'FATAL EXCEPTION|Fatal signal'; then exit 1; fi
     echo "$form - $image - $category - accueil Flutter affiche" | tee -a "$out/demarrages.txt"
-    if [[ "$form" == television ]]; then
-      serial_adb shell input keyevent KEYCODE_DPAD_CENTER
-      sleep 4
-      serial_adb exec-out screencap -p > "$out/telecommande-ok.png"
-      tesseract "$out/telecommande-ok.png" "$out/telecommande-ok" --psm 11 >/dev/null 2>&1 || true
-      for press in 1 2; do
-        serial_adb shell input keyevent KEYCODE_BACK
-        sleep 2
-        serial_adb exec-out screencap -p > "$out/telecommande-retour-$press.png"
-        tesseract "$out/telecommande-retour-$press.png" "$out/telecommande-retour-$press" --psm 11 >/dev/null 2>&1 || true
-        if grep -Eiq 'Welcome to NovaTube|Bienvenue sur NovaTube' "$out/telecommande-retour-$press.txt"; then break; fi
-      done
-    fi
+    media="$RUNNER_TEMP/mires-replay"
+    bash .github/qa-replay/make-media.sh "$media"
+    isolated /usr/bin/python3 .github/qa-replay/fixture.py "$media" "$out/fournisseur.jsonl" > "$out/fixture.log" 2>&1 &
+    fixture_pid=$!
+    serial_adb reverse tcp:8783 tcp:8783
+    isolated /usr/bin/python3 .github/qa-replay/drive.py "$out"
+    kill "$fixture_pid" 2>/dev/null || true
   done
   stop_device
   if [[ "$device" == tactile ]]; then sdkmanager --uninstall "$image" >/dev/null; fi

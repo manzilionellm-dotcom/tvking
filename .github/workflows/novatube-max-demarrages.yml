@@ -1,8 +1,8 @@
-name: NovaTube MAX — contrôle Android TV du fichier signé
+name: NovaTube MAX — lecture et historique sur le fichier signé
 'on':
   push:
     branches:
-    - qa/novatube-max-television-20261117
+    - qa/novatube-max-replay-prive-20261117
 permissions:
   contents: read
   actions: read
@@ -76,11 +76,11 @@ jobs:
         python3 .github/qa-max/assemble.py "$tmp/sample.apk" "$tmp/layout.gz" "$tmp/final.apk"
         "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$tmp/final.apk"
         rm -f "$tmp/sample.apks" "$tmp/sample.apk" "$tmp/input.aab" "$tmp/test.p12" "$tmp/layout.gz"
-    - name: Démarrer le binaire signé sur l’image Android TV officielle
+    - name: Parcourir le guide avec le lecteur Android natif
       run: |
         set -euo pipefail
         sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends libpulse0 tesseract-ocr
+        sudo apt-get install -y --no-install-recommends libpulse0 tesseract-ocr ffmpeg python3-pil
         sudo chmod a+rw /dev/kvm
         df -h /
         bash .github/qa-max/demarrer.sh "$RUNNER_TEMP/final.apk" "$RUNNER_TEMP/controle-max"
@@ -92,3 +92,81 @@ jobs:
         path: ${{ runner.temp }}/controle-max/
         retention-days: 7
         if-no-files-found: ignore
+  regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: dc7dc995727a1b0acc67b38b896cc9d278b44d0d
+    - name: Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Flutter 3.47.7 (même version que Zuno TV)
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: true
+    - name: SDK Android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Licences Android
+      run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+      working-directory: android-app
+    - name: Manifeste et Gradle TV (scripts Zuno, identité NovaTube)
+      run: |
+        set -e
+        python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+        cp ci/proguard-rules.pro android/app/proguard-rules.pro
+        python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+        grep -q 'applicationId = "com.sevenmotion.novatube.max"' android/app/build.gradle.kts
+        grep -q 'android:label="NovaTube MAX"' android/app/src/main/AndroidManifest.xml
+        python3 ci/novatube_tv/prepare_max_play.py
+      working-directory: android-app
+    - name: Préférences compatibles box Android 5 (identique à Zuno TV)
+      run: |
+        python3 - <<'PYEOF'
+        from pathlib import Path
+        path = Path('pubspec.yaml')
+        source = path.read_text(encoding='utf-8')
+        anchor = '  shared_preferences: ^2.3.4\n'
+        if source.count(anchor) != 1 or '  shared_preferences_android:' in source:
+            raise SystemExit('Contrainte SharedPreferences inattendue : vérifier le pin TV.')
+        source = source.replace(anchor, anchor + '  shared_preferences_android: 2.5.0\n', 1)
+        path.write_text(source, encoding='utf-8')
+        PYEOF
+      working-directory: android-app
+    - name: Dépendances
+      run: flutter pub get
+      working-directory: android-app
+    - name: Préparer l'édition NovaTube (logo, nom, bannière, lancement)
+      run: |
+        python3 -m pip install --quiet Pillow
+        python3 ci/novatube_tv/make_brand_assets.py
+        set -e
+        python3 ci/novatube_tv/prepare_build.py
+        flutter pub get
+        flutter gen-l10n
+      working-directory: android-app
+    - name: Tester le guide, la navigation, les profils et les sources
+      working-directory: android-app
+      run: |
+        set -euo pipefail
+        flags=(--no-pub --dart-define=NOVATUBE_TV=true --dart-define=NOVATUBE_MAX=true --dart-define=PLAY_BUILD=true)
+        flutter analyze --no-pub --no-fatal-infos lib/features/tv/presentation/tv_channel_guide_screen.dart lib/features/tv/presentation/tv_epg_preview_screen.dart lib/features/channels/data/recently_watched_repository.dart lib/features/tv/presentation/novatube_max_m3u_batch.dart lib/features/tv/presentation/tv_sources_screen.dart test/novatube_max
+        flutter test "${flags[@]}" test/novatube_max test/features/epg/catchup_url_builder_test.dart test/features/epg/epg_replay_keep_test.dart test/features/tv/history_policy_test.dart test/features/tv/tv_scaled_viewport_test.dart test/features/playlists/profile_source_switches_test.dart test/features/profiles test/novatube_tv/novatube_m3u_variants_test.dart test/novatube_tv/novatube_panel_list_test.dart test/features/playlists/import_bulk_persistence_test.dart
+    - name: Vérifier le guide TV historique hors MAX
+      working-directory: android-app
+      run: |
+        flutter test --no-pub test/features/tv/tv_channel_guide_replay_test.dart
+env:
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  ZUNO_APP_ID: com.sevenmotion.novatube.max
+  ZUNO_APP_LABEL: NovaTube MAX
+  NOVATUBE_MAX: 'true'
+  NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.max
