@@ -427,6 +427,16 @@ jobs:
           NOVATUBE_TEST_MEDIA="$RUNNER_TEMP/novatube-media" \
             bash android-app/ci/novatube_tv/emulator_smoke.sh "$apk" artifacts/emulateur
 
+      - name: Créer la mire UHD SDR commune aux deux lecteurs de la SHIELD
+        env:
+          SOURCE: ${{ steps.origin.outputs.sha }}
+        run: |
+          set -euo pipefail
+          tag="novatube-tv-test-${SOURCE:0:8}"
+          python3 android-app/ci/novatube_tv/make_uhd_reference.py \
+            artifacts/emulateur/mire-uhd-publique \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag"
+
       - name: Conserver captures et journaux (même en cas d'échec)
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -476,6 +486,8 @@ jobs:
           test "$(sha256sum "$apk" | awk '{print $1}')" = "$APK_SHA"
           mkdir -p upload
           cp "$apk" "dl/apk/SHA256SUMS.txt" upload/
+          (cd dl/emulateur/mire-uhd-publique && sha256sum -c mire-uhd-sommes.txt)
+          cp dl/emulateur/mire-uhd-publique/mire-uhd{.m3u,-sdr.ts,-sommes.txt} upload/
           for png in dl/emulateur/*.png; do
             cp "$png" "upload/capture-$(basename "$png")"
           done
@@ -499,12 +511,32 @@ jobs:
           - **Ne met pas à jour NovaTube 334.2.6** (\`com.manthefew\`) : c'est une autre application, installée à côté.
           - Contrôlé automatiquement : installation, démarrage, télécommande, réouverture sans plantage sur émulateur Android 11 en 1080p, **hors réseau** (captures jointes).
           - ${parcours}
+          - [Mire UHD SDR pour comparer les lecteurs sur la SHIELD](https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/mire-uhd.m3u). Ouvrir cette même liste dans les deux lecteurs. Source synthétique H.264 en 3 840 × 2 160, 25 images/s, BT.709, 60 secondes. Les colonnes comportent des traits de 1, 2, 4 et 8 pixels. La vérification physique reste à faire.
           - **Non contrôlé** : lecture d'un vrai flux, qualité d'image, HDR/Dolby Vision, son, essai sur une vraie NVIDIA SHIELD.
           EOF
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release download "$tag" --pattern "$APK_NAME" --dir existant --repo "$GITHUB_REPOSITORY"
             test "$(sha256sum "existant/$APK_NAME" | awk '{print $1}')" = "$APK_SHA"
             gh release upload "$tag" upload/capture-*.png --clobber --repo "$GITHUB_REPOSITORY"
+            # Conserve les octets d'une mire déjà publiée au même lien de comparaison.
+            noms=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+            if grep -Fxq 'mire-uhd-sommes.txt' <<< "$noms"; then
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'mire-uhd*' --dir mire-existante
+              (cd mire-existante && sha256sum -c mire-uhd-sommes.txt)
+              cmp mire-existante/mire-uhd.m3u upload/mire-uhd.m3u
+            else
+              # Le manifeste est publié en dernier. Un nouvel essai peut reprendre
+              # après l'envoi d'un seul fichier sans en écraser une copie existante.
+              for nom in mire-uhd-sdr.ts mire-uhd.m3u; do
+                if grep -Fxq "$nom" <<< "$noms"; then
+                  gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$nom" --dir mire-partielle
+                  cmp "mire-partielle/$nom" "upload/$nom"
+                else
+                  gh release upload "$tag" "upload/$nom" --repo "$GITHUB_REPOSITORY"
+                fi
+              done
+              gh release upload "$tag" upload/mire-uhd-sommes.txt --repo "$GITHUB_REPOSITORY"
+            fi
           else
             gh release create "$tag" upload/* --repo "$GITHUB_REPOSITORY" \
               --target "$SOURCE" --prerelease \
