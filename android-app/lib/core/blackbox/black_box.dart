@@ -39,6 +39,7 @@ import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../app/novatube_tv_edition.dart';
 import '../app/repair_flags.dart';
 import '../crash/crash_device_label.dart';
 import 'black_box_line.dart';
@@ -285,7 +286,7 @@ class BlackBox {
   /// à une mort brutale. Passer une chaîne vide quand l'action est finie.
   void breadcrumb(String action) {
     // Même expurgation que le journal : ce fichier est relu au boot suivant.
-    _breadcrumb = RepairFlags.blackBoxRaw ? action : redactBlackBox(action);
+    _breadcrumb = !kNovatubeTv && RepairFlags.blackBoxRaw ? action : redactBlackBox(action);
     try {
       // Écriture SYNCHRONE (dans le noyau avant de rendre la main : survit à
       // une mort du processus, c'est tout son rôle), mais SANS fsync : pendant
@@ -381,7 +382,7 @@ class BlackBox {
       level,
       tag,
       message,
-      redact: !RepairFlags.blackBoxRaw,
+      redact: kNovatubeTv || !RepairFlags.blackBoxRaw,
     );
     if (kDebugMode) debugPrint('[BlackBox] $text');
     if (!_ready || _file == null) return;

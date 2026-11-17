@@ -16,6 +16,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../device/data/device_identity.dart';
 import '../../subscription/data/subscription_backend.dart';
 
+// Interrupteur de l'édition NovaTube TV : le MÊME define que
+// lib/core/app/novatube_tv_edition.dart, relu ici SANS import. Ce fichier
+// est copié tel quel dans l'arbre du téléphone 7 MOTION
+// (ci/mobile/mobile_controls_options.py), qui ne contient pas l'édition
+// NovaTube : un import y casserait l'analyse et la construction du
+// téléphone. Sans `--dart-define=NOVATUBE_TV=true`, la valeur est `false` :
+// Zuno et le téléphone gardent exactement leur comportement.
+const bool _kNovatubeTv = bool.fromEnvironment('NOVATUBE_TV');
+
 class FeedbackRepository extends ChangeNotifier {
   FeedbackRepository._();
   static final FeedbackRepository instance = FeedbackRepository._();
@@ -41,6 +50,7 @@ class FeedbackRepository extends ChangeNotifier {
   }
 
   Future<void> _fetch({bool strict = false}) async {
+    if (_kNovatubeTv) return; // invitation publiée pour les box Zuno
     final request = ++_request;
     try {
       final http.Response resp = await http
@@ -88,6 +98,7 @@ class FeedbackRepository extends ChangeNotifier {
   /// une invitation arrivée pendant la requête ne doit pas être acquittée.
   Future<bool> submit(
       {required String text, int rating = 0, String? prompt}) async {
+    if (_kNovatubeTv) return false; // route historique indexée par MAC
     final value = text.trim();
     if (value.isEmpty || value.length > 2000 || rating < 0 || rating > 5) {
       return false;

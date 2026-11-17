@@ -1,9 +1,26 @@
+import 'dart:async';
+import 'dart:io';
+
 // Les identifiants du parseur ne changent pas : seuls les textes affichés
 // sont traduits. Un changement de langue actualise aussi une erreur ouverte.
 import 'package:flutter/widgets.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../playlists/domain/open_source_input.dart';
+import '../../playlists/domain/source_import_problem.dart';
+import '../../playlists/data/xtream_client.dart';
+import '../../playlists/data/playlist_import_limits.dart';
+
+String sourceFailureCode(Object error) {
+  if (error is PlaylistImportTooLarge) return 'local_too_big';
+  if (error is SourceImportProblem) return error.name;
+  if (error is TimeoutException) return SourceImportProblem.timeout.name;
+  if (error is XtreamAuthException) return SourceImportProblem.denied.name;
+  if (error is SocketException || error is HandshakeException) {
+    return SourceImportProblem.network.name;
+  }
+  return 'connect_failed';
+}
 
 String sourceErrorText(BuildContext context, String error) => switch (error) {
   OpenSourceInput.errNeedUrl => context.l10n.tvSourceNeedUrl,
@@ -14,5 +31,11 @@ String sourceErrorText(BuildContext context, String error) => switch (error) {
   'local_unavailable' => context.l10n.tvLocalFileUnavailable,
   'local_empty' => context.l10n.tvLocalFileEmpty,
   'local_too_big' => context.l10n.tvLocalFileTooBig,
+  'network' => context.l10n.novaSourceNetwork,
+  'timeout' => context.l10n.novaSourceTimeout,
+  'denied' => context.l10n.novaSourceDenied,
+  'webPage' => context.l10n.novaSourceWeb,
+  'empty' => context.l10n.novaSourceEmpty,
+  'expired' => context.l10n.novaSourceExpired,
   _ => context.l10n.tvConnectError,
 };

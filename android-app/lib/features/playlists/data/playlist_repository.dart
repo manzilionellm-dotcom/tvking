@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -41,11 +42,14 @@ import '../../profiles/data/active_profile.dart';
 import '../../profiles/domain/family_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
+import '../domain/source_import_problem.dart';
+import '../domain/open_source_input.dart';
 import 'deleted_sources.dart';
 import 'playlist_secret.dart';
 import 'profile_source_switches.dart';
 import 'local_m3u_bytes.dart';
 import 'm3u_fetcher.dart';
+import 'm3u_variant_catalog.dart';
 import 'import_progress.dart';
 import 'm3u_parser.dart';
 import 'playlist_database.dart';
@@ -207,9 +211,11 @@ class PlaylistRepository {
   /// Le téléphone garde le comportement historique (une active à la fois).
   static bool mergeAllPlaylists = false;
 
-  Future<List<Channel>> getAllChannels() async {
+  Future<List<Channel>> getAllChannels() => _getAllChannels({});
+
+  Future<List<Channel>> _getAllChannels(Map<String, String> guides) async {
     final Database db = await PlaylistDatabase.instance.database;
-    if (mergeAllPlaylists) return _readMergedChannels(db);
+    if (mergeAllPlaylists) return _readMergedChannels(db, guides);
 
     // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
     // marquee active, on filtre les chaines pour ne renvoyer que les
@@ -264,7 +270,7 @@ class PlaylistRepository {
   /// que favoris, récents et index restent univoques. La première occurrence
   /// garde son id d'origine → les favoris déjà enregistrés continuent de
   /// fonctionner.
-  Future<List<Channel>> _readMergedChannels(Database db) async {
+  Future<List<Channel>> _readMergedChannels(Database db, Map<String, String> guides) async {
     // Purge des orphelines (même garde-fou que le mode « active »).
     await db.delete(
       'channels',
@@ -274,6 +280,10 @@ class PlaylistRepository {
     // le client peut en activer autant qu'il veut EN MÊME TEMPS.
     final List<Channel> all =
         await _readChannelsBounded(db, null, skipHidden: true);
+    if (kNovatubeTv) {
+      final projected = await M3uVariantCatalog.read(db, all, guides);
+      return _applyFlavorFilter(projected);
+    }
     final Set<String> seen = <String>{};
     final List<Channel> out = <Channel>[];
     for (final Channel c in all) {
@@ -479,11 +489,12 @@ class PlaylistRepository {
     return addM3uPlaylist(name: name, url: Uri.file(path).toString());
   }
 
-  Future<Uint8List> _loadM3uBody(String url, {http.Client? httpClient}) {
+  Future<Uint8List> _loadM3uBody(String url, {http.Client? httpClient,
+      Future<void> Function(Uint8List)? onFirstLines}) {
     if (url.startsWith('file:')) {
       return readLocalM3uBytes(Uri.parse(url).toFilePath());
     }
-    return M3uFetcher.fetchBytes(url, httpClient: httpClient);
+    return M3uFetcher.fetchBytes(url, httpClient: httpClient, onFirstLines: onFirstLines);
   }
 
   /// Télécharge le .m3u puis stocke les chaînes en base.
@@ -495,6 +506,8 @@ class PlaylistRepository {
     required String url,
     String? epgUrl,
     http.Client? httpClient,
+    VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
     bool restoreDeleted = true,
   }) async {
     if (restoreDeleted) await DeletedSources.restoreManually(SourceFingerprint.ofM3uUrl(url));
@@ -520,7 +533,9 @@ class PlaylistRepository {
       //    (User-Agent navigateur + UTF-8 / Latin-1 fallback +
       //    strip BOM + timeout 90s — gère les serveurs paranos
       //    ou les exports Windows-1252 mal étiquetés).
-      if (kDebugMode) debugPrint('[Repo] GET $url');
+      if (kDebugMode) {
+        debugPrint(kNovatubeTv ? '[Repo] Téléchargement M3U' : '[Repo] GET $url');
+      }
       // 3) Téléchargement + parse (ISOLATE) + insertion, dans une fonction à
       // part : à son retour, les octets bruts (jusqu'à 60 Mo) et la liste
       // parsée ne sont plus atteignables. La relecture de setActivePlaylist
@@ -530,6 +545,8 @@ class PlaylistRepository {
         client: client,
         playlistId: playlistId,
         wantEpg: epgUrl != null && epgUrl.isNotEmpty,
+        onFirstChannels: onFirstChannels,
+        isCancelled: isCancelled,
       );
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -562,6 +579,9 @@ class PlaylistRepository {
       if (playlistId != null) {
         BlackBox.instance.info('DB', 'liste $playlistId supprimée (import M3U échoué)');
         await _deletePlaylist(playlistId);
+        if (kNovatubeTv && _channelsCache.any((c) => c.playlistId == playlistId)) {
+          await _emitCurrentState();
+        }
       }
       rethrow;
     } finally {
@@ -705,6 +725,8 @@ class PlaylistRepository {
     required String password,
     String? originM3uUrl,
     http.Client? httpClient,
+    VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
     bool restoreDeleted = true,
   }) async {
     if (restoreDeleted) {
@@ -751,6 +773,8 @@ class PlaylistRepository {
         xtream,
         playlistId: playlistId,
         wantEpg: newPlaylist.epgUrl != null,
+        onFirstChannels: onFirstChannels,
+        isCancelled: isCancelled,
       );
       final Playlist saved = newPlaylist.copyWith(
         id: playlistId,
@@ -779,6 +803,9 @@ class PlaylistRepository {
       if (playlistId != null) {
         BlackBox.instance.info('DB', 'liste $playlistId supprimée (import Xtream échoué)');
         await _deletePlaylist(playlistId);
+        if (kNovatubeTv && _channelsCache.any((c) => c.playlistId == playlistId)) {
+          await _emitCurrentState();
+        }
       }
       rethrow;
     } finally {
@@ -960,6 +987,67 @@ class PlaylistRepository {
   /// charge les nouvelles. Le `playlistId` reste le même.
   ///
   /// Retourne `true` si la sync a réussi, lance une Exception sinon.
+  /// Modifie la source à sa place : les favoris, les profils et l’interrupteur
+  /// continuent à viser le même identifiant. Une adresse refusée conserve
+  /// l’ancienne configuration et toutes ses chaînes.
+  Future<void> editSource(Playlist previous, {required String name, String? address,
+      http.Client? httpClient}) async {
+    final id = previous.id;
+    if (id == null) throw const PlaylistDeletedException();
+    final db = await PlaylistDatabase.instance.database;
+    final changes = <String, Object?>{'name': name};
+    if (address == null) {
+      final rows = await db.update('playlists', changes, where: 'id = ?', whereArgs: [id]);
+      if (rows == 0) throw const PlaylistDeletedException();
+      _playlistsCache = await getAllPlaylists();
+      _playlistsController.add(_playlistsCache);
+      return;
+    }
+    final draft = OpenSourceInput.playlistLink(address).draft;
+    if (draft == null) throw const FormatException();
+    final client = httpClient ?? http.Client();
+    try {
+      final List<Channel> channels;
+      final String? epg;
+      final Map<String, String>? guide;
+      if (draft.kind == OpenSourceKind.xtream) {
+        final api = XtreamClient(serverUrl: draft.serverUrl!, username: draft.username!,
+            password: draft.password!, httpClient: client);
+        await api.verifyCredentials();
+        channels = await api.fetchLiveChannels(playlistId: id);
+        epg = xtreamEpgUrl(serverUrl: draft.serverUrl!, username: draft.username!,
+            password: draft.password!);
+        guide = api.epgChannelIds;
+      } else {
+        channels = (await _loadAndParseM3u(draft.m3uUrl!, client: client, playlistId: id)).channels;
+        epg = null;
+        guide = null;
+      }
+      if (channels.isEmpty) throw SourceImportProblem.empty;
+      changes.addAll({
+        'type': draft.kind == OpenSourceKind.xtream ? PlaylistType.xtream.name : PlaylistType.m3u.name,
+        'm3u_url': await PlaylistSecret.seal(draft.m3uUrl ?? address),
+        'xtream_server': draft.serverUrl, 'xtream_username': draft.username,
+        'xtream_password': await PlaylistSecret.seal(draft.password),
+        'epg_url': epg, 'channel_count': channels.length,
+        'last_synced_at': DateTime.now().millisecondsSinceEpoch,
+      });
+      await db.transaction((txn) async {
+        final rows = await txn.update('playlists', changes, where: 'id = ?', whereArgs: [id]);
+        if (rows == 0) throw const PlaylistDeletedException();
+        await txn.delete('channels', where: 'playlist_id = ?', whereArgs: [id]);
+        await _insertChannelsImpl(channels, executor: txn);
+      });
+      await _emitCurrentState();
+      if (epg != null && guide != null) {
+        final epgPlan = _epgPlanFor(channels, xtreamEpgIds: guide);
+        unawaited(_syncEpg(epg, epgPlan));
+      }
+    } finally {
+      if (httpClient == null) client.close();
+    }
+  }
+
   Future<bool> refreshPlaylist(Playlist playlist) async {
     if (playlist.id == null) return false;
     final Database db = await PlaylistDatabase.instance.database;
@@ -1067,10 +1155,11 @@ class PlaylistRepository {
     String url, {
     required http.Client client,
     required int playlistId,
+    Future<void> Function(Uint8List)? onFirstLines,
   }) async {
     // Octets bruts : décodage ET parsing dans l'isolate (le fil UI ne
     // touche jamais au contenu, même pour un fichier de 60 Mo).
-    final Uint8List body = await _loadM3uBody(url, httpClient: client);
+    final Uint8List body = await _loadM3uBody(url, httpClient: client, onFirstLines: onFirstLines);
     return M3uParser.parseBytesInBackground(body, playlistId: playlistId);
   }
 
@@ -1079,14 +1168,25 @@ class PlaylistRepository {
     required http.Client client,
     required int playlistId,
     required bool wantEpg,
+    VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
   }) async {
+    final earlyGuides = <String, String>{};
+    final publish = _firstChannelsPublisher(onFirstChannels, guides: earlyGuides);
     final M3uParseResult parsed = await _loadAndParseM3u(
       url,
       client: client,
       playlistId: playlistId,
+      onFirstLines: publish == null ? null : (bytes) async {
+        final part = await M3uParser.parseBytesInBackground(bytes, playlistId: playlistId);
+        final db = await PlaylistDatabase.instance.database;
+        final first = part.channels.take(48).toList(growable: false);
+        publish(await M3uVariantCatalog.read(db, first, earlyGuides));
+      },
     );
     if (parsed.channels.isEmpty) {
       // Source invalide → on lève ; le `catch` de l'appelant retire l'orpheline.
+      if (kNovatubeTv) throw SourceImportProblem.empty;
       final String hint = parsed.warnings.isEmpty
           ? ''
           : '\n\nDétails parser :\n${parsed.warnings.take(3).join('\n')}';
@@ -1095,8 +1195,10 @@ class PlaylistRepository {
         'URL invalide ou format incompatible ?$hint',
       );
     }
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     await _ensurePlaylistRow(playlistId);
     await _insertChannels(parsed.channels);
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     return _ImportedCatalog(
       parsed.channels.length,
       wantEpg ? _epgPlanFor(parsed.channels) : null,
@@ -1124,22 +1226,46 @@ class PlaylistRepository {
     );
   }
 
+  /// Le premier lot peut ouvrir l’accueil vide pendant le téléchargement.
+  /// Un changement de profil, de source ou une suppression annule ce droit.
+  void Function(List<Channel>)? _firstChannelsPublisher(VoidCallback? onReady, {Map<String, String> guides = const {}}) {
+    if (!kNovatubeTv || !mergeAllPlaylists || _channelsCache.isNotEmpty) return null;
+    final owner = ActiveProfile.instance.id;
+    final revision = _stateRevision;
+    return (channels) {
+      if (channels.isEmpty || owner != ActiveProfile.instance.id ||
+          revision != _stateRevision || _channelsCache.isNotEmpty) {
+        return;
+      }
+      _channelsCache = channels.take(48).toList(growable: false);
+      EpgRepository.instance.setM3uVariantGuideIds(guides);
+      _channelsController.add(_channelsCache);
+      onReady?.call();
+    };
+  }
+
   Future<_ImportedCatalog> _fetchInsertXtream(
     XtreamClient xtream, {
     required int playlistId,
     required bool wantEpg,
+    VoidCallback? onFirstChannels,
+    bool Function()? isCancelled,
   }) async {
     final List<Channel> channels = await xtream.fetchLiveChannels(
       playlistId: playlistId,
+      onFirstChannels: _firstChannelsPublisher(onFirstChannels),
     );
     if (channels.isEmpty) {
       // Compte sans chaîne live → on lève ; le `catch` de l'appelant retire l'orpheline.
+      if (kNovatubeTv) throw SourceImportProblem.empty;
       throw Exception(
         'Aucune chaîne live disponible pour ce compte Xtream.',
       );
     }
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     await _ensurePlaylistRow(playlistId);
     await _insertChannels(channels);
+    if (isCancelled?.call() == true) throw const PlaylistDeletedException();
     return _ImportedCatalog(
       channels.length,
       wantEpg
@@ -1455,13 +1581,15 @@ class PlaylistRepository {
   Future<void> _emitCurrentState() async {
     final int revision = ++_stateRevision;
     final Stopwatch sw = Stopwatch()..start();
-    final List<Channel> channels = await getAllChannels();
+    final guides = <String, String>{};
+    final List<Channel> channels = await _getAllChannels(guides);
     final List<Playlist> playlists = await getAllPlaylists();
     if (revision != _stateRevision) return;
     BlackBox.instance.info('DB', 'lecture : ${channels.length} chaînes, ${playlists.length} liste(s) en ${sw.elapsedMilliseconds} ms');
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;
+    if (kNovatubeTv) EpgRepository.instance.setM3uVariantGuideIds(guides);
     _playlistsCache = playlists;
     // Les noms/genres/pays déjà calculés pour des chaînes qui ont quitté le
     // catalogue (liste supprimée, source changée) ne restent plus en mémoire.

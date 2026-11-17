@@ -1,0 +1,71 @@
+name: NovaTube TV — APK direct pour un essai manuel
+
+on:
+  push:
+    branches: ['ccr-b67ba221-20h8wo-novatube-tv']
+    paths: ['.github/workflows/novatube-tv-essai-manuel.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+# Sur demande, fournir un lien .apk à Downloader pendant le contrôle TV.
+# Le nom versionné est distinct de NovaTube-TV.apk, utilisé par le domaine.
+env:
+  BUILD_RUN: '43983617135'
+  BUILD_SHA: 04f37bdad88235c2f677266ddca66934d312bb05
+  APK_SHA256: e6ad3f3964c58796f585b492403b36275a8f916a25d70e1eea795bd442deb1cb
+  TAG_ESSAI: novatube-tv-download
+
+jobs:
+  essai:
+    name: Fournir l’APK signé vérifié au propriétaire
+    if: github.repository == 'manzilionellm-dotcom/tvking'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Vérifier l’origine de la compilation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" > run.json
+          jq -e --arg sha "$BUILD_SHA" --arg branch "$GITHUB_REF_NAME" \
+            '.head_sha == $sha and .head_branch == $branch and .path == ".github/workflows/novatube-tv-test.yml"' run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN/jobs" \
+            --jq '.jobs[] | select(.name == "Compiler, tester et signer NovaTube TV") | .conclusion' | grep -x success
+
+      - name: Télécharger l’artefact signé de cette compilation
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ env.BUILD_RUN }}
+          name: novatube-tv-apk-${{ env.BUILD_SHA }}
+          path: apk
+
+      - name: Ajouter le fichier versionné et retester son lien public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd apk
+          name="NovaTube-TV-test-1.0.0-${BUILD_SHA:0:8}.apk"
+          sha256sum -c SHA256SUMS.txt
+          printf '%s  %s\n' "$APK_SHA256" "$name" | sha256sum -c -
+          outils=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$outils/apksigner" verify "$name"
+          "$outils/aapt" dump badging "$name" > identite.txt
+          grep -q "^package: name='com.sevenmotion.novatube.tv'" identite.txt
+          grep -q "^application-label:'NovaTube'" identite.txt
+          grep -q '^leanback-launchable-activity:' identite.txt
+          test "$(gh release view "$TAG_ESSAI" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" = true
+          if gh release view "$TAG_ESSAI" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fx "$name"; then
+            echo 'Ce fichier versionné existe : son empreinte publique sera vérifiée.'
+          else
+            gh release upload "$TAG_ESSAI" "$name" --repo "$GITHUB_REPOSITORY"
+          fi
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG_ESSAI/$name"
+          curl --retry 5 --retry-all-errors -fsSL "$url" -o verifie.apk
+          printf '%s  verifie.apk\n' "$APK_SHA256" | sha256sum -c -
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"

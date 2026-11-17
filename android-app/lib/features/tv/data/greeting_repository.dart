@@ -8,6 +8,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../subscription/data/subscription_backend.dart';
 
@@ -48,6 +49,7 @@ class GreetingRepository {
   Greeting? get current => _cached;
 
   Future<Greeting?> fetch() async {
+    if (kNovatubeTv) return null; // message publié pour les box Zuno
     try {
       final http.Response resp = await http
           .get(Uri.parse('$kSubscriptionBaseUrl/api/greeting'))

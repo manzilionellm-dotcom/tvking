@@ -38,11 +38,11 @@ class VoiceHit {
   final Channel? channel;
   final CinemaTitle? cinema;
 
-  factory VoiceHit.fromChannel(Channel c) {
+  factory VoiceHit.fromChannel(Channel c, {String? title}) {
     return VoiceHit(
       kind: _kindOfChannel(c),
       id: 'ch:${c.id}',
-      title: c.cleanName,
+      title: title ?? c.cleanName,
       subtitle: c.category,
       channel: c,
     );
@@ -174,6 +174,9 @@ bool typoMatches(String hay, String word) {
 /// Recherche locale. [hideAdult] masque le contenu adulte (mode enfants) :
 /// on réutilise le même classificateur que le reste de l'app.
 ///
+/// [liveTitle] conserve le libellé du fournisseur pour les écrans qui
+/// proposent séparément chaque variante (RAW, UHD…), y compris dans la déduplication.
+///
 /// [channelHay] et [adultIds], s'ils sont là, évitent de replier
 /// 50 000 noms à chaque lettre. Sans eux, le résultat est le même :
 /// on calcule au fil de l'eau.
@@ -193,6 +196,7 @@ List<VoiceHit> searchCatalog({
   required List<CinemaTitle> series,
   bool hideAdult = false,
   int maxPerKind = 24,
+  String Function(Channel)? liveTitle,
   Map<String, String>? channelHay,
   Set<String>? adultIds,
 }) {
@@ -297,7 +301,9 @@ List<VoiceHit> searchCatalog({
       from.sort(_Scored.compare);
       for (final _Scored<Channel> s in from) {
         if (into.length >= cap) break;
-        add(VoiceHit.fromChannel(s.item), into);
+        final Channel channel = s.item;
+        final String? title = channel.isLive ? liveTitle?.call(channel) : null;
+        add(VoiceHit.fromChannel(channel, title: title), into);
       }
     }
 

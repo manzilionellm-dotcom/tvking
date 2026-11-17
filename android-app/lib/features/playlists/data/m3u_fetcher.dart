@@ -24,6 +24,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -33,6 +34,8 @@ import '../../player/data/player_settings.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import 'm3u_parser.dart' show M3uParser;
+import '../../../core/app/novatube_tv_edition.dart';
+import '../domain/source_import_problem.dart';
 import 'import_progress.dart';
 import 'playlist_import_limits.dart';
 
@@ -136,6 +139,7 @@ abstract final class M3uFetcher {
     http.Client? httpClient,
     String? preferredUserAgent,
     FetchTimeouts? timeouts,
+    Future<void> Function(Uint8List)? onFirstLines,
   }) async {
     final http.Client client = httpClient ?? http.Client();
     final bool owns = httpClient == null;
@@ -181,7 +185,10 @@ abstract final class M3uFetcher {
           if (resp.statusCode != 200) {
             // Serveur qui refuse cette signature (souvent 403 / 401 /
             // un code maison comme 884). On essaie la signature suivante.
-            lastError = Exception('HTTP ${resp.statusCode} sur $url');
+            lastError = kNovatubeTv
+                ? (resp.statusCode == 401 || resp.statusCode == 403
+                    ? SourceImportProblem.denied : SourceImportProblem.network)
+                : Exception('HTTP ${resp.statusCode} sur $url');
             continue;
           }
 
@@ -193,6 +200,7 @@ abstract final class M3uFetcher {
             kMaxM3uBytes,
             idle: t.idle,
             onBytes: (int n) => received = n,
+            onFirstLines: onFirstLines,
           ).timeout(t.total);
           // Sniff sur les 64 premiers Ko (Latin-1 : ne lève jamais) — assez
           // pour voir #EXTM3U / #EXTINF / une URL, sans décoder 60 Mo ici.
@@ -200,7 +208,7 @@ abstract final class M3uFetcher {
           final String head =
               latin1.decode(Uint8List.sublistView(bytes, 0, sniffLen)).trimLeft();
           if (head.isEmpty) {
-            lastError =
+            lastError = kNovatubeTv ? SourceImportProblem.empty :
                 Exception('Le serveur a renvoyé une réponse vide pour $url');
             continue;
           }
@@ -216,8 +224,8 @@ abstract final class M3uFetcher {
           final bool looksM3u = headUpper.contains('#EXTM3U') ||
               headUpper.contains('#EXTINF') ||
               head.contains('://');
-          if (looksHtml && !looksM3u) {
-            lastError = Exception(
+          if (looksHtml && (kNovatubeTv || !looksM3u)) {
+            lastError = kNovatubeTv ? SourceImportProblem.webPage : Exception(
               'Le serveur a renvoyé une page web (HTML), pas une playlist.',
             );
             continue;
@@ -225,7 +233,7 @@ abstract final class M3uFetcher {
           if (!looksM3u) {
             // Ni balise M3U ni URL de flux : probablement une erreur
             // applicative en texte/JSON. On tente une autre signature.
-            lastError = Exception(
+            lastError = kNovatubeTv ? SourceImportProblem.empty : Exception(
               'Réponse sans aucune chaîne (ni #EXTM3U ni URL) pour $url',
             );
             continue;
@@ -255,7 +263,7 @@ abstract final class M3uFetcher {
             'M3U',
             '$host : délai dépassé après ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(0)} s ($phase)',
           );
-          lastError = Exception(
+          lastError = kNovatubeTv ? SourceImportProblem.timeout : Exception(
             headersSeen
                 ? 'Le serveur a commencé à envoyer la liste puis s\'est tu '
                     '(${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus).'
@@ -272,9 +280,140 @@ abstract final class M3uFetcher {
       }
 
       // Aucune signature n'a fonctionné → message clair.
+      if (kNovatubeTv) {
+        throw lastError is SourceImportProblem ? lastError : SourceImportProblem.network;
+      }
       throw Exception(_friendlyFailure(lastError, url, userAgents.length));
     } finally {
       if (owns) client.close();
+    }
+  }
+
+  /// Comme [fetchBytes], mais le M3U est écrit dans [target] AU FIL DU
+  /// TÉLÉCHARGEMENT au lieu d'être gardé en mémoire. Sert à Cinéma : le M3U
+  /// d'un gros fournisseur dépasse 100 Mo, ce que la RAM d'une box ne supporte
+  /// pas, alors qu'un fichier temporaire (effacé ensuite) ne coûte rien.
+  ///
+  /// Même rotation de signatures, mêmes délais et même contrôle « est-ce
+  /// bien un M3U ? » que [fetchBytes]. Le plafond est [maxBytes].
+  static Future<void> fetchToFile(
+    String url,
+    File target, {
+    http.Client? httpClient,
+    String? preferredUserAgent,
+    FetchTimeouts? timeouts,
+    int maxBytes = kMaxM3uVodBytes,
+  }) async {
+    final http.Client client = httpClient ?? http.Client();
+    final bool owns = httpClient == null;
+    final String host = Uri.tryParse(url)?.host ?? '?';
+    final FetchTimeouts t =
+        timeouts ?? fetchTimeouts(legacy: RepairFlags.m3uTimeoutLegacy);
+    BlackBox.instance.breadcrumb('Téléchargement M3U (films) $host');
+    try {
+      final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
+      Object? lastError;
+      for (final String ua in userAgents) {
+        IOSink? sink;
+        bool headersSeen = false;
+        int received = 0;
+        final Stopwatch sw = Stopwatch()..start();
+        try {
+          final http.Request req = http.Request('GET', Uri.parse(url))
+            ..followRedirects = true
+            ..headers.addAll(<String, String>{
+              'User-Agent': ua,
+              'Accept': '*/*',
+              'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+              'Connection': 'keep-alive',
+            });
+          final http.StreamedResponse resp =
+              await client.send(req).timeout(t.headers);
+          headersSeen = true;
+          if (resp.statusCode != 200) {
+            lastError = Exception('HTTP ${resp.statusCode} sur $host');
+            continue;
+          }
+          sink = target.openWrite();
+          final Stream<List<int>> guarded = resp.stream.timeout(
+            t.idle,
+            onTimeout: (EventSink<List<int>> out) {
+              out.addError(TimeoutException(
+                  'aucune donnée depuis ${t.idle.inSeconds} s', t.idle));
+              out.close();
+            },
+          );
+          await () async {
+            await for (final List<int> chunk in guarded) {
+              received += chunk.length;
+              if (received > maxBytes) {
+                throw PlaylistImportTooLarge(
+                  'Le M3U dépasse ${maxBytes ~/ (1024 * 1024)} Mo : '
+                  'Cinéma ne peut pas le lire en entier.',
+                );
+              }
+              sink!.add(chunk);
+            }
+          }()
+              .timeout(t.total);
+          await sink.flush();
+          await sink.close();
+          sink = null;
+
+          // Même garde-fou que fetchBytes : une page web ou un message
+          // d'erreur en 200 n'est pas un M3U → signature suivante.
+          final String head = await _readHead(target);
+          if (head.isEmpty) {
+            lastError = Exception('Le serveur a renvoyé une réponse vide.');
+            continue;
+          }
+          final String upper = head.toUpperCase();
+          final bool looksM3u = upper.contains('#EXTM3U') ||
+              upper.contains('#EXTINF') ||
+              head.contains('://');
+          if (!looksM3u) {
+            lastError = Exception(head.startsWith('<')
+                ? 'Le serveur a renvoyé une page web (HTML), pas une playlist.'
+                : 'Réponse sans aucune adresse de flux.');
+            continue;
+          }
+          BlackBox.instance.info('M3U',
+              '$host (films) : ${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus');
+          return;
+        } on PlaylistImportTooLarge {
+          rethrow;
+        } on TimeoutException {
+          final String phase = headersSeen
+              ? 'corps, ${(received / (1024 * 1024)).toStringAsFixed(1)} Mo reçus'
+              : 'aucune réponse du serveur (en-têtes)';
+          BlackBox.instance.warn('M3U',
+              '$host (films) : délai dépassé après ${(sw.elapsedMilliseconds / 1000).toStringAsFixed(0)} s ($phase)');
+          lastError = Exception(headersSeen
+              ? 'Le serveur a commencé à envoyer la liste puis s\'est tu.'
+              : 'Le serveur n\'a pas répondu en ${t.headers.inSeconds} s.');
+          break;
+        } on Exception catch (e) {
+          lastError = e;
+          continue;
+        } finally {
+          try {
+            await sink?.close();
+          } catch (_) {}
+        }
+      }
+      throw Exception(_friendlyFailure(lastError, url, userAgents.length));
+    } finally {
+      if (owns) client.close();
+    }
+  }
+
+  /// 64 premiers Ko d'un fichier (Latin-1 : ne lève jamais), sans espaces de tête.
+  static Future<String> _readHead(File file) async {
+    final RandomAccessFile f = await file.open();
+    try {
+      return latin1.decode(await f.read(65536)).trimLeft();
+    } finally {
+      await f.close();
     }
   }
 
@@ -304,7 +443,12 @@ abstract final class M3uFetcher {
     int maxBytes, {
     Duration? idle,
     void Function(int received)? onBytes,
+    Future<void> Function(Uint8List)? onFirstLines,
   }) async {
+    // Une seule tranche indépendante du corps complet. Un champ ou une URL
+    // coupés en fin de paquet ne sont jamais présentés comme une chaîne.
+    const target = 8192;
+    final first = onFirstLines == null ? null : BytesBuilder();
     final BytesBuilder builder = BytesBuilder(copy: false);
     int total = 0;
     final Stream<List<int>> guarded = idle == null
@@ -330,6 +474,19 @@ abstract final class M3uFetcher {
         );
       }
       builder.add(chunk);
+      if (first != null && onFirstLines != null) {
+        final remaining = target - first.length;
+        first.add(chunk.length <= remaining ? chunk : chunk.sublist(0, remaining));
+        if (first.length == target) {
+          final bytes = first.takeBytes();
+          final end = bytes.lastIndexOf(10);
+          final head = M3uParser.decodeBytes(bytes).trimLeft().toUpperCase();
+          if (end > 0 && (head.startsWith('#EXTM3U') || head.startsWith('#EXTINF'))) {
+            await onFirstLines(Uint8List.sublistView(bytes, 0, end + 1));
+          }
+          onFirstLines = null;
+        }
+      }
     }
     return builder.takeBytes();
   }

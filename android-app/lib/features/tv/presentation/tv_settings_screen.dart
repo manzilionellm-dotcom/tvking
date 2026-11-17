@@ -44,6 +44,8 @@ import 'tv_legal_screen.dart';
 import 'tv_parental_screen.dart';
 import 'tv_recordings_screen.dart';
 import 'tv_shell.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import 'tv_novatube_welcome_screen.dart';
 import 'tv_sources_screen.dart';
 import 'tv_whatsapp_support_button.dart';
 
@@ -90,7 +92,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         if (mounted) setState(() => _remoteAi = on);
       }),
     );
-    _checkUpdate();
+    if (!kNovatubeTv) _checkUpdate();
   }
 
   @override
@@ -367,9 +369,9 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         value2Color: _busy ? TvAppTokens.of(context).muted : st.color,
         description:
             '${context.l10n.tvDeviceAddressHelp}  ·  OK = ${context.l10n.tvRefreshStatus}',
-        onSelect: _busy ? () {} : _refresh,
+        onSelect: kNovatubeTv ? () => open(const TvNovatubeWelcomeScreen(licenseOnly: true)) : (_busy ? () {} : _refresh),
       ),
-      if (!kIsPlayBuild)
+      if (!kIsPlayBuild && !kNovatubeTv)
         _SettingEntry(
           icon: Icons.local_offer_outlined,
           title: context.l10n.pricingOffersTitle,
@@ -425,6 +427,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         description: context.l10n.tvSettingsParental,
         onSelect: () => open(const TvParentalScreen()),
       ),
+      if (!kNovatubeTv)
       _SettingEntry(
         icon: _upd == _UpdState.available
             ? Icons.system_update_rounded
@@ -626,7 +629,7 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         const SizedBox(height: 8),
         // Le contact reste accessible après activation, sans ouvrir un
         // diagnostic ni recopier les identifiants de la liste du client.
-        const TvWhatsAppSupportButton(),
+        if (!kNovatubeTv) const TvWhatsAppSupportButton(),
         // ----- Avertissement « lecteur » toujours visible (bas de page) -----
         Text(
           context.l10n.tvPlayerDisclaimer,

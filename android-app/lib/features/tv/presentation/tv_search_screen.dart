@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/data/ai_search_service.dart';
 import '../../channels/domain/channel.dart';
@@ -38,6 +39,7 @@ import '../data/home_shelves.dart';
 import '../core/tv_dimens.dart';
 import '../core/tv_focusable.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_provider_channel_name.dart';
 import 'tv_cinema_detail_screen.dart';
 import 'tv_player_screen.dart';
 import 'tv_shell.dart';
@@ -237,6 +239,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     }
   }
 
+  String _providerName(Channel c) =>
+      tvProviderChannelName(c, context.l10n.tvVoiceKindChannel);
+
   Future<void> _runSearch() async {
     final int gen = ++_gen;
     final String raw = _q;
@@ -278,6 +283,7 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
       movies: movies,
       series: series,
       hideAdult: kids,
+      liveTitle: kNovatubeTv ? _providerName : null,
       channelHay: ready ? _hay : null,
       adultIds: ready ? _adultIds : null,
     );
@@ -309,7 +315,8 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
         if (remote.length >= 24) break;
         if (kids && c.genre == ChannelGenre.adult) continue;
         if (!filter.matches(c)) continue;
-        remote.add(VoiceHit.fromChannel(c));
+        final String? title = kNovatubeTv && c.isLive ? _providerName(c) : null;
+        remote.add(VoiceHit.fromChannel(c, title: title));
       }
       final List<VoiceHit> merged = mergeRemoteChannels(
         local: local,
@@ -341,7 +348,9 @@ class _TvSearchScreenState extends State<TvSearchScreen> {
     final Set<String> known = <String>{};
     for (final Channel c in _channels) {
       known.add(c.id);
-      if (wanted.contains(c.id)) names[c.id] = c.cleanName;
+      if (wanted.contains(c.id)) {
+        names[c.id] = kNovatubeTv && c.isLive ? _providerName(c) : c.cleanName;
+      }
     }
     final TonightLineup lineup = planTonight(
       now: now,

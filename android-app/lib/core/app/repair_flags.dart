@@ -17,6 +17,8 @@
 import 'package:native_video_player/native_video_player.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'novatube_tv_edition.dart';
+
 abstract final class RepairFlags {
   /// Vrai = copie de la dernière image à l'ancienne (gardée même noire,
   /// retirée seulement au signal « première image »). Faux = copie noire
@@ -34,6 +36,13 @@ abstract final class RepairFlags {
   /// un choix de la personne.
   static const String hybridHdrOffKey = 'zuno.player.hybrid_hdr_off';
   static bool hybridHdrOff = false;
+
+  /// Vrai = Cinéma ne lit PLUS les films et séries dans un M3U : retour à
+  /// l'ancien comportement (compte Xtream seulement, aucun M3U téléchargé).
+  /// Faux = les listes M3U et les comptes dont l'API n'a pas de films sont
+  /// lus dans leur M3U (voir docs/CINEMA-M3U.md).
+  static const String cinemaM3uOffKey = 'zuno.cinema.m3u_off';
+  static bool cinemaM3uOff = false;
   /// Vrai = la boîte noire écrit les lignes TELLES QUELLES (ancien
   /// comportement). Faux = chaque ligne est expurgée à l'écriture
   /// (adresses de flux, identifiants, mots de passe) : le journal sur la
@@ -79,7 +88,9 @@ abstract final class RepairFlags {
   /// Faux = le client voit « AD:A6:98:70:6A » ; l'identifiant interne
   /// (serveur, QR, appels réseau) garde toujours « MK: ».
   static const String macShowPrefixKey = 'zuno.mac.show_prefix';
-  static bool macShowPrefix = false;
+  // NovaTube TV : le code complet MK:XX:XX:XX:XX:XX est la règle (demande
+  // du propriétaire) ; la préférence reste prioritaire si elle existe.
+  static bool macShowPrefix = kNovatubeTv;
 
   /// Vrai = mise à jour à l'ancienne : un seul manifeste (release clients),
   /// 3 minutes maximum pour tout le téléchargement, pas de vérification de
@@ -328,6 +339,7 @@ abstract final class RepairFlags {
     bool reinsertOff = false;
     bool pendingLegacy = false;
     bool resetOff = false;
+    bool cinemaM3u = false;
     bool testPollLegacy = false;
     bool dropFirst = false;
     bool ackOff = false;
@@ -344,7 +356,7 @@ abstract final class RepairFlags {
       holdLegacy = prefs.getBool(legacyHoldFrameKey) ?? false;
       epgInline = prefs.getBool(epgInlineParseKey) ?? false;
       histOpen = prefs.getBool(historyOnOpenKey) ?? false;
-      macPrefix = prefs.getBool(macShowPrefixKey) ?? false;
+      macPrefix = prefs.getBool(macShowPrefixKey) ?? kNovatubeTv;
       updLegacy = prefs.getBool(updateLegacyKey) ?? false;
       channelLegacy = prefs.getBool(realtimeLegacyKey) ?? false;
       pillOff = prefs.getBool(syncPillOffKey) ?? false;
@@ -373,6 +385,7 @@ abstract final class RepairFlags {
       communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
       noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
       hdrOff = prefs.getBool(hybridHdrOffKey) ?? false;
+      cinemaM3u = prefs.getBool(cinemaM3uOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -410,7 +423,9 @@ abstract final class RepairFlags {
       communityOff = false;
       noticeLegacy = false;
       hdrOff = false;
+      cinemaM3u = false;
     }
+    cinemaM3uOff = cinemaM3u;
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
     sportsNetworkLegacy = sportsLegacy;
@@ -491,6 +506,7 @@ abstract final class RepairFlags {
     sportsCommunityOff = false;
     missedNoticeLegacy = false;
     hybridHdrOff = false;
+    cinemaM3uOff = false;
     NativeVideoController.legacyHoldFrame = false;
     NativeVideoController.hybridHdrOff = false;
   }

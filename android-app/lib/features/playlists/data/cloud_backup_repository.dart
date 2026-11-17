@@ -32,6 +32,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
@@ -83,6 +84,8 @@ class CloudBackupRepository {
   // Les instantanés sont lus DANS la file : une requête ancienne lente ne
   // peut pas finir après la sauvegarde d'une suppression plus récente.
   Future<void> _upload() {
+    // NovaTube TV : pas de sauvegarde par la route historique (MAC seule).
+    if (kNovatubeTv) return Future<void>.value();
     final Future<void> next = _uploadQueue.then((_) => _uploadSnapshot());
     _uploadQueue = next;
     return next;
@@ -144,6 +147,7 @@ class CloudBackupRepository {
   /// Restaure depuis le cloud SI aucune playlist locale n'existe.
   /// À appeler au démarrage (après l'init de PlaylistRepository).
   Future<void> restoreIfNeeded() async {
+    if (kNovatubeTv) return; // même règle que _upload
     try {
       final List<Playlist> existing =
           await PlaylistRepository.instance.getAllPlaylists();

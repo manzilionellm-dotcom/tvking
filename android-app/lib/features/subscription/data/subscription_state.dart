@@ -21,6 +21,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../device/data/device_identity.dart';
 import '../domain/activation_pace.dart';
 import '../domain/heartbeat_coalesce.dart';
@@ -162,6 +163,9 @@ class SubscriptionState extends ChangeNotifier {
       if (_remote.frozen) return SubscriptionStatus.frozen;
       if (_remote.paid) return SubscriptionStatus.paid;
       if (_remote.expired) return SubscriptionStatus.trialExpired;
+      // NovaTube TV : fiche enregistrée mais aucune licence ouverte →
+      // « en attente » (jamais un essai inventé par la box).
+      if (_remote.pending) return SubscriptionStatus.unknown;
       return SubscriptionStatus.trialActive;
     }
 
@@ -179,6 +183,17 @@ class SubscriptionState extends ChangeNotifier {
     }
 
     if (_firstLaunchAt == null) return SubscriptionStatus.unknown;
+
+    // NovaTube TV : l'essai de 10 jours est calculé par le SERVEUR. Sans
+    // échéance déjà confirmée par lui, la box reste « en attente » (les
+    // listes peuvent être ajoutées, la lecture attend la licence).
+    if (kNovatubeTv) {
+      return _trialUntilCache > nowMs
+          ? SubscriptionStatus.trialActive
+          : (_trialUntilCache > 0
+              ? SubscriptionStatus.trialExpired
+              : SubscriptionStatus.unknown);
+    }
 
     // 3) Essai : on privilégie l'échéance ABSOLUE émise par le serveur
     //    (insensible à une remise à zéro du compteur local) ; à défaut,

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import 'tv_comfort.dart';
 import 'tv_ghost.dart';
+import 'tv_novatube_palette.dart';
 import 'tv_tokens.dart';
 import 'tv_type.dart';
 
@@ -34,6 +36,12 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
 
   bool get _darkGhost => ghost && !light;
 
+  /// Édition NovaTube TV (compilée avec NOVATUBE_TV=true) : la palette
+  /// vert pétrole est DÉFINITIVE en sombre. Elle passe avant le confort
+  /// (jour/soir/nuit) et avant le Black Badge. Dans le build Zuno,
+  /// `kNovatubeTv` est la constante `false` : cette branche disparaît.
+  bool get _petrol => kNovatubeTv && !light;
+
   TvComfortPalette get _comfort => TvComfortPalette.of(period);
 
   static TvAppTokens of(BuildContext context) =>
@@ -57,64 +65,93 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
 
   Color get bg => light
       ? const Color(0xFFF6F5F2)
-      : _darkGhost
-          ? TvGhost.bg
-          : _comfort.bg;
+      : _petrol
+          ? TvNovatube.bg
+          : _darkGhost
+              ? TvGhost.bg
+              : _comfort.bg;
   Color get panel => light
       ? const Color(0xFFECEAE5)
-      : _darkGhost
-          ? TvGhost.panel
-          : _comfort.panel;
+      : _petrol
+          ? TvNovatube.panel
+          : _darkGhost
+              ? TvGhost.panel
+              : _comfort.panel;
   Color get card => light
       ? const Color(0xFFFFFFFF)
-      : _darkGhost
-          ? TvGhost.card
-          : _comfort.card;
+      : _petrol
+          ? TvNovatube.card
+          : _darkGhost
+              ? TvGhost.card
+              : _comfort.card;
   Color get tile => light
       ? const Color(0xFFF0EEE9)
-      : _darkGhost
-          ? TvGhost.tile
-          : _comfort.tile;
+      : _petrol
+          ? TvNovatube.tile
+          : _darkGhost
+              ? TvGhost.tile
+              : _comfort.tile;
   Color get tileBorder =>
       light ? const Color(0x1A17171C) : text.withValues(alpha: 0.10);
   Color get badgeBg => accent.withValues(alpha: .12);
   Color get sel => light
       ? const Color(0xFFE3E1DA)
-      : _darkGhost
-          ? TvGhost.sel
-          : _comfort.sel;
+      : _petrol
+          ? TvNovatube.sel
+          : _darkGhost
+              ? TvGhost.sel
+              : _comfort.sel;
   Color get surface3 => light
       ? const Color(0xFFDAD7CF)
-      : _darkGhost
-          ? TvGhost.surface3
-          : _comfort.surface3;
+      : _petrol
+          ? TvNovatube.surface3
+          : _darkGhost
+              ? TvGhost.surface3
+              : _comfort.surface3;
   Color get line => light
       ? const Color(0xFFC8C5BD)
-      : _darkGhost
-          ? TvGhost.line
-          : _comfort.line;
+      : _petrol
+          ? TvNovatube.line
+          : _darkGhost
+              ? TvGhost.line
+              : _comfort.line;
   Color get lineSoft => light
       ? const Color(0xFFE0DDD5)
-      : _darkGhost
-          ? TvGhost.lineSoft
-          : _comfort.lineSoft;
+      : _petrol
+          ? TvNovatube.lineSoft
+          : _darkGhost
+              ? TvGhost.lineSoft
+              : _comfort.lineSoft;
   Color get text => light
       ? const Color(0xFF202026)
-      : _darkGhost
-          ? TvGhost.text
-          : _comfort.text;
+      : _petrol
+          ? TvNovatube.text
+          : _darkGhost
+              ? TvGhost.text
+              : _comfort.text;
   Color get muted => light
       ? const Color(0xFF55535D)
-      : _darkGhost
-          ? TvGhost.muted
-          : _comfort.muted;
+      : _petrol
+          ? TvNovatube.muted
+          : _darkGhost
+              ? TvGhost.muted
+              : _comfort.muted;
   Color get mutedDim => light
       ? const Color(0xFF65616C)
-      : _darkGhost
-          ? TvGhost.mutedDim
-          : _comfort.mutedDim;
-  Color get accent => remoteAccent ?? (_darkGhost ? TvGhost.chrome : TvTokens.accent);
+      : _petrol
+          ? TvNovatube.mutedDim
+          : _darkGhost
+              ? TvGhost.mutedDim
+              : _comfort.mutedDim;
+  Color get accent =>
+      remoteAccent ??
+      (_petrol
+          ? TvNovatube.accent
+          : _darkGhost
+              ? TvGhost.chrome
+              : TvTokens.accent);
   Color get accentBright {
+    if (remoteAccent == null && _petrol) return TvNovatube.accentBright;
     if (remoteAccent == null && _darkGhost) return TvGhost.chromeBright;
     if (remoteAccent == null && !light) return TvTokens.accentBright;
     // Accent servant aussi de texte : contraste lisible sur le fond choisi,
@@ -123,13 +160,18 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
   }
 
   Color get accentDeep => remoteAccent == null
-      ? (_darkGhost ? TvGhost.chromeDeep : TvTokens.accentDeep)
+      ? (_petrol
+          ? TvNovatube.accentDeep
+          : _darkGhost
+              ? TvGhost.chromeDeep
+              : TvTokens.accentDeep)
       : HSLColor.fromColor(accent)
           .withLightness(
             (HSLColor.fromColor(accent).lightness - .22).clamp(0.0, 1.0),
           )
           .toColor();
   Color get onAccent {
+    if (remoteAccent == null && _petrol) return TvNovatube.onAccent;
     if (remoteAccent == null && _darkGhost) return TvGhost.onChrome;
     if (remoteAccent == null) return TvTokens.onAccent;
     const dark = Color(0xFF14100A);
@@ -156,15 +198,20 @@ class TvAppTokens extends ThemeExtension<TvAppTokens> {
   /// le halo ; les écrans déjà écrits lisent [card], qui est ce verre.
   Color get glassFill => light
       ? card.withValues(alpha: 0.92)
-      : _darkGhost
-          ? TvGhost.card
-          : _comfort.glassFill;
+      : _petrol
+          ? TvNovatube.card
+          : _darkGhost
+              ? TvGhost.card
+              : _comfort.glassFill;
 
   /// Filet cuivré du verre. Suit l'accent du panel. Doux : pas un néon.
   Color get glassEdge => light ? line : accent.withValues(alpha: 0.42);
 
   Gradient get bgGradient => !light && remoteAccent == null
-      ? _darkGhost
+      ? _petrol
+          // NovaTube : halo pétrole lointain (TvTokens en édition NovaTube).
+          ? TvTokens.bgGradient
+          : _darkGhost
           ? RadialGradient(
               center: const Alignment(0.56, -.40),
               radius: 1.3,

@@ -1,0 +1,20 @@
+# =========================================================
+#  flutter_launcher_icons_novatube_tv.yaml — Icône du build NovaTube TV
+# =========================================================
+#  Utilisée UNIQUEMENT par .github/workflows/novatube-tv-test.yml :
+#      dart run flutter_launcher_icons -f flutter_launcher_icons_novatube_tv.yaml
+#  Zuno et le téléphone gardent leurs propres configurations.
+#
+#  Images générées par ci/novatube_tv/make_brand_assets.py :
+#    - novatube_tv_icon.png    → icône classique : triangle « lecture »
+#      turquoise sur fond vert pétrole (un lanceur exige un fond) ;
+#    - novatube_tv_icon_fg.png → premier plan ADAPTATIF, symbole à 42 %
+#      pour rester dans la zone sûre du masque rond d'Android.
+# =========================================================
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/branding/novatube_tv_icon.png"
+  adaptive_icon_background: "#050F0C"
+  adaptive_icon_foreground: "assets/branding/novatube_tv_icon_fg.png"
+  min_sdk_android: 21

@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/data/remote_source_repository.dart';
@@ -28,6 +29,7 @@ import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_shell.dart';
+import 'tv_source_error_text.dart';
 
 class TvSourcesScreen extends StatelessWidget {
   const TvSourcesScreen({super.key});
@@ -121,6 +123,65 @@ class _SourceRow extends StatelessWidget {
   /// la source unique marquée active.
   bool get _merge => PlaylistRepository.mergeAllPlaylists;
   bool get _on => _merge ? !playlist.hidden : playlist.isActive;
+
+  Future<void> _edit(BuildContext context) async {
+    String name = playlist.name;
+    String address = '';
+    bool busy = false;
+    String? error;
+    await showDialog<void>(context: context, builder: (dialog) => StatefulBuilder(
+      builder: (ctx, update) => PopScope(canPop: !busy, child: AlertDialog(
+        title: Text(ctx.l10n.tvMySources),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextFormField(initialValue: name, enabled: !busy,
+            decoration: InputDecoration(labelText: ctx.l10n.tvFieldNameOptional),
+            onChanged: (value) => name = value),
+          TextField(enabled: !busy, obscureText: true, enableSuggestions: false,
+            autocorrect: false, keyboardType: TextInputType.url,
+            decoration: InputDecoration(labelText: ctx.l10n.tvFieldM3uUrl,
+              hintText: playlist.reference.host),
+            onChanged: (value) => address = value.trim()),
+          if (error != null) Text(sourceErrorText(ctx, error!)),
+          if (busy) const LinearProgressIndicator(),
+        ]),
+        actions: [
+          TextButton(onPressed: busy ? null : () => Navigator.pop(ctx), child: Text(ctx.l10n.buttonCancel)),
+          TextButton(onPressed: busy ? null : () async {
+            if (address.isNotEmpty && !OpenSourceInput.playlistLink(address).isValid) {
+              update(() => error = OpenSourceInput.errNeedUrl);
+              return;
+            }
+            update(() {busy = true; error = null;});
+            try {
+              await RemoteSourceRepository.runUserImport(() =>
+                PlaylistRepository.instance.editSource(playlist,
+                  name: name.trim().isEmpty ? playlist.name : name.trim(),
+                  address: address.isEmpty ? null : address));
+              if (ctx.mounted) Navigator.pop(ctx);
+            } catch (failure) {
+              if (ctx.mounted) update(() {busy = false; error = sourceFailureCode(failure);});
+            }
+          }, child: Text(ctx.l10n.buttonSave)),
+        ],
+      )),
+    ));
+  }
+
+  Future<void> _refresh(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(SnackBar(content: Text(context.l10n.libraryRefreshRunning)));
+    try {
+      final done = await RemoteSourceRepository.runUserImport(() =>
+          PlaylistRepository.instance.refreshPlaylist(playlist));
+      if (!done) throw StateError('source');
+      if (context.mounted) messenger.hideCurrentSnackBar();
+    } catch (failure) {
+      if (context.mounted) {
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(content: Text(sourceErrorText(context, sourceFailureCode(failure)))));
+      }
+    }
+  }
 
   Future<void> _delete(BuildContext context) async {
     // Le choix local est définitif, y compris pour une liste venue du panel.
@@ -220,7 +281,7 @@ class _SourceRow extends StatelessWidget {
                 ),
                 if (ref.user != null || ref.host != null) ...<Widget>[
                   const SizedBox(height: 4),
-                  _Reference(user: ref.user, host: ref.host),
+                  _Reference(user: kNovatubeTv ? null : ref.user, host: ref.host),
                 ],
                 const SizedBox(height: 4),
                 Text(
@@ -258,6 +319,12 @@ class _SourceRow extends StatelessWidget {
                   PlaylistRepository.instance.setActivePlaylist(playlist.id!),
             ),
             const SizedBox(width: 10),
+          ],
+          if (kNovatubeTv) ...[
+            Tooltip(message: context.l10n.tvRename, child: _IconBtn(
+              icon: Icons.edit_outlined, onSelect: () => _edit(context))),
+            Tooltip(message: context.l10n.tvRefresh, child: _IconBtn(
+              icon: Icons.refresh_rounded, onSelect: () => _refresh(context))),
           ],
           _IconBtn(
             icon: Icons.delete_outline_rounded,

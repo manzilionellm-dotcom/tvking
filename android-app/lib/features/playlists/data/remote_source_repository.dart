@@ -33,12 +33,15 @@ import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/data/device_secret.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import '../../subscription/data/novatube_atlas.dart';
 import '../../subscription/data/subscription_backend.dart'
     show kSubscriptionBaseUrl;
 import '../../subscription/domain/order_ack.dart' show SourceSyncReport;
 import '../domain/m3u_link.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
+import '../domain/source_import_problem.dart';
 import '../domain/source_retry.dart';
 import '../domain/tv_delete.dart';
 import 'favorites_repository.dart';
@@ -156,12 +159,13 @@ abstract final class RemoteSourceRepository {
       // rejeté. La boîte noire expurge les liens et mots de passe à
       // l'écriture ; on coupe quand même la raison pour rester lisible.
       final String secs = (watch.elapsedMilliseconds / 1000).toStringAsFixed(1);
-      _lastError = 'liste $kind refusée après $secs s : ${shortReason(e)}';
+      final reason = kNovatubeTv ? e.runtimeType.toString() : shortReason(e);
+      _lastError = 'liste $kind refusée après $secs s : $reason';
       BlackBox.instance.warn(
         'SOURCE',
-        'liste $kind du panel refusée après $secs s : ${shortReason(e)}',
+        'liste $kind du panel refusée après $secs s : $reason',
       );
-      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: $e');
+      if (kDebugMode) debugPrint('[RemoteSource] $kind KO: ${kNovatubeTv ? reason : e}');
       return RemoteSyncResult.sourceFailed;
     } finally {
       importing.value = false;
@@ -175,7 +179,8 @@ abstract final class RemoteSourceRepository {
   /// refuserait pareil. Pur, testé.
   @visibleForTesting
   static bool shouldFallbackToM3u(Object? apiError) {
-    return apiError is! XtreamAuthException;
+    return apiError is! XtreamAuthException &&
+        (!kNovatubeTv || (apiError != SourceImportProblem.denied && apiError != SourceImportProblem.expired));
   }
 
   /// Première ligne du message d'erreur, 120 caractères au plus.
@@ -253,7 +258,10 @@ abstract final class RemoteSourceRepository {
   static Future<bool> _deleteFromTv(Playlist playlist, {http.Client? client}) async {
     final int? id = playlist.id;
     if (id == null) return false;
-    if (RepairFlags.tvDeleteLegacy) return true;
+    // NovaTube TV : suppression LOCALE seulement. La copie côté panel se
+    // gère dans Atlas (les routes /api/device-source et /api/self-source
+    // sont réservées aux fiches Zuno).
+    if (RepairFlags.tvDeleteLegacy || kNovatubeTv) return true;
     final List<String> fps = SourceFingerprint.ofPlaylist(playlist);
     final http.Client c = client ?? http.Client();
     try {
@@ -399,27 +407,36 @@ abstract final class RemoteSourceRepository {
 
   static Future<RemoteSyncResult> _syncBody({bool force = false}) async {
     try {
-      final String mac = await DeviceIdentity.instance.mac;
-      if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
+      final Map<String, dynamic> body;
+      if (kNovatubeTv) {
+        // Édition NovaTube TV : les listes envoyées par le panel arrivent
+        // dans la dernière réponse authentifiée /api/novatube4k/state (même
+        // format, déchiffré par le même code serveur). Rien d'assez sûr
+        // reçu → on GARDE les listes locales (jamais d'effacement sur doute).
+        final Map<String, dynamic>? served = NovatubeAtlas.instance.servedSources;
+        if (served == null) return RemoteSyncResult.networkError;
+        body = served;
+      } else {
+        final String mac = await DeviceIdentity.instance.mac;
+        if (!mac.startsWith('MK:')) return RemoteSyncResult.noSource;
 
-      // Enregistre le secret de cette box avant de demander les codes.
-      // Si le serveur connaît déjà l'empreinte, la requête suivante
-      // doit présenter le header. Sinon (box pas encore enrôlée côté
-      // serveur), l'ancienne lecture par MAC reste acceptée.
-      await DeviceSecret.instance.enroll(mac);
-      final http.Response resp = await http
-          .get(
-            Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
-            headers: await DeviceSecret.instance.headers(),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) {
-        BlackBox.instance.warn('PANEL', 'device-source HTTP ${resp.statusCode}');
-        return RemoteSyncResult.networkError;
+        // Enregistre le secret de cette box avant de demander les codes.
+        // Si le serveur connaît déjà l'empreinte, la requête suivante
+        // doit présenter le header. Sinon (box pas encore enrôlée côté
+        // serveur), l'ancienne lecture par MAC reste acceptée.
+        await DeviceSecret.instance.enroll(mac);
+        final http.Response resp = await http
+            .get(
+              Uri.parse('$kSubscriptionBaseUrl/api/device-source/$mac'),
+              headers: await DeviceSecret.instance.headers(),
+            )
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode != 200) {
+          BlackBox.instance.warn('PANEL', 'device-source HTTP ${resp.statusCode}');
+          return RemoteSyncResult.networkError;
+        }
+        body = jsonDecode(resp.body) as Map<String, dynamic>;
       }
-
-      final Map<String, dynamic> body =
-          jsonDecode(resp.body) as Map<String, dynamic>;
       // HTTP 200 ne suffit pas : une réponse incomplète n'est pas un ordre
       // de vider la box. Un tableau vide, lui, est une suppression explicite.
       if (body['sources'] is! List && !body.containsKey('source')) {
@@ -473,6 +490,7 @@ abstract final class RemoteSourceRepository {
           retryAlways: RepairFlags.sourceRetryAlways,
         );
         if (plan.skipped.isNotEmpty) {
+          if (kNovatubeTv) _lastError = 'Une liste reste à charger.';
           BlackBox.instance.info(
             'SOURCE',
             '${plan.skipped.length} liste(s) refusée(s) récemment mise(s) de côté '
@@ -483,6 +501,9 @@ abstract final class RemoteSourceRepository {
         for (final int index in plan.tryNow) {
           final Map<String, dynamic> item = items[index];
           final RemoteSyncResult r = await _applySource(item);
+          if (kNovatubeTv && r != RemoteSyncResult.loaded) {
+            _lastError ??= 'Une liste n’a pas pu être chargée.';
+          }
           final String? fp = SourceFingerprint.fromMap(item);
           if (fp != null && r != RemoteSyncResult.networkError) {
             failures = noteSourceOutcome(
@@ -562,6 +583,8 @@ abstract final class RemoteSourceRepository {
   /// pour retrouver « Récemment » et « Pour vous » immédiatement. Best-effort :
   /// ne throw jamais, n'écrase jamais un historique local déjà présent.
   static Future<void> syncHistory() async {
+    // NovaTube TV : pas de restauration par la route historique (MAC seule).
+    if (kNovatubeTv) return;
     try {
       final String mac = await DeviceIdentity.instance.mac;
       if (!mac.startsWith('MK:')) return;

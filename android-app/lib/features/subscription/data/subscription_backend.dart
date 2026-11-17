@@ -27,12 +27,14 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../device/data/device_identity.dart';
 import '../../playlists/domain/source_fingerprint.dart';
 import 'source_privacy.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../playlists/data/playlist_repository.dart';
 import '../../playlists/domain/playlist.dart';
+import 'novatube_atlas.dart';
 import 'now_playing.dart';
 import 'playback_health.dart';
 
@@ -73,7 +75,13 @@ class RemoteSubscriptionStatus {
     this.sourceRev,
     this.revoked = const <String>[],
     this.resetAt = 0,
+    this.pending = false,
   });
+
+  /// Édition NovaTube TV : fiche connue du serveur mais AUCUNE licence
+  /// ouverte (ni essai, ni payée) → « en attente d'activation ». Toujours
+  /// `false` pour Zuno (champ additif, absent des réponses historiques).
+  final bool pending;
 
   /// Heure (ms) de la dernière remise à neuf demandée depuis le panel
   /// (bouton « Réinitialiser la box », 06/10/2026). `0` = jamais, ou Worker
@@ -215,6 +223,10 @@ abstract final class SubscriptionBackend {
   /// (au plus une fois par minute pendant l'attente). La veille
   /// rapide passe par [getStatus], qui ne fait PAS d'écriture.
   static Future<RemoteStatusRead> heartbeat(String mac) async {
+    // Édition NovaTube TV : statut + présence par les routes authentifiées
+    // /api/novatube4k/* (application Atlas dédiée). Jamais /api/heartbeat,
+    // qui créerait une fiche Zuno avec un autre essai.
+    if (kNovatubeTv) return NovatubeAtlas.instance.readStatus(telemetry: true);
     try {
       // Infos appareil → le panel recense chaque Android où l'app tourne
       // (même partagée via WhatsApp), avec son modèle + numéro de build.
@@ -298,6 +310,14 @@ abstract final class SubscriptionBackend {
   /// transmet JAMAIS le mot de passe : type, nom, serveur, identifiant,
   /// nombre de chaînes et « active » suffisent à diagnostiquer. Tout est
   /// gardé dans un try/catch pour ne jamais faire échouer le heartbeat.
+  /// Inventaire des listes pour la présence NovaTube (même contenu que le
+  /// heartbeat historique : jamais de mot de passe).
+  static List<Map<String, Object?>> sourcesInventoryForPanel() =>
+      _sourcesInventory();
+
+  /// Historique de visionnage (identifiants de chaînes seulement).
+  static List<String> recentInventoryForPanel() => _recentInventory();
+
   static List<Map<String, Object?>> _sourcesInventory() {
     try {
       final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
@@ -340,6 +360,7 @@ abstract final class SubscriptionBackend {
   /// attendant l'activation. Timeout 6 s. Un échec renvoie
   /// [RemoteStatusRead.offline] : l'état déjà connu reste en place.
   static Future<RemoteStatusRead> getStatus(String mac) async {
+    if (kNovatubeTv) return NovatubeAtlas.instance.readStatus();
     try {
       final http.Response resp = await http
           .get(

@@ -27,7 +27,9 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../domain/device_identity_seed.dart';
+import 'novatube_identity.dart';
 
 class DeviceIdentity {
   DeviceIdentity._();
@@ -56,6 +58,9 @@ class DeviceIdentity {
   ///   3. Si l'ANDROID_ID est indisponible (erreur, plateforme non
   ///      Android), repli sur une MAC aléatoire (ancien comportement).
   Future<String> get mac async {
+    // Édition NovaTube TV : le code est celui de l'application Atlas
+    // NovaTube (même formule que le serveur), voir novatube_identity.dart.
+    if (kNovatubeTv) return NovatubeIdentity.instance.mac;
     if (_cached != null) return _cached!;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? stored = prefs.getString(_kKey);
@@ -149,7 +154,9 @@ class DeviceIdentity {
   }
 
   /// Valeur synchrone si déjà chargée, sinon "MK:??:??:??:??:??".
-  String get macSync => _cached ?? 'MK:??:??:??:??:??';
+  String get macSync => kNovatubeTv
+      ? NovatubeIdentity.instance.macSync
+      : (_cached ?? 'MK:??:??:??:??:??');
 
   /// Pré-charge — à appeler une fois au démarrage de l'app.
   Future<void> preload() async {

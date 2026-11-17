@@ -7,7 +7,16 @@
 //
 //  Tout ici est du calcul pur (pas de réseau, pas de Flutter) pour
 //  pouvoir le vérifier par des tests.
+//
+//  ÉDITION NOVATUBE TV (--dart-define=NOVATUBE_TV=true) : rythme plus
+//  calme, demandé par le propriétaire (« pas de synchronisation en boucle
+//  toutes les secondes ») : 5 s en attente, 15 s ensuite, filet 60 s quand
+//  le canal du panel est ouvert, reprise progressive jusqu'à 2 min si le
+//  réseau ne répond plus. L'activation reste immédiate quand le canal
+//  (WebSocket / attente longue) tient : la box est PRÉVENUE, elle ne
+//  dépend pas de ce rythme. Zuno garde exactement ses valeurs.
 // =========================================================
+import '../../../core/app/novatube_tv_edition.dart';
 
 /// Délai avant la prochaine lecture du statut.
 ///
@@ -25,20 +34,24 @@
 abstract final class ActivationPace {
   /// En attente d'activation ou de la première source.
   /// 60 lectures/min au pire, toujours sous le plafond 120.
-  static const Duration fast = Duration(seconds: 1);
+  static const Duration fast =
+      kNovatubeTv ? Duration(seconds: 5) : Duration(seconds: 1);
 
   /// Box déjà ouverte, avec des chaînes en cache.
   /// 2 s : une liste retirée dans le panel disparaît dans la
   /// fenêtre demandée, et une box ne fait qu'environ
   /// 30 lectures légères par minute (plafond Worker : 120).
-  static const Duration calm = Duration(seconds: 2);
+  static const Duration calm =
+      kNovatubeTv ? Duration(seconds: 15) : Duration(seconds: 2);
 
   /// Canal long ouvert : la box est déjà prévenue dès qu'un ordre
   /// arrive. On ne relit le statut qu'en filet, toutes les 25 s.
-  static const Duration parked = Duration(seconds: 25);
+  static const Duration parked =
+      kNovatubeTv ? Duration(seconds: 60) : Duration(seconds: 25);
 
   /// Plafond quand le réseau ne répond plus.
-  static const Duration ceiling = Duration(seconds: 45);
+  static const Duration ceiling =
+      kNovatubeTv ? Duration(minutes: 2) : Duration(seconds: 45);
 
   static Duration next({required bool waiting, required int failures}) {
     final int base = (waiting ? fast : calm).inMilliseconds;

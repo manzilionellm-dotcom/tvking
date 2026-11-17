@@ -25,6 +25,14 @@ import '../../../core/app/box_memory_budget.dart';
 /// aberrantes/malveillantes avant l'OOM. Le flux est interrompu dès dépassement.
 const int kMaxM3uBytes = 60 * 1024 * 1024;
 
+/// Taille max du M3U lu pour les FILMS ET SÉRIES (Cinéma). Ce fichier n'est
+/// jamais gardé en mémoire : il est écrit sur le disque au fil du
+/// téléchargement, puis lu ligne à ligne dans un isolate. Le plafond sert donc
+/// à protéger le DISQUE (fichier temporaire, effacé ensuite), pas la RAM.
+/// Un gros fournisseur (30 000 directs + 100 000 films + 300 000 épisodes)
+/// pèse 100 à 150 Mo.
+const int kMaxM3uVodBytes = 300 * 1024 * 1024;
+
 /// Taille max d'une réponse JSON Xtream (`get_live_streams`/VOD) acceptée.
 /// Le JSON Xtream est plus lourd que le M3U équivalent (clés répétées) → on
 /// laisse un peu plus large. Coupé en streaming dès dépassement.

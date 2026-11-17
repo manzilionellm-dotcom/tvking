@@ -25,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/update/update_service.dart';
@@ -53,6 +54,7 @@ import 'box_signal_client.dart';
 import 'order_ack_client.dart';
 import 'signal_inbox.dart';
 import 'subscription_backend.dart';
+import 'novatube_atlas.dart';
 import 'subscription_state.dart';
 
 class RemoteActivationWatch {
@@ -64,6 +66,7 @@ class RemoteActivationWatch {
   bool _tickBusy = false;
   bool _nudge = false;
   bool _allowSourceImport = true;
+  bool _novaSourceOrdered = false;
   bool _channelUp = false;
   int _failures = 0;
   int _signalFailures = 0;
@@ -108,6 +111,12 @@ class RemoteActivationWatch {
     _arm(ActivationPace.fast);
     _generation++;
     final int generation = _generation;
+    if (kNovatubeTv) {
+      // Le serveur lie cette attente à la clé de l’installation. Le signal
+      // réveille la lecture habituelle des droits, seule source de vérité.
+      unawaited(_waitNovatube(generation));
+      return;
+    }
     unawaited(_signalLoop(generation));
     // WebSocket d'abord. S'il ne tient pas, l'attente longue
     // (déjà dans _signalLoop) prend le relais. L'interrupteur
@@ -118,7 +127,10 @@ class RemoteActivationWatch {
   /// « J'ai payé — Vérifier », ou juste après un changement de
   /// licence : on regarde tout de suite, sans attendre le délai.
   void nudge() {
-    _nudge = true;
+    if (kNovatubeTv && !_run) return;
+    // Un réveil pendant une lecture doit être rejoué. À l’arrêt du minuteur,
+    // le prochain tick immédiat suffit et ne doit pas se doubler.
+    _nudge = !kNovatubeTv || _tickBusy;
     if (_tickBusy) return;
     _timer?.cancel();
     _arm(Duration.zero);
@@ -149,6 +161,7 @@ class RemoteActivationWatch {
     _signalFailures = 0;
     _channelUp = false;
     _lastSourceRev = null;
+    _novaSourceOrdered = false;
     _session?.stop();
     _session = null;
     _signalHttp?.close();
@@ -219,6 +232,12 @@ class RemoteActivationWatch {
       if (snapOf().revoked.isNotEmpty) {
         await RemoteSourceRepository.applyRevocations(snapOf().revoked);
       }
+      // Un ordre arrivé pendant une lecture précédente reste en attente
+      // jusqu’à ce que l’état authentifié soit disponible.
+      if (kNovatubeTv && _novaSourceOrdered) {
+        sourceOrdered = true;
+        _novaSourceOrdered = false;
+      }
       await _maybeImportSource(ordered: sourceOrdered);
     } finally {
       _tickBusy = false;
@@ -273,7 +292,21 @@ class RemoteActivationWatch {
       force: ordered,
     );
     if (result == RemoteSyncResult.networkError) return;
-    if (snap.sourceRev != null) _lastSourceRev = snap.sourceRev;
+    final rev = snap.sourceRev;
+    if (kNovatubeTv && rev != null && rev > 0) {
+      final report = RemoteSourceRepository.lastReport;
+      // Une révision multi-listes peut réussir partiellement. Un refus, une
+      // liste différée ou une ancienne révision ne valident jamais l’ensemble.
+      if (report == null || report.configRev != rev || report.error != null ||
+          report.keptPrevious || result == RemoteSyncResult.sourceFailed) {
+        return;
+      }
+      final acked = await NovatubeAtlas.instance.ack(rev);
+      BlackBox.instance.info('PANEL', 'listes NovaTube rev $rev : '
+          '${acked ? 'reçu envoyé' : 'reçu refusé, nouvel essai plus tard'}');
+      if (!acked) return;
+    }
+    if (rev != null) _lastSourceRev = rev;
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite
     // (heartbeat), au lieu d'attendre le prochain heartbeat régulier. Le
     // panel (bouton « Envoi instantané ») voit alors « Liste sur la TV
@@ -288,6 +321,54 @@ class RemoteActivationWatch {
         'PANEL',
         'inventaire envoyé au panel après la liste (${hb.name})',
       );
+    }
+  }
+
+  /// L’attente longue dédiée à NovaTube reste ouverte pendant la navigation.
+  /// Le filet de sécurité à 5/15 s garde son rythme, même si le signal tombe.
+  Future<void> _waitNovatube(int generation) async {
+    final http.Client client = http.Client();
+    _signalHttp = client;
+    int after = 0;
+    int failures = 0;
+    bool current() => _run && _generation == generation;
+    try {
+      while (current()) {
+        final Stopwatch clock = Stopwatch()..start();
+        try {
+          final reply = await NovatubeAtlas.instance.waitForChanges(client, after);
+          if (!current()) return;
+          final orders = reply.body?['box'];
+          if (reply.status != 200 || orders is! List) {
+            throw const FormatException('Attente indisponible');
+          }
+          failures = 0;
+          final previous = after;
+          for (final order in orders.whereType<Map<String, Object?>>()) {
+            final seq = order['id'];
+            if (seq is int && seq > previous) {
+              if (seq > after) after = seq;
+              final kind = order['kind'] ?? order['type'];
+              if (kind == 'source' || kind == 'source_clear') _novaSourceOrdered = true;
+            }
+          }
+          if (after > previous) {
+            nudge();
+          } else if (clock.elapsed < ActivationPace.fast) {
+            // Un proxy qui répond vide immédiatement ne crée pas de boucle.
+            await _pause(ActivationPace.fast - clock.elapsed, generation);
+          }
+        } on Exception {
+          if (!current()) return;
+          await _pause(ActivationPace.next(waiting: true, failures: failures), generation);
+          if (failures < 6) failures++;
+        }
+      }
+    } finally {
+      if (identical(_signalHttp, client)) {
+        _signalHttp = null;
+        client.close();
+      }
     }
   }
 

@@ -23,6 +23,15 @@ import '../../../core/theme/remote_theme_settings.dart';
 import '../../../core/theme/theme_mode_repository.dart';
 import '../../subscription/data/subscription_backend.dart';
 
+// Interrupteur de l'édition NovaTube TV : le MÊME define que
+// lib/core/app/novatube_tv_edition.dart, relu ici SANS import. Ce fichier
+// est copié tel quel dans l'arbre du téléphone 7 MOTION
+// (ci/mobile/mobile_controls_options.py), qui ne contient pas l'édition
+// NovaTube : un import y casserait l'analyse et la construction du
+// téléphone. Sans `--dart-define=NOVATUBE_TV=true`, la valeur est `false` :
+// Zuno et le téléphone gardent exactement leur comportement.
+const bool _kNovatubeTv = bool.fromEnvironment('NOVATUBE_TV');
+
 abstract final class RemoteThemeRepository {
   static final ValueNotifier<RemoteThemeSettings> current =
       ValueNotifier<RemoteThemeSettings>(const RemoteThemeSettings());
@@ -31,6 +40,11 @@ abstract final class RemoteThemeRepository {
   /// Récupère le thème distant. Une réponse ancienne ne peut pas annuler
   /// une modification plus récente reçue sur le canal du panel.
   static Future<void> fetchAndApply({bool strict = false}) async {
+    // Édition NovaTube TV : le thème vert pétrole est DÉFINITIF. Le thème
+    // « tv » du panel appartient aux box Zuno (nom, accent, clair/sombre) :
+    // on ne le télécharge pas, sinon un client NovaTube verrait le nom ou
+    // la couleur d'une autre application. Rien d'autre n'est désactivé.
+    if (_kNovatubeTv) return;
     final request = ++_request;
     try {
       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV

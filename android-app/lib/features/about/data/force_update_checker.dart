@@ -26,6 +26,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../../core/app/novatube_tv_edition.dart';
 
 import '../../../core/app/app_platform.dart';
 import '../../../core/app/build_info.dart';
@@ -41,6 +42,8 @@ class ForceUpdateChecker {
       {Duration timeout = const Duration(seconds: 6), bool strict = false}) async {
     // Play Store : la mise à jour forcée passe par le Store, pas par
     // le sideload GitHub. On ne déclenche jamais ce flux côté Play.
+    // NovaTube TV : la version minimale publiée concerne les box Zuno.
+    if (kNovatubeTv) return false;
     if (kIsPlayBuild || kBuildTs <= 0) {
       if (strict) throw StateError('Commande APK non applicable à ce build');
       return false;

@@ -28,11 +28,13 @@ import '../core/tv_activity.dart';
 import '../core/tv_sync_policy.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_provider_channel_name.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
 import '../domain/live_shelves.dart';
 import '../domain/live_catalog_index.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 import '../domain/vip_channel_groups.dart';
 import '../../device/data/device_identity.dart';
 import '../../epg/data/epg_repository.dart';
@@ -79,6 +81,10 @@ final RegExp _tvCodecWords = RegExp(
   r'(^|\s)(raw|hevc|h\.?264|h\.?265|vip|fhd|uhd|sd|4k|hd|60\s?fps|50\s?fps|multi|multilang|backup|bkp)(?=\s|$)',
   caseSensitive: false,
 );
+String _tvLiveTitle(BuildContext context, Channel channel) => kNovatubeTv
+    ? tvProviderChannelName(channel, context.l10n.tvVoiceKindChannel)
+    : _tvPretty(channel.cleanName);
+
 String _tvStripCodec(String s) {
   String r = s;
   String before;
@@ -92,7 +98,9 @@ String _tvStripCodec(String s) {
 }
 
 class TvLiveScreen extends StatefulWidget {
-  const TvLiveScreen({super.key});
+  const TvLiveScreen({this.openFavorites = false, super.key});
+
+  final bool openFavorites;
 
   @override
   State<TvLiveScreen> createState() => _TvLiveScreenState();
@@ -250,10 +258,13 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.openFavorites) _selectedCat = _kFavCat;
     TvActivity.enter();
-    VipCountriesRepository.instance.addListener(_onVipChanged);
-    ActiveProfile.instance.listenable.addListener(_onVipProfileChanged);
-    VipCountriesRepository.instance.load();
+    if (!kNovatubeTv) {
+      VipCountriesRepository.instance.addListener(_onVipChanged);
+      ActiveProfile.instance.listenable.addListener(_onVipProfileChanged);
+      VipCountriesRepository.instance.load();
+    }
     BlackBox.instance.info('SCREEN', 'Direct ouvert');
     _ingest(PlaylistRepository.instance.currentChannels);
     _sub = PlaylistRepository.instance.channelsStream.listen(_ingest);
@@ -339,8 +350,10 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     TvActivity.leave();
     BlackBox.instance.info('SCREEN', 'Direct fermé');
     _ingestGen++; // annule un pré-calcul en cours
-    VipCountriesRepository.instance.removeListener(_onVipChanged);
-    ActiveProfile.instance.listenable.removeListener(_onVipProfileChanged);
+    if (!kNovatubeTv) {
+      VipCountriesRepository.instance.removeListener(_onVipChanged);
+      ActiveProfile.instance.listenable.removeListener(_onVipProfileChanged);
+    }
     _sub?.cancel();
     _favSub?.cancel();
     _trendSub?.cancel();
@@ -499,7 +512,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Groupes pays construits UNE FOIS par lot, à partir du cache calculé
     // en isolate. Jamais de regex sur toutes les chaînes au déplacement D-pad.
-    _countryChannels = !_precomputed
+    _countryChannels = kNovatubeTv || !_precomputed
         ? const {}
         : RepairFlags.liveShelvesLegacy
         ? vipChannelGroups(_all)
@@ -512,11 +525,11 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     }
     // Catégories affichées (pays VIP dans l'ordre choisi, puis autres rayons).
     final List<String> cats = <String>[
-      for (final code in VipCountriesRepository.instance.current)
-        '$_vipPrefix$code',
+      if (!kNovatubeTv)
+        for (final code in VipCountriesRepository.instance.current) '$_vipPrefix$code',
     ];
     if (_trendCh.isNotEmpty) cats.add(_kTrendCat);
-    if (_favCh.isNotEmpty) cats.add(_kFavCat);
+    if (widget.openFavorites || _favCh.isNotEmpty) cats.add(_kFavCat);
     if (_recentCh.isNotEmpty) cats.add(_kRecentCat);
     if (_forYouCh.isNotEmpty) cats.add(_kForYouCat);
     cats.addAll(_cats);
@@ -949,7 +962,9 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       children: [
         // « Mes pays · VIP » et, juste à côté, la recherche : même écran
         // que le micro de la télécommande (chaînes, films, séries).
-        Row(
+        if (kNovatubeTv)
+          TvCtaButton(label: context.l10n.tvNavSearch, onSelect: _openSearch)
+        else Row(
           children: <Widget>[
             Expanded(
               child: TvCtaButton(
@@ -1393,7 +1408,7 @@ class _ResumeCardState extends State<_ResumeCard> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _tvPretty(c.cleanName),
+                  _tvLiveTitle(context, c),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1488,7 +1503,7 @@ class _LiveHeroState extends State<_LiveHero> {
                   const _LivePill(),
                   const SizedBox(height: 10),
                   Text(
-                    _tvPretty(c.cleanName),
+                    _tvLiveTitle(context, c),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1814,7 +1829,7 @@ class _ChannelCardState extends State<_ChannelCard> {
   Widget build(BuildContext context) {
     final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
-    final String name = _parseName(channel);
+    final String name = _parseName(context, channel);
     // Les mentions 4K/HD du nom sont des promesses de la playlist. Aucune
     // carte n'en fait un badge technique : seule la lecture mesure l'image.
     // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
@@ -1935,7 +1950,8 @@ class _ChannelCardState extends State<_ChannelCard> {
   static final RegExp _trailSep = RegExp(r'[\s|·\-–]+$');
   static final Map<String, String> _nameMemo = <String, String>{};
 
-  static String _parseName(Channel c) {
+  static String _parseName(BuildContext context, Channel c) {
+    if (kNovatubeTv) return _tvLiveTitle(context, c);
     final String key = c.cleanName;
     final String? hit = _nameMemo[key];
     if (hit != null) return hit;
@@ -2212,8 +2228,8 @@ class _ChannelRowState extends State<_ChannelRow> {
   @override
   Widget build(BuildContext context) {
     final Channel channel = widget.channel;
-    // Même nom nettoyé que la grille, sans qualité déduite de la playlist.
-    final String name = _ChannelCardState._parseName(channel);
+    // Même libellé que la grille. La qualité mesurée reste dans le bandeau du lecteur.
+    final String name = _ChannelCardState._parseName(context, channel);
     if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -2385,7 +2401,7 @@ class _PreviewInfoState extends State<_PreviewInfo> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            _tvPretty(c.cleanName),
+            _tvLiveTitle(context, c),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TvAppTokens.of(context)
