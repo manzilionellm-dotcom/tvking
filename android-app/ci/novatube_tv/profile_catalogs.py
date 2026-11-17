@@ -52,6 +52,26 @@ def preparer_demarrage(launcher_package):
         time.sleep(.25)
 
 
+def attendre_demarrage_stable():
+    # Couper trois processus avant la remise à zéro du compteur de
+    # démarrage déclenche la protection réelle et suspend les imports panel.
+    # On laisse ce garde-fou actif. Cette attente suit la mesure am start -W.
+    pid = adb('shell', 'pidof', PKG).strip()
+    if not pid.isdecimal():
+        raise RuntimeError('Impossible d’identifier le processus NovaTube démarré.')
+    limit = time.monotonic() + 45
+    while time.monotonic() < limit:
+        journal = adb('logcat', '-d', '--pid', pid, '-s', 'flutter:I')
+        if '[BootGuard] BOUCLE de redémarrage' in journal:
+            raise RuntimeError('Le processus de mesure est entré en mode sans échec.')
+        if '[BootGuard] app stable' in journal:
+            if adb('shell', 'pidof', PKG).strip() != pid:
+                raise RuntimeError('Le processus mesuré a redémarré pendant la vérification.')
+            return
+        time.sleep(.5)
+    raise RuntimeError('Le processus NovaTube ne confirme pas un démarrage stable.')
+
+
 def requete(method, path, body=None, token=None):
     headers = {'Content-Type': 'application/json'}
     if token:
@@ -203,7 +223,7 @@ with contextlib.ExitStack() as stack:
         if tags.get('Status') != 'ok' or tags.get('LaunchState') != 'COLD' or tags.get('Activity') != COMPONENT:
             raise RuntimeError(f'Essai {essai} : Android ne confirme pas le démarrage à froid de NovaTube.')
         cold.append(int(tags['TotalTime']))
-        time.sleep(3)
+        attendre_demarrage_stable()
     print('Démarrage profil médian (ms)', statistics.median(cold), flush=True)
     token = requete('POST', '/api/v1/auth/login', {'email': 'admin', 'password': cfg['adminSecret']})['token']
     for _ in range(30):
@@ -267,4 +287,4 @@ with contextlib.ExitStack() as stack:
         # Rétablit le focus de départ sur l'accueil avant la prochaine liste.
         preparer_demarrage(launcher)
         adb('shell','am','start','-W','-n',COMPONENT)
-        time.sleep(4)
+        attendre_demarrage_stable()
