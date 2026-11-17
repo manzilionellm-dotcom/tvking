@@ -255,7 +255,7 @@ class RemoteActivationWatch {
         _novaSourceOrdered = false;
       }
       if (kNovatubeTv) {
-        final commands = atlas.pendingOrders;
+        final commands = atlas.pendingOrders.where(atlas.stateCovers).toList();
         if (resetAt > 0 && commands.any((o) => o['kind'] == 'reset')) {
           final prefs = await SharedPreferences.getInstance();
           if (prefs.getInt(BoxReset.appliedKey) == resetAt) {

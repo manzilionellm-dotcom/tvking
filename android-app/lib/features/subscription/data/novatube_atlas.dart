@@ -61,6 +61,14 @@ class NovatubeAtlas {
   bool _registered = false;
   DateTime _lastTelemetry = DateTime.fromMillisecondsSinceEpoch(0);
 
+  // Heure Atlas de la lecture de droits. Un ordre arrivé après cette lecture
+  // doit attendre le statut suivant avant de pouvoir être confirmé.
+  int _stateReadAt = 0;
+  bool stateCovers(Map<String, dynamic> order) {
+    final created = order['created_at'];
+    return created is int && created > 0 && created <= _stateReadAt;
+  }
+
   Future<void>? _panelInFlight;
   final Map<String, Map<String, dynamic>> _orders = {};
   List<Map<String, dynamic>> get pendingOrders => _orders.values.toList();
@@ -87,6 +95,7 @@ class NovatubeAtlas {
       final Map<String, dynamic>? body = r.body;
       if (r.ok && body != null) {
         _registered = true;
+        _stateReadAt = (body['server_now'] as num?)?.toInt() ?? 0;
         recoveryCode.value = null;
         _keepServedSources(body);
         // Signaux du panel (demande de journal…), même format qu'avant.
@@ -97,6 +106,9 @@ class NovatubeAtlas {
         return RemoteStatusRead(status: mapState(body), reached: true);
       }
       if (r.status == 409 && body != null) {
+        _stateReadAt = 0;
+        servedSources = null;
+        _orders.clear();
         // Fiche existante, autre clé : réassociation à faire approuver.
         final Object? recovery = body['recovery'];
         recoveryCode.value =
@@ -349,6 +361,7 @@ class NovatubeAtlas {
   @visibleForTesting
   void resetForTesting() {
     _registered = false;
+    _stateReadAt = 0;
     _orders.clear();
     _panelInFlight = null;
     _lastTelemetry = DateTime.fromMillisecondsSinceEpoch(0);

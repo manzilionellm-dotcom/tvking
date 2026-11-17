@@ -172,10 +172,13 @@ void main() {
     final resetClock = Stopwatch()..start();
     final reset = await http.post(Uri.parse('$endpoint/reset'), headers: auth);
     expect(reset.statusCode, 200);
-    final stamp = (jsonDecode(reset.body) as Map)['reset_at'] as int;
+    final resetBody = jsonDecode(reset.body) as Map<String, dynamic>;
+    final stamp = resetBody['reset_at'] as int;
+    final resetId = resetBody['order_id'] as String;
     await attendre(() async => (await repo.getAllPlaylists()).isEmpty, 'remise à neuf locale');
     final prefs = await SharedPreferences.getInstance();
     await attendre(() async => prefs.getInt(BoxReset.appliedKey) == stamp, 'effacement terminé');
+    await attendre(() async => await ordre(resetId) == 'applied', 'reset confirmé au panel');
     // ignore: avoid_print
     print('ATLAS_LOCAL reset_ms=${resetClock.elapsedMilliseconds}');
     expect(await NovatubeIdentity.instance.mac, mac);
