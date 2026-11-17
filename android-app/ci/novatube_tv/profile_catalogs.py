@@ -1,6 +1,7 @@
 """Mesures Android 11 sur le panel de test en boucle locale. Un seul appareil."""
 import contextlib
 import http.server
+import io
 import json
 from pathlib import Path
 import re
@@ -14,6 +15,8 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from PIL import Image
+from screen_label import chercher
 
 SERIAL, PKG, COMPONENT, OUTPUT, FIXTURE, MEDIA, TLS = sys.argv[1:]
 out = Path(OUTPUT)
@@ -195,6 +198,61 @@ def confirme(endpoint, token, rev):
     return any(item['rev'] == rev and item['state'] == 'acknowledged' for item in status['revisions'])
 
 
+def ecran(fichier):
+    with fichier.open('wb') as image:
+        subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'screencap', '-p'], stdout=image, check=True)
+
+
+def ouvrir_direct(label):
+    capture = out / (label + '-direct.png')
+    avis_acquitte = False
+    tuile_appuyee = False
+    for _ in range(15):
+        ecran(capture)
+        with Image.open(capture) as image:
+            hauteur = image.height
+
+        def dans_zone(motif, gauche, droite, haut, bas):
+            point = chercher(str(capture), motif, gauche, droite)
+            return point if point and haut <= point[1] / hauteur <= bas else None
+
+        # Le panel peut retirer la source précédente avant ou juste après le
+        # clic sur Live. Le texte de l'accueil reste visible derrière le dialogue.
+        titre = dans_zone('removed', .28, .40, .32, .45)
+        bouton = dans_zone('continue', .53, .80, .46, .64)
+        if titre or bouton:
+            if titre and bouton and not avis_acquitte:
+                (out / (label + '-avis-retrait.png')).write_bytes(capture.read_bytes())
+                adb('shell', 'input', 'tap', str(bouton[0]), str(bouton[1]))
+                avis_acquitte = True
+                tuile_appuyee = False
+        elif (dans_zone('canal', .31, .55, .035, .85)
+              and dans_zone('groupe', .03, .22, .15, .85)):
+            return
+        elif not tuile_appuyee and dans_zone('tonight', .03, .25, .21, .40):
+            tuile = dans_zone('live|direct', .035, .17, .11, .27)
+            if tuile:
+                (out / (label + '-accueil.png')).write_bytes(capture.read_bytes())
+                adb('shell', 'input', 'tap', str(tuile[0]), str(tuile[1]))
+                tuile_appuyee = True
+        time.sleep(.5)
+    raise RuntimeError(f'Les colonnes de chaînes et de catégories ne sont pas apparues pour {label}.')
+
+
+def lignes_visibles(capture, colonne):
+    # Les libellés générés « Canal N » et « Groupe N » identifient les
+    # lignes effectivement affichées dans chaque colonne indépendamment du focus.
+    gauche, droite, prefixe = (.38, .56, 'canal') if colonne == 'chaines' else (.035, .225, 'groupe')
+    with Image.open(capture) as image:
+        w, h = image.size
+        zone = image.crop((int(w * gauche), int(h * .04), int(w * droite), int(h * .87)))
+        data = io.BytesIO()
+        zone.save(data, format='PNG')
+    texte = subprocess.check_output(['tesseract', 'stdin', 'stdout', '--psm', '6'],
+                                    input=data.getvalue(), stderr=subprocess.DEVNULL).decode()
+    return sorted({int(n) for n in re.findall(r'\b' + prefixe + r'\s*(\d+)', texte.lower())})
+
+
 with contextlib.ExitStack() as stack:
     fixture_dir = Path(TLS)
     cert = fixture_dir / 'server.pem'
@@ -252,32 +310,26 @@ with contextlib.ExitStack() as stack:
         mesure = {'panel_confirmation_ms': round((time.monotonic()-start)*1000),
                   'requetes': requests[tls, n], 'import': frames(label + '-import'),
                   'catalogue_verifie': catalogue_enregistre(url, n)}
-        # La première tuile peut être une recommandation. Ouvrir le Direct
-        # sur le libellé visible, puis confirmer le contenu de la liste.
-        def ecran(fichier):
-            with fichier.open('wb') as image:
-                subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'screencap', '-p'],
-                               stdout=image, check=True)
-        from screen_label import chercher
-        def trouver(motif, fichier):
-            for _ in range(10):
-                ecran(fichier)
-                point = chercher(str(fichier), motif, 0, 1)
-                if point:
-                    return point
-                time.sleep(.5)
-            raise RuntimeError(f'Libellé {motif} absent sur la capture {fichier.name}')
-        accueil = out / (label + '-accueil.png')
-        x, y = trouver('live|direct', accueil)
-        adb('shell', 'input', 'tap', str(x), str(y))
-        direct = out / (label + '-direct.png')
-        trouver('canal|groupe', direct)
-        for colonne, touch in [('chaines',None),('categories','KEYCODE_DPAD_LEFT')]:
-            if touch:
+        (out / (label + '-import.json')).write_text(json.dumps(mesure, indent=2))
+        ouvrir_direct(label)
+        for colonne in ('chaines', 'categories'):
+            # Depuis la liste, Gauche ramène à la catégorie sélectionnée.
+            # Droite entre à nouveau dans les chaînes à partir de cette catégorie.
+            touches = ['KEYCODE_DPAD_LEFT', 'KEYCODE_DPAD_RIGHT'] if colonne == 'chaines' else ['KEYCODE_DPAD_LEFT']
+            for touch in touches:
                 adb('shell', 'input', 'keyevent', touch)
+            avant = out / f'{label}-{colonne}-avant.png'
+            apres = out / f'{label}-{colonne}-apres.png'
+            ecran(avant)
             adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset')
             adb('shell', 'for i in $(seq 1 35); do input keyevent KEYCODE_DPAD_DOWN; done')
             mesure[colonne] = frames(label + '-' + colonne)
+            time.sleep(.5)
+            ecran(apres)
+            debut = lignes_visibles(avant, colonne)
+            fin = lignes_visibles(apres, colonne)
+            mesure[colonne].update(lignes_avant=debut, lignes_apres=fin,
+                                   defilement_confirme=len(debut) >= 2 and len(set(fin) - set(debut)) >= 2)
         (out / (label + '-memoire.txt')).write_text(adb('shell','dumpsys','meminfo',PKG))
         measures['catalogues'][label] = mesure
         (out / 'mesures-profil.json').write_text(json.dumps(measures, indent=2))
