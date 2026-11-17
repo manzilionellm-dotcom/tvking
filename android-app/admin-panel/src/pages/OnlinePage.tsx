@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
+import { NovaTubePlaybackProbe, type TvReading } from '@/components/NovaTubePlaybackProbe';
+import { NOVATUBE_TV_VERSION } from '@/lib/blackbox';
 import {
   Alert, EmptyState, Pager, SearchField, SortTh, StatusBadge,
   TableFrame, useClientTable,
@@ -26,6 +28,16 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   const gen = useRef(createGeneration());
   const aborts = useRef(createAbortBag());
   const appliedSeq = useRef(0);
+  const [readings, setReadings] = useState<Record<string, TvReading>>({});
+  const onReading = useCallback((mac: string, reading: TvReading | null) => {
+    setReadings(previous => {
+      if (reading) return { ...previous, [mac]: reading };
+      if (!previous[mac]) return previous;
+      const next = { ...previous };
+      delete next[mac];
+      return next;
+    });
+  }, []);
 
   const load = useCallback(() => {
     const id = gen.current.next();
@@ -55,16 +67,25 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
   }, [load]);
 
   const byCountry = data ? data.byCountry : [];
+  const now = Date.now();
+  const readingFor = (d: OnlineView['items'][number]) => {
+    if (d.app_version && d.app_version !== NOVATUBE_TV_VERSION) return undefined;
+    return readings[d.mac];
+  };
+  const observationFor = (d: OnlineView['items'][number]) => {
+    const r = readingFor(d);
+    return r && r.expiresAt > now ? r.observation : null;
+  };
   const table = useClientTable(data?.items ?? [], {
-    textOf: (d) => [d.country, countryName(d.country), d.ip, d.mac, d.channel, d.device_model, deviceKind(d)]
+    textOf: (d) => [d.country, countryName(d.country), d.ip, d.mac, d.channel || observationFor(d)?.name, d.device_model || readingFor(d)?.model, deviceKind(d)]
       .filter(Boolean).join(' '),
     matchAlso: (d, query) => macSearchMatches(d.mac, query),
     valueOf: (d, key) => {
       if (key === 'country') return d.country || '';
       if (key === 'ip') return d.ip || '';
       if (key === 'mac') return d.mac;
-      if (key === 'channel') return d.channel || '';
-      if (key === 'device') return d.device_model || '';
+      if (key === 'channel') return d.channel || observationFor(d)?.name || '';
+      if (key === 'device') return d.device_model || readingFor(d)?.model || '';
       // Non mesuré = rangé après les vraies valeurs.
       if (key === 'quality') return d.quality == null ? -1 : d.quality;
       if (key === 'seen') return d.lastSeen || 0;
@@ -158,7 +179,15 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                 </tr>
               </thead>
               <tbody>
-                {table.rows.map((d) => (
+                {table.rows.map((d) => {
+                  const reading = readingFor(d);
+                  const observation = observationFor(d);
+                  const model = d.device_model || reading?.model || '';
+                  const device = model ? { ...d, device_model: model } : d;
+                  const version = appVersionLabel(d.app_version, null);
+                  let versionText = version ? `ZUNO ${version}` : '';
+                  if (reading || d.app_version === NOVATUBE_TV_VERSION) versionText = 'NovaTube TV 1.0.0';
+                  return (
                   <tr key={d.mac} className="border-t border-white/5">
                     <td className="px-4 py-2.5"><StatusBadge status="online" /></td>
                     <td className="px-4 py-2.5">
@@ -168,12 +197,11 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.ip || '—'}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-ink-secondary">{d.mac}</td>
                     <td className="px-4 py-2.5 text-xs">
-                      {d.device_model ? (
+                      {model ? (
                         <>
-                          <div className="text-ink-primary">{deviceKind(d) || d.device_model}</div>
+                          <div className="text-ink-primary">{deviceKind(device) || model}</div>
                           <div className="text-[10px] text-ink-tertiary">
-                            {[deviceKind(d) ? d.device_model : '', appVersionLabel(d.app_version, null)
-                              ? `ZUNO ${appVersionLabel(d.app_version, null)}` : '']
+                            {[deviceKind(device) ? model : '', versionText]
                               .filter(Boolean).join(' · ')}
                           </div>
                         </>
@@ -182,12 +210,22 @@ export function OnlinePage({ onLogout }: { onLogout: () => void }) {
                     <td className="px-4 py-2.5 text-xs">
                       {d.channel
                         ? <span className="inline-flex items-center gap-1 text-accent-bright">▶ {d.channel}</span>
+                        : observation ? (
+                          <>
+                            <div>{observation.name}</div>
+                            <div className="text-[10px] text-ink-secondary">
+                              Dernière chaîne signalée · {observation.time} (heure TV)
+                            </div>
+                          </>
+                        )
                         : <span className="text-ink-tertiary">—</span>}
+                      {!d.channel && <NovaTubePlaybackProbe mac={d.mac} version={d.app_version} platform={d.platform} onReading={onReading} />}
                     </td>
                     <td className="px-4 py-2.5"><QualityMeter value={d.quality} /></td>
                     <td className="px-4 py-2.5 text-xs text-ink-tertiary">{agoLabel(d.lastSeen)}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 {table.total === 0 && (
                   <tr>
                     <td colSpan={8}>
