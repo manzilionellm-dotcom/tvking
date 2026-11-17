@@ -19,6 +19,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import '../../channels/data/recently_watched_repository.dart';
+import '../../epg/data/epg_fetch.dart' show kEpgReplayKeepHours;
+import '../../profiles/data/active_profile.dart';
 import 'tv_localized_format.dart';
 import '../../channels/domain/channel.dart';
 import '../../epg/data/epg_repository.dart';
@@ -33,19 +37,26 @@ import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_shell.dart';
 
+enum NovaGuideSection { past, upcoming, watched }
+
 class TvChannelGuideScreen extends StatefulWidget {
   const TvChannelGuideScreen({
     super.key,
     required this.channel,
     this.currentSummary,
     this.loadPrograms,
+    this.loadHistory,
+    this.selectLive = false,
   });
 
   final Channel channel;
+  final bool selectLive;
   final MissedSummary? currentSummary;
 
   /// Source des programmes (tests). Par défaut : le guide du jour en base.
   final Future<List<EpgProgram>> Function(String channelId)? loadPrograms;
+
+  final Future<List<EpgProgram>> Function(String channelId)? loadHistory;
 
   @override
   State<TvChannelGuideScreen> createState() => _TvChannelGuideScreenState();
@@ -56,6 +67,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
   /// défilement D-pad ne « saute » pas.
   static const double _rowExtent = 96;
 
+  NovaGuideSection _section = NovaGuideSection.upcoming;
   late Future<List<EpgProgram>> _future = _load();
   final ScrollController _scroll = ScrollController();
   final FocusNode _retryNode = FocusNode();
@@ -63,10 +75,108 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
   bool _didFocusLive = false;
   bool _didFocusRetry = false;
 
-  Future<List<EpgProgram>> _load() =>
-      (widget.loadPrograms ?? EpgRepository.instance.todayPrograms)(
-        widget.channel.id,
-      );
+  @override
+  void initState() {
+    super.initState();
+    if (kNovatubeMax) ActiveProfile.instance.listenable.addListener(_retry);
+  }
+
+  Future<List<EpgProgram>> _load() async {
+    final String id = widget.channel.id;
+    if (!kNovatubeMax) {
+      return (widget.loadPrograms ?? EpgRepository.instance.todayPrograms)(id);
+    }
+    if (_section == NovaGuideSection.watched) {
+      return (widget.loadHistory ?? RecentlyWatchedRepository.instance.watchedPrograms)(id);
+    }
+    final bool past = _section == NovaGuideSection.past;
+    final DateTime now = DateTime.now();
+    // Bornes identiques à celles de l'import XMLTV. On ne lit qu'une chaîne
+    // au choix de l'onglet, sans requête réseau ni nouvelle synchronisation.
+    final int from = (past ? now.subtract(const Duration(hours: kEpgReplayKeepHours)) : now)
+        .millisecondsSinceEpoch;
+    final int to = (past ? now : now.add(const Duration(hours: 48))).millisecondsSinceEpoch;
+    final load = widget.loadPrograms;
+    final items = load == null ? await EpgRepository.instance.programsBetween(id, from, to)
+        : await load(id);
+    final nowMs = now.millisecondsSinceEpoch;
+    final kept = items.where((p) => p.stopTime > from && p.startTime < to &&
+        (!past || p.stopTime <= nowMs)).toList();
+    kept.sort((a, b) => past ? b.startTime.compareTo(a.startTime) : a.startTime.compareTo(b.startTime));
+    return kept;
+  }
+
+  void _choose(NovaGuideSection section) {
+    if (_section == section) return;
+    setState(() {
+      _section = section;
+      _didFocusLive = true; // le focus reste sur l'onglet choisi
+      _didFocusRetry = false;
+      _future = _load();
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  Widget _sectionTabs(BuildContext context) {
+    final labels = <NovaGuideSection, String>{
+      NovaGuideSection.past: context.l10n.novaGuidePast,
+      NovaGuideSection.upcoming: context.l10n.profileTvGuideSub,
+      NovaGuideSection.watched: context.l10n.novaGuideHistory,
+    };
+    return Row(
+      children: [
+        for (final section in NovaGuideSection.values)
+          Expanded(child: Semantics(
+            selected: section == _section, button: true,
+            child: TvFocusBuilder(
+              key: ValueKey(section), scale: TvFocusScale.none,
+              onSelect: () => _choose(section),
+              builder: (context, focused) {
+                final colors = TvAppTokens.of(context);
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: section == _section || focused ? colors.sel : Colors.transparent,
+                    borderRadius: BorderRadius.circular(TvTokens.rSmall),
+                    border: Border.all(color: focused ? colors.accentBright :
+                        section == _section ? colors.accent : Colors.transparent, width: 2),
+                  ),
+                  child: Text(labels[section]!, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: colors.ui(TvDimens.label, weight: FontWeight.w700, color: colors.text)),
+                );
+              },
+            ),
+          )),
+      ],
+    );
+  }
+
+  Future<void> _details(EpgProgram p) async {
+    final replay = ReplayChoice.urlFor(widget.channel, p, DateTime.now()) != null;
+    final choose = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(p.title),
+        content: SingleChildScrollView(child: Text([
+          '${tvDateTime(dialog, p.startDateTime)} – ${tvTime(dialog, p.stopDateTime)}',
+          if ((p.description ?? '').trim().isNotEmpty) p.description!.trim(),
+          if (!replay && p.stopTime <= DateTime.now().millisecondsSinceEpoch)
+            dialog.l10n.novaGuideNoReplay,
+        ].join('\n\n'))),
+        actions: [
+          TextButton(autofocus: !replay, onPressed: () => Navigator.pop(dialog, false),
+              child: Text(dialog.l10n.tvClose)),
+          if (replay) TextButton(autofocus: true, onPressed: () => Navigator.pop(dialog, true),
+              child: Text(dialog.l10n.badgeReplay)),
+        ],
+      ),
+    );
+    if (mounted && choose == true && ReplayChoice.urlFor(widget.channel, p, DateTime.now()) != null) {
+      _replay(p);
+    }
+  }
 
   /// Ferme le guide en rendant [program] au lecteur, qui le rejoue.
   void _replay(EpgProgram program) {
@@ -78,6 +188,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
 
   @override
   void dispose() {
+    if (kNovatubeMax) ActiveProfile.instance.listenable.removeListener(_retry);
     _scroll.dispose();
     _retryNode.dispose();
     for (final FocusNode n in _nodes.values) {
@@ -177,13 +288,13 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
               ).display(TvDimens.headline, color: TvAppTokens.of(context).text),
             ),
             const SizedBox(height: 4),
-            Text(
+            if (kNovatubeMax) _sectionTabs(context) else Text(
               context.l10n.programsToday,
               style: TvAppTokens.of(context)
                   .ui(TvDimens.body, color: TvAppTokens.of(context).muted),
             ),
             const SizedBox(height: 4),
-            Text(
+            if (!kNovatubeMax) Text(
               ReplayChoice.declared(widget.channel)
                   ? context.l10n.tvGuideReplayHint
                   : context.l10n.tvGuideHint,
@@ -211,7 +322,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
                         _focusRetry();
                         return _status(
                           icon: Icons.error_outline_rounded,
-                          title: context.l10n.programsNoneToday,
+                          title: kNovatubeMax ? context.l10n.tvNoEpg : context.l10n.programsNoneToday,
                           body: context.l10n.programsNoneHelp,
                           retry: true,
                         );
@@ -221,8 +332,10 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
                       if (programs.isEmpty) {
                         return _status(
                           icon: Icons.event_note_rounded,
-                          title: context.l10n.programsNoneToday,
-                          body: context.l10n.programsNoneHelp,
+                          title: kNovatubeMax
+                              ? (_section == NovaGuideSection.watched ? context.l10n.novaGuideHistoryEmpty : context.l10n.tvNoEpg)
+                              : context.l10n.programsNoneToday,
+                          body: kNovatubeMax ? null : context.l10n.programsNoneHelp,
                         );
                       }
                       _revealLive(programs);
@@ -247,7 +360,11 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
                             past: past,
                             replay: replay,
                             focusNode: _nodeFor(i),
-                            onSelect: replay ? () => _replay(p) : _close,
+                            onSelect: replay ? () {
+                              if (ReplayChoice.urlFor(widget.channel, p, DateTime.now()) != null) _replay(p);
+                              else if (kNovatubeMax) _details(p);
+                            } : kNovatubeMax && !live ? () => _details(p) :
+                                live && widget.selectLive ? () => _replay(p) : _close,
                           );
                         },
                       );
@@ -439,7 +556,7 @@ class _ProgramRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${tvTime(context, program.startDateTime)} – ${tvTime(context, program.stopDateTime)}  ·  ${tvDuration(context, program.duration)}',
+                        '${kNovatubeMax ? tvDateTime(context, program.startDateTime) : tvTime(context, program.startDateTime)} – ${tvTime(context, program.stopDateTime)}  ·  ${tvDuration(context, program.duration)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TvAppTokens.of(context).ui(

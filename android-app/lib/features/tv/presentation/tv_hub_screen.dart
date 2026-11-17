@@ -97,6 +97,7 @@ import 'tv_cinema_screen.dart';
 import 'tv_components.dart';
 import 'tv_cinematic_home.dart';
 import 'tv_epg_preview_screen.dart';
+import 'tv_profiles_screen.dart';
 import 'tv_glass.dart';
 import 'tv_starfield.dart';
 import 'tv_tonight.dart';
@@ -1369,7 +1370,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
           spacing: TvDimens.rowGap,
           runSpacing: TvDimens.rowGap,
           children: <Widget>[
-            for (final _Tile tile in _Tile.values.where((tile) => kNovatubeTv ? tile != _Tile.guide : tile != _Tile.favorites))
+            for (final _Tile tile in _Tile.values.where((tile) => kNovatubeMax || (kNovatubeTv ? tile != _Tile.guide : tile != _Tile.favorites)))
               TextButton.icon(
                 onPressed: () => _openTile(tile),
                 icon: Icon(_tileMeta(context, tile).icon, size: TvDimens.title),
@@ -1589,6 +1590,10 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                     onLive: () => _openTile(_Tile.live),
                                     onFilms: () => _openTile(_Tile.films),
                                     onSeries: () => _openTile(_Tile.series),
+                                    onGuide: kNovatubeMax ? () => _openTile(_Tile.guide) : null,
+                                    onProfiles: kNovatubeMax ? () => Navigator.of(context).push<void>(
+                                      MaterialPageRoute(builder: (_) => const TvShell(child: TvProfilesScreen())),
+                                    ) : null,
                                     onFavorites: kNovatubeTv ? () => _openTile(_Tile.favorites) : null,
                                     onServer: () => _openTile(_Tile.server),
                                     onSettings: () => _openTile(_Tile.settings),

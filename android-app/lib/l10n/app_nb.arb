@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Tidligere programmer",
+  "novaGuideHistory": "Min historikk",
+  "novaGuideHistoryEmpty": "Du har ikke sett noen programmer på denne kanalen ennå",
+  "novaGuideNoReplay": "Dette programmet kan ikke spilles av på nytt.",
   "@@locale": "nb",
   "appName": "The Few",
   "appTagline": "Kino uten grenser",

@@ -26,6 +26,7 @@
 # =========================================================
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -65,7 +66,10 @@ def wordmark(width: int, height: int) -> Image.Image:
     draw = ImageDraw.Draw(img)
     size = int(h * 0.62)
     font = _font(size)
-    nova, tube = 'Nova', 'Tube'
+    nova, tube = 'Nova', 'Tube MAX' if os.environ.get('NOVATUBE_MAX') == 'true' else 'Tube'
+    if tube.endswith(' MAX'):
+        size = min(size, int(w * 0.94 / (0.8 + draw.textlength(nova + tube, font=font) / size)))
+        font = _font(size)
     nova_w = draw.textlength(nova, font=font)
     tube_w = draw.textlength(tube, font=font)
     tri = size * 0.62               # côté du triangle

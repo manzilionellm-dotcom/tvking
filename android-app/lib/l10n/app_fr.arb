@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Émissions passées",
+  "novaGuideHistory": "Mon historique",
+  "novaGuideHistoryEmpty": "Aucune émission regardée sur cette chaîne",
+  "novaGuideNoReplay": "Replay indisponible pour cette émission.",
   "@@locale": "fr",
   "@@x-template": true,
   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",

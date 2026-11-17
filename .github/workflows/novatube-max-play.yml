@@ -1,0 +1,212 @@
+name: NovaTube MAX — bundle Play et tests privés
+'on':
+  push:
+    branches:
+    - qa/novatube-max-play-20261117
+  workflow_dispatch: {}
+permissions:
+  contents: read
+env:
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  ZUNO_APP_ID: com.sevenmotion.novatube.max
+  ZUNO_APP_LABEL: NovaTube MAX
+  NOVATUBE_MAX: 'true'
+  NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.max
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+    - &id001
+      name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - &id002
+      name: Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - &id003
+      name: Flutter 3.47.7 (même version que Zuno TV)
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: true
+    - &id004
+      name: SDK Android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - &id005
+      name: Licences Android
+      run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+      working-directory: android-app
+    - &id006
+      name: Manifeste et Gradle TV (scripts Zuno, identité NovaTube)
+      run: |
+        set -e
+        python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+        cp ci/proguard-rules.pro android/app/proguard-rules.pro
+        python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+        grep -q 'applicationId = "com.sevenmotion.novatube.max"' android/app/build.gradle.kts
+        grep -q 'android:label="NovaTube MAX"' android/app/src/main/AndroidManifest.xml
+        python3 ci/novatube_tv/prepare_max_play.py
+      working-directory: android-app
+    - &id007
+      name: Préférences compatibles box Android 5 (identique à Zuno TV)
+      run: |
+        python3 - <<'PYEOF'
+        from pathlib import Path
+        path = Path('pubspec.yaml')
+        source = path.read_text(encoding='utf-8')
+        anchor = '  shared_preferences: ^2.3.4\n'
+        if source.count(anchor) != 1 or '  shared_preferences_android:' in source:
+            raise SystemExit('Contrainte SharedPreferences inattendue : vérifier le pin TV.')
+        source = source.replace(anchor, anchor + '  shared_preferences_android: 2.5.0\n', 1)
+        path.write_text(source, encoding='utf-8')
+        PYEOF
+      working-directory: android-app
+    - &id008
+      name: Dépendances
+      run: flutter pub get
+      working-directory: android-app
+    - &id009
+      name: Préparer l'édition NovaTube (logo, nom, bannière, lancement)
+      run: |
+        python3 -m pip install --quiet Pillow
+        python3 ci/novatube_tv/make_brand_assets.py
+        set -e
+        python3 ci/novatube_tv/prepare_build.py
+        flutter pub get
+        flutter gen-l10n
+      working-directory: android-app
+    - name: Patch screen_brightness_android (identique à Zuno TV)
+      run: |
+        set -e
+        FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+        if [ -z "$FILE" ]; then echo "screen_brightness_android absent, rien à faire"; exit 0; fi
+        export PATCH_FILE="$FILE"
+        python3 - <<'PYEOF'
+        import os, re
+        file = os.environ['PATCH_FILE']
+        lines = open(file).readlines()
+        out, in_kotlin, depth, removed = [], False, 0, 0
+        for line in lines:
+            if not in_kotlin:
+                if re.match(r'^\s*kotlin\s*\{', line):
+                    in_kotlin = True
+                    depth = line.count('{') - line.count('}')
+                    removed += 1
+                    if depth <= 0:
+                        in_kotlin = False
+                    continue
+                out.append(line)
+            else:
+                depth += line.count('{') - line.count('}')
+                removed += 1
+                if depth <= 0:
+                    in_kotlin = False
+        if removed:
+            open(file, 'w').writelines(out)
+        print(f'lignes kotlin{{}} retirées : {removed}')
+        PYEOF
+      working-directory: android-app
+    - name: Icône, bannière Android TV et écran de lancement NovaTube
+      run: |
+        set -e
+        dart run flutter_launcher_icons -f flutter_launcher_icons_novatube_tv.yaml
+        python3 ci/tv/apply_splash.py
+        python3 ci/novatube_tv/prepare_build.py --splash-color
+      working-directory: android-app
+    - name: Configurer le conteneur Gradle de travail
+      working-directory: android-app
+      shell: bash
+      run: |
+        set -euo pipefail
+        pw="$(openssl rand -hex 32)"
+        echo "::add-mask::$pw"
+        keytool -genkeypair -keystore android/app/work.p12 -storetype PKCS12 -alias intermediate -keyalg RSA -keysize 2048 -validity 2 -storepass "$pw" -dname 'CN=Temporary Gradle packaging'
+        printf 'storeFile=work.p12
+        storePassword=%s
+        keyAlias=intermediate
+        keyPassword=%s
+        ' "$pw" "$pw" > android/key.properties
+    - name: Assembler NovaTube MAX Play multiformat
+      working-directory: android-app
+      run: |
+        set -euo pipefail
+        flutter build appbundle --release --no-tree-shake-icons --android-skip-build-dependency-validation \
+          --target-platform android-arm,android-arm64,android-x64 --build-number=1 --build-name=1.0.0 \
+          --obfuscate --split-debug-info=build/symbols --dart-define=NOVATUBE_TV=true \
+          --dart-define=NOVATUBE_MAX=true --dart-define=PLAY_BUILD=true \
+          --dart-define=APP_BUILD_TS="$(date +%s)" --dart-define=GIT_SHA="${{ github.sha }}" --target=lib/main_tv.dart
+    - name: Livrer le bundle et ses symboles sous chiffrement
+      working-directory: android-app
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/max-private"
+        cat > "$RUNNER_TEMP/transfer.pem" <<'CERT'
+        -----BEGIN CERTIFICATE-----
+        MIIELzCCApegAwIBAgIUTM6frMceDe7jKJ7PjMWZQW9CB2swDQYJKoZIhvcNAQEL
+        BQAwJzElMCMGA1UEAwwcTm92YVR1YmUgcHJpdmF0ZSBRQSBkZWxpdmVyeTAeFw0y
+        NjExMTcwODMyMDBaFw0yNjExMjQwODMyMDBaMCcxJTAjBgNVBAMMHE5vdmFUdWJl
+        IHByaXZhdGUgUUEgZGVsaXZlcnkwggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGK
+        AoIBgQCaBuGkid6ONdGtEFIqIna5kJdf5jW8NUVjzIzM34Wa8E0+qnIP4BMVKmr3
+        A7WZhKM3ATezvebng9x5F6zo1b/rjq3wWLN59SvAmQQvSDvnj3qG+SsxDlyG98aa
+        gJ3F4XPdgbZyHCxhAqI6XM/kFL/6mOvYqnR9mgdW7XCmfBSL2wnhrbnwcZjQYyUm
+        +Qj/qSE6FMap0Uas3k1iJgo4DIuKcWi5y1/d+YFX8IsVLeiviSlosP5oMl6sU4/Y
+        MWR8jGD+zaVtK4SC5p6QeuulXwY8ViRUX9FAEXfhKw8neg+qUgkiRtEdeiyqL580
+        vQuk9aANb7DmgjT7sSPDTPFCd/WJrd6zmDJf6XlZ+odXNqkwwRtyk43Zyj+VIe1O
+        ygl3vkWsxxRQ7Nx5hJAzy+p3ABd9JQE3LDs/kSV38ijEk9NbJBHQhYcqGynczq0f
+        xdi3UpagujU/k33XhHN5enagHDdUnhWJVmrWF2tsyl7K3XkFpapTkalDyLLZCPIC
+        Hq4b3k0CAwEAAaNTMFEwHQYDVR0OBBYEFF2kcDsBew20z9vpV6AjCGJbT559MB8G
+        A1UdIwQYMBaAFF2kcDsBew20z9vpV6AjCGJbT559MA8GA1UdEwEB/wQFMAMBAf8w
+        DQYJKoZIhvcNAQELBQADggGBAGw4FDKv1F2isAqGdG9XkbMutS9UXf7XtnbFlfYc
+        zwoCgRFl9b0jtJk7fqJFvmfddGu1yUDht9P5FneG/zuEfmWtZ8tdt+rbdwBGmlfJ
+        09zJT2V8fhZv7zHbXl9iJnKSLy9UeKn3ALmkRDEYHBaalA29SfhUP5y0JTZ7jx2w
+        r+JmLa5urVz09zpdwLHAPPFQPKardcYpaSPyM3nbLQhlto+qPvY3UqeQUVXKgu4y
+        EXW0jyroI43WdfZCBYjOjmUEQXBvLaH7bcNOVo1ihl/Ibyt4N8g/4zkATPQbJsgj
+        LhJ3cdUYy9B9WggbKrq5SnnV+0dsU3bZmKARajvpdVAxzLqGci1idzb2kK2b8Kel
+        VjpKbOsRr8e4C51jC82gxoYoSXIevV422nqxcETXlHW46pgEE78HBhxoq7ok82vt
+        ba9pYpLVQCAnhgd3OHp+XGMXqmUP+61H9RBFcDEFQb+9PARfZv4MY4BqoGepApj8
+        pz/JlRL4lUSFuqpEb8N3sO4/sQ==
+        -----END CERTIFICATE-----
+        CERT
+        apk=build/app/outputs/bundle/release/app-release.aab
+        test -s "$apk"
+        openssl cms -encrypt -binary -aes-256-cbc -in "$apk" -outform DER -out "$RUNNER_TEMP/max-private/NovaTube-MAX.aab.cms" "$RUNNER_TEMP/transfer.pem"
+        zip -q -r "$RUNNER_TEMP/symbols.zip" build/symbols
+        openssl cms -encrypt -binary -aes-256-cbc -in "$RUNNER_TEMP/symbols.zip" -outform DER -out "$RUNNER_TEMP/max-private/symbols.zip.cms" "$RUNNER_TEMP/transfer.pem"
+        sha256sum "$apk" > "$RUNNER_TEMP/max-private/SHA256"
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: novatube-max-prive-${{ github.sha }}
+        path: ${{ runner.temp }}/max-private/
+        if-no-files-found: error
+        retention-days: 7
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+    - *id001
+    - *id002
+    - *id003
+    - *id004
+    - *id005
+    - *id006
+    - *id007
+    - *id008
+    - *id009
+    - name: Tester le guide, la navigation, les profils et les sources
+      working-directory: android-app
+      run: |
+        set -euo pipefail
+        flags=(--no-pub --dart-define=NOVATUBE_TV=true --dart-define=NOVATUBE_MAX=true --dart-define=PLAY_BUILD=true)
+        flutter analyze --no-pub --no-fatal-infos lib/features/tv/presentation/tv_channel_guide_screen.dart lib/features/tv/presentation/tv_epg_preview_screen.dart lib/features/channels/data/recently_watched_repository.dart test/novatube_max
+        flutter test "${flags[@]}" test/novatube_max test/features/epg/catchup_url_builder_test.dart test/features/epg/epg_replay_keep_test.dart test/features/tv/history_policy_test.dart test/features/playlists/profile_source_switches_test.dart test/features/profiles test/novatube_tv/novatube_m3u_variants_test.dart test/novatube_tv/novatube_panel_list_test.dart test/features/playlists/import_bulk_persistence_test.dart
+    - name: Vérifier le guide TV historique hors MAX
+      working-directory: android-app
+      run: |
+        flutter test --no-pub test/features/tv/tv_channel_guide_replay_test.dart

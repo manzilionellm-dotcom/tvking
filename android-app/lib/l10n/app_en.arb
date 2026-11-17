@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Past programmes",
+  "novaGuideHistory": "My history",
+  "novaGuideHistoryEmpty": "No programmes watched on this channel yet",
+  "novaGuideNoReplay": "Replay is unavailable for this programme.",
   "@@locale": "en",
   "appName": "The Few",
   "appTagline": "Cinema without limits",

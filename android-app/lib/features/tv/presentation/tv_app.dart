@@ -112,7 +112,7 @@ class TvApp extends StatelessWidget {
         );
         return MaterialApp(
           navigatorKey: VoiceNavigation.navigatorKey,
-          title: settings.appName.isEmpty ? kAppName : settings.appName,
+          title: kNovatubeMax || settings.appName.isEmpty ? kAppName : settings.appName,
           debugShowCheckedModeBanner: false,
           // --- Internationalisation (17 langues, RTL auto pour l'arabe) ---
           locale: LocaleRepository.instance.locale, // null = langue de la TV

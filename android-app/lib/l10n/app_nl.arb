@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Eerdere programma’s",
+  "novaGuideHistory": "Mijn kijkgeschiedenis",
+  "novaGuideHistoryEmpty": "Je hebt nog geen programma’s op deze zender bekeken",
+  "novaGuideNoReplay": "Dit programma kan niet worden teruggekeken.",
   "@@locale": "nl",
   "appName": "The Few",
   "@appName": {

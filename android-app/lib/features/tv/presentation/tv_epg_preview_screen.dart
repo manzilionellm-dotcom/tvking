@@ -17,6 +17,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import '../../epg/domain/replay_choice.dart';
+import 'tv_channel_guide_screen.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 import '../../channels/domain/channel.dart';
@@ -159,8 +162,35 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
     });
   }
 
-  void _open(int i) {
+  bool _guideOpen = false;
+
+  Future<void> _open(int i) async {
     if (i < 0 || i >= _rows.length) return;
+    if (kNovatubeMax) {
+      if (_guideOpen) return;
+      final channel = _rows[i];
+      setState(() => _guideOpen = true);
+      try {
+        await TvLivePreview.releaseActive();
+        if (!mounted) return;
+        final chosen = await Navigator.of(context).push<EpgProgram>(MaterialPageRoute(
+          builder: (_) => TvChannelGuideScreen(channel: channel, selectLive: true),
+        ));
+        if (!mounted || chosen == null || !_rows.any((c) => c.id == channel.id)) return;
+        final now = DateTime.now();
+        final url = ReplayChoice.urlFor(channel, chosen, now);
+        if (url == null && !chosen.isLiveAt(now)) return;
+        await Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (_) => TvShell(applySafeArea: false, child: TvPlayerScreen(
+            channels: [channel], startIndex: 0, startAtUrl: url,
+            startAtProgram: url == null ? null : chosen,
+          )),
+        ));
+      } finally {
+        if (mounted) setState(() => _guideOpen = false);
+      }
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => TvShell(
@@ -172,6 +202,7 @@ class _TvEpgPreviewScreenState extends State<TvEpgPreviewScreen> {
   }
 
   Widget _previewOf(Channel channel) {
+    if (_guideOpen) return const SizedBox.shrink();
     final Widget Function(Channel channel)? custom = widget.preview;
     if (custom != null) return custom(channel);
     return TvLivePreview(channel: channel);

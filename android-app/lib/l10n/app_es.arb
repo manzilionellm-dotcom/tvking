@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Programas anteriores",
+  "novaGuideHistory": "Mi historial",
+  "novaGuideHistoryEmpty": "Todavía no has visto programas en este canal",
+  "novaGuideNoReplay": "Este programa no está disponible para volver a verlo.",
   "@@locale": "es",
   "appName": "The Few",
   "appTagline": "Cine sin límites",

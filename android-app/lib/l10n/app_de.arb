@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Vergangene Sendungen",
+  "novaGuideHistory": "Mein Verlauf",
+  "novaGuideHistoryEmpty": "Noch keine Sendungen auf diesem Sender angesehen",
+  "novaGuideNoReplay": "Für diese Sendung ist keine Wiederholung verfügbar.",
   "@@locale": "de",
   "appName": "The Few",
   "@appName": {

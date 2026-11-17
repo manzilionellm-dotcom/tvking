@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Tidligere programmer",
+  "novaGuideHistory": "Min historik",
+  "novaGuideHistoryEmpty": "Du har endnu ikke set programmer på denne kanal",
+  "novaGuideNoReplay": "Dette program kan ikke ses igen.",
   "@@locale": "da",
   "appName": "The Few",
   "appTagline": "Biograf uden grænser",

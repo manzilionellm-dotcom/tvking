@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Прошедшие передачи",
+  "novaGuideHistory": "Моя история",
+  "novaGuideHistoryEmpty": "На этом канале пока нет просмотренных передач",
+  "novaGuideNoReplay": "Повтор этой передачи недоступен.",
   "@@locale": "ru",
   "appName": "The Few",
   "@appName": {

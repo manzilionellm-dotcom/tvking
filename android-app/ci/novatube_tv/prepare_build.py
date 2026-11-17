@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import sys
@@ -61,6 +62,9 @@ def declare_wordmark() -> bool:
 
 def rename_in_translations() -> int:
     """Remplace le nom affiché dans les VALEURS des .arb (jamais les clés)."""
+    maximum = os.environ.get('NOVATUBE_MAX') == 'true'
+    name = re.compile(r'\b(?:Zuno|NovaTube)(?! MAX)\b') if maximum else NAME
+    label = 'NovaTube MAX' if maximum else 'NovaTube'
     changed = 0
     for arb in sorted((ROOT / 'lib/l10n').glob('app_*.arb')):
         data = json.loads(arb.read_text(encoding='utf-8'))
@@ -68,7 +72,7 @@ def rename_in_translations() -> int:
         for key, value in list(data.items()):
             if key.startswith('@') or not isinstance(value, str):
                 continue
-            new, n = NAME.subn('NovaTube', value)
+            new, n = name.subn(label, value)
             if n:
                 data[key] = new
                 count += n

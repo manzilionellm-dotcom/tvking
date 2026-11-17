@@ -18,6 +18,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/flavor/flavor.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import '../../epg/domain/epg_program.dart';
 import '../../profiles/data/active_profile.dart';
 import '../../profiles/domain/family_profile.dart';
 import '../../profiles/domain/profile_migration.dart';
@@ -28,6 +30,7 @@ class RecentlyWatchedRepository {
   static final RecentlyWatchedRepository instance = RecentlyWatchedRepository._();
 
   static const int _kMaxEntries = 50;
+  static const String _programs = 'novatube_watched_programs';
   static const String _kScoped = 'recently_watched_by_profile';
 
   final StreamController<List<String>> _controller =
@@ -75,6 +78,18 @@ class RecentlyWatchedRepository {
       CREATE INDEX IF NOT EXISTS idx_recent_profile_ts
       ON $_kScoped(profile_id, last_watched_at DESC)
     ''');
+    if (kNovatubeMax) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $_programs (
+          profile_id TEXT NOT NULL, channel_id TEXT NOT NULL,
+          start_time INTEGER NOT NULL, stop_time INTEGER NOT NULL,
+          title TEXT NOT NULL, watched_at INTEGER NOT NULL,
+          PRIMARY KEY (profile_id, channel_id, start_time)
+        )
+      ''');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_nova_program_time '
+          'ON $_programs(profile_id, watched_at DESC)');
+    }
   }
 
   /// Copie l'historique d'avant les profils dans le tiroir du
@@ -168,6 +183,39 @@ class RecentlyWatchedRepository {
     await _reload();
   }
 
+  /// Une émission réellement vue, même après la disparition de son guide.
+  /// Le profil est capturé à l'écran, avant toute lecture asynchrone de l'EPG.
+  Future<void> recordProgram(
+    String profileId, EpgProgram program, DateTime watchedAt,
+  ) async {
+    if (!kNovatubeMax || FlavorConfig.current.adultOnly ||
+        program.title.trim().isEmpty || program.stopTime <= program.startTime) return;
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    await db.transaction((txn) async {
+      if (profileId != ActiveProfile.instance.id) return;
+      await txn.insert(_programs, <String, Object?>{
+        'profile_id': profileId, 'channel_id': program.channelId,
+        'start_time': program.startTime, 'stop_time': program.stopTime,
+        'title': program.title, 'watched_at': watchedAt.millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.rawDelete('DELETE FROM $_programs WHERE rowid IN '
+          '(SELECT rowid FROM $_programs WHERE profile_id = ? '
+          'ORDER BY watched_at DESC, rowid DESC LIMIT -1 OFFSET 100)', [profileId]);
+    });
+  }
+
+  Future<List<EpgProgram>> watchedPrograms(String channelId) async {
+    if (!kNovatubeMax || FlavorConfig.current.adultOnly) return [];
+    final String profileId = ActiveProfile.instance.id;
+    await initialize();
+    final Database db = await PlaylistDatabase.instance.database;
+    final rows = await db.query(_programs, where: 'profile_id = ? AND channel_id = ?',
+        whereArgs: [profileId, channelId], orderBy: 'watched_at DESC, rowid DESC');
+    if (profileId != ActiveProfile.instance.id) return [];
+    return rows.map(EpgProgram.fromMap).toList(growable: false);
+  }
+
   /// Restaure l'historique serveur UNIQUEMENT si le tiroir du
   /// profil en cours est vide. N'écrase jamais un historique
   /// déjà là, et n'écrit pas dans le tiroir d'un autre profil.
@@ -228,6 +276,9 @@ class RecentlyWatchedRepository {
         where: 'channel_id IN ($marks)',
         whereArgs: part,
       );
+      if (kNovatubeMax) {
+        await db.delete(_programs, where: 'channel_id IN ($marks)', whereArgs: part);
+      }
     }
     await _reload();
   }
@@ -242,6 +293,9 @@ class RecentlyWatchedRepository {
       where: 'profile_id = ?',
       whereArgs: <String>[profileId],
     );
+    if (kNovatubeMax) {
+      await db.delete(_programs, where: 'profile_id = ?', whereArgs: [profileId]);
+    }
     await _reload();
   }
 
@@ -255,6 +309,9 @@ class RecentlyWatchedRepository {
       where: 'profile_id = ?',
       whereArgs: <String>[profileId],
     );
+    if (kNovatubeMax) {
+      await db.delete(_programs, where: 'profile_id = ?', whereArgs: [profileId]);
+    }
     if (ActiveProfile.instance.id == profileId) await _reload();
   }
 }

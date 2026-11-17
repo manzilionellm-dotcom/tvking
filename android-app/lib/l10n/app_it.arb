@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Programmi passati",
+  "novaGuideHistory": "La mia cronologia",
+  "novaGuideHistoryEmpty": "Nessun programma visto su questo canale",
+  "novaGuideNoReplay": "Il replay non è disponibile per questo programma.",
   "@@locale": "it",
   "appName": "The Few",
   "@appName": {

@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "पिछले कार्यक्रम",
+  "novaGuideHistory": "मेरा इतिहास",
+  "novaGuideHistoryEmpty": "इस चैनल पर अभी तक कोई कार्यक्रम नहीं देखा गया है",
+  "novaGuideNoReplay": "इस कार्यक्रम का रीप्ले उपलब्ध नहीं है।",
   "@@locale": "hi",
   "appName": "The Few",
   "@appName": {

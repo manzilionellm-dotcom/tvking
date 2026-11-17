@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Tidigare program",
+  "novaGuideHistory": "Min historik",
+  "novaGuideHistoryEmpty": "Du har inte sett några program på den här kanalen ännu",
+  "novaGuideNoReplay": "Det här programmet går inte att se i efterhand.",
   "@@locale": "sv",
   "appName": "The Few",
   "appTagline": "Bio utan gränser",

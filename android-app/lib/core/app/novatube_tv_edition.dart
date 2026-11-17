@@ -41,4 +41,5 @@ const bool kNovatubeTv = bool.fromEnvironment('NOVATUBE_TV');
 
 /// Nom commercial affiché à l'écran dans l'édition NovaTube TV.
 /// (Jamais le nom du panel d'administration : le client ne doit pas le voir.)
-const String kNovatubeTvName = 'NovaTube';
+const bool kNovatubeMax = kNovatubeTv && bool.fromEnvironment('NOVATUBE_MAX');
+const String kNovatubeTvName = kNovatubeMax ? 'NovaTube MAX' : 'NovaTube';

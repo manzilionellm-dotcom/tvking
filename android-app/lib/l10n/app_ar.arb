@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "البرامج السابقة",
+  "novaGuideHistory": "سجل المشاهدة",
+  "novaGuideHistoryEmpty": "لم تشاهد أي برنامج على هذه القناة بعد",
+  "novaGuideNoReplay": "إعادة هذا البرنامج غير متاحة.",
   "@@locale": "ar",
   "appName": "The Few",
   "appTagline": "سينما بلا حدود",

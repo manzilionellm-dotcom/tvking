@@ -44,6 +44,8 @@ import '../../player/domain/live_bar_slots.dart';
 import '../../player/domain/reconnect_plan.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/novatube_tv_edition.dart';
+import '../../profiles/data/active_profile.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_localized_format.dart';
 import 'tv_playback_quality.dart';
@@ -93,6 +95,7 @@ class TvPlayerScreen extends StatefulWidget {
     required this.channels,
     required this.startIndex,
     this.startAtUrl,
+    this.startAtProgram,
   });
 
   /// Liste pour le zap (Haut/Bas) — généralement la catégorie courante.
@@ -103,6 +106,7 @@ class TvPlayerScreen extends StatefulWidget {
   /// « Reprendre depuis le début ». Vide : on ouvre le direct,
   /// comme avant. Un zap revient au direct.
   final String? startAtUrl;
+  final EpgProgram? startAtProgram;
 
   @override
   State<TvPlayerScreen> createState() => _TvPlayerScreenState();
@@ -250,6 +254,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   @override
   void initState() {
     super.initState();
+    if (kNovatubeMax) {
+      _archiveFromGuide = widget.startAtProgram;
+      _archiveStream = widget.startAtUrl;
+    }
     TvActivity.enter();
     BlackBox.instance.info('SCREEN', 'Lecteur ouvert');
     // Halo autour de l'image, selon le genre de la chaîne.
@@ -334,6 +342,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       }
     });
     _tasteTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (kNovatubeMax) _noteWatchedProgram();
       unawaited(_noteTaste());
     });
     unawaited(
@@ -409,6 +418,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // On quitte sur cette chaîne : si une image a été vue, elle compte
     // (même sans les 20 s), sinon rien n'est écrit.
     _historyTimer?.cancel();
+    if (kNovatubeMax) _noteWatchedProgram();
     if (!_zapHolding &&
         HistoryPolicy.recordOnExit(
           frameShown: _everShownFrame,
@@ -476,6 +486,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // 50 s d'écran figé, sans un mot) avant de revenir au direct.
     if (_catchup) {
       if (_controller.firstFrame) {
+        if (kNovatubeMax && !_catchupShown) scheduleMicrotask(_noteWatchedProgram);
         _catchupShown = true;
       } else if (!_catchupShown &&
           (_controller.hasError || _controller.nativeRetrying) &&
@@ -643,8 +654,47 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _recordHistory(String id) {
     _historyRecorded = id;
     RecentlyWatchedRepository.instance.record(id);
+    if (kNovatubeMax) _noteWatchedProgram();
     // Compteur local « à cette heure ». N'ouvre rien, n'attend pas.
     unawaited(TimePickLog.instance.note(id));
+  }
+
+  EpgProgram? _archiveFromGuide;
+  String? _archiveStream;
+  EpgProgram? _lastWatchedProgram;
+  String? _lastWatchedProfile;
+  bool _historyLookup = false;
+
+  // Uniquement des métadonnées locales. Une erreur du guide ne doit jamais
+  // interrompre une chaîne. La minute existante couvre les changements
+  // d'émission quand on reste longtemps sur la même chaîne.
+  Future<void> _noteWatchedProgram() async {
+    if (_historyLookup || !_appActive || !_everShownFrame || _fatal ||
+        _zapHolding || _casting || _buffering || !_controller.isPlaying) return;
+    final bool replay = _catchup;
+    final String id = _current.id;
+    final String profile = ActiveProfile.instance.id;
+    final DateTime now = DateTime.now();
+    final EpgProgram? archive = replay && _catchupShown && _archiveStream == _playingUrl
+        ? _archiveFromGuide : null;
+    if (replay && (archive == null || archive.channelId != id)) return;
+    final EpgProgram? last = _lastWatchedProgram;
+    if (_lastWatchedProfile == profile && last != null && last.channelId == id &&
+        (replay ? last.startTime == archive!.startTime : last.isLiveAt(now))) return;
+    _historyLookup = true;
+    try {
+      final EpgProgram? program = archive ?? await EpgRepository.instance.currentProgram(id);
+      if (program == null || (!replay && !program.isLiveAt(now)) ||
+          ActiveProfile.instance.id != profile || (mounted && (_current.id != id ||
+          _catchup != replay || (replay && _archiveFromGuide != archive)))) return;
+      await RecentlyWatchedRepository.instance.recordProgram(profile, program, now);
+      _lastWatchedProgram = program;
+      _lastWatchedProfile = profile;
+    } catch (_) {
+      // La prochaine observation réessaiera si le guide est disponible.
+    } finally {
+      _historyLookup = false;
+    }
   }
 
   /// Vrai sur ordinateur, quand il y a plus d'une chaîne à parcourir.
@@ -1394,7 +1444,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             if (!mounted) return;
             _focus.requestFocus();
             // Émission passée choisie dans le guide (pastille REPLAY).
-            if (chosen != null) _replayProgram(chosen);
+            if (chosen != null) {
+              _replayProgram(chosen);
+              if (kNovatubeMax && _catchup) {
+                _archiveFromGuide = chosen;
+                _archiveStream = _playingUrl;
+              }
+            }
           }),
     );
     _showOverlayTemporarily();

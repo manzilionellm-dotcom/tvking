@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Vipindi vilivyopita",
+  "novaGuideHistory": "Historia yangu",
+  "novaGuideHistoryEmpty": "Bado hujatazama kipindi kwenye kituo hiki",
+  "novaGuideNoReplay": "Kipindi hiki hakipatikani kutazamwa tena.",
   "@@locale": "sw",
   "appName": "The Few",
   "appTagline": "Sinema bila mipaka",

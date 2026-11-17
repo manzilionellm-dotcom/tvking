@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "Geçmiş programlar",
+  "novaGuideHistory": "İzleme geçmişim",
+  "novaGuideHistoryEmpty": "Bu kanalda henüz izlenen program yok",
+  "novaGuideNoReplay": "Bu programın tekrarı mevcut değil.",
   "@@locale": "tr",
   "appName": "The Few",
   "@appName": {

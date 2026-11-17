@@ -51,6 +51,8 @@ class TvCinematicHome extends StatelessWidget {
     required this.onFilms,
     required this.onSeries,
     this.onFavorites,
+    this.onGuide,
+    this.onProfiles,
     required this.onServer,
     required this.onSettings,
   });
@@ -62,6 +64,8 @@ class TvCinematicHome extends StatelessWidget {
   final VoidCallback onFilms;
   final VoidCallback onSeries;
   final VoidCallback? onFavorites;
+  final VoidCallback? onGuide;
+  final VoidCallback? onProfiles;
   final VoidCallback onServer;
   final VoidCallback onSettings;
 
@@ -103,6 +107,12 @@ class TvCinematicHome extends StatelessWidget {
                 label: context.l10n.tvNavSeries,
                 onSelect: onSeries,
               ),
+              if (onGuide != null)
+                _Chip(icon: Icons.calendar_month_rounded, label: context.l10n.tvNavGuide,
+                    onSelect: onGuide!),
+              if (onProfiles != null)
+                _Chip(icon: Icons.people_outline, label: context.l10n.tvProfiles,
+                    onSelect: onProfiles!),
               if (onFavorites != null)
                 _Chip(icon: Icons.star_rounded, label: context.l10n.navFavorites,
                   onSelect: onFavorites!),

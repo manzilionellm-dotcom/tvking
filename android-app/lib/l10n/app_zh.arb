@@ -1,4 +1,8 @@
 {
+  "novaGuidePast": "往期节目",
+  "novaGuideHistory": "我的观看记录",
+  "novaGuideHistoryEmpty": "尚未观看此频道的节目",
+  "novaGuideNoReplay": "此节目不支持回看。",
   "@@locale": "zh",
   "appName": "The Few",
   "@appName": {
