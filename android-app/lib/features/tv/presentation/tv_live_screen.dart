@@ -28,6 +28,7 @@ import '../core/tv_activity.dart';
 import '../core/tv_sync_policy.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
+import '../core/tv_provider_channel_name.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
@@ -80,6 +81,10 @@ final RegExp _tvCodecWords = RegExp(
   r'(^|\s)(raw|hevc|h\.?264|h\.?265|vip|fhd|uhd|sd|4k|hd|60\s?fps|50\s?fps|multi|multilang|backup|bkp)(?=\s|$)',
   caseSensitive: false,
 );
+String _tvLiveTitle(BuildContext context, Channel channel) => kNovatubeTv
+    ? tvProviderChannelName(channel, context.l10n.tvVoiceKindChannel)
+    : _tvPretty(channel.cleanName);
+
 String _tvStripCodec(String s) {
   String r = s;
   String before;
@@ -1403,7 +1408,7 @@ class _ResumeCardState extends State<_ResumeCard> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _tvPretty(c.cleanName),
+                  _tvLiveTitle(context, c),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -1498,7 +1503,7 @@ class _LiveHeroState extends State<_LiveHero> {
                   const _LivePill(),
                   const SizedBox(height: 10),
                   Text(
-                    _tvPretty(c.cleanName),
+                    _tvLiveTitle(context, c),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -1824,7 +1829,7 @@ class _ChannelCardState extends State<_ChannelCard> {
   Widget build(BuildContext context) {
     final Channel channel = widget.channel;
     final bool fav = FavoritesRepository.instance.current.contains(channel.id);
-    final String name = _parseName(channel);
+    final String name = _parseName(context, channel);
     // Les mentions 4K/HD du nom sont des promesses de la playlist. Aucune
     // carte n'en fait un badge technique : seule la lecture mesure l'image.
     // RESTAURATION DU FOCUS au retour du lecteur (déterministe) : quand l'écran
@@ -1945,7 +1950,8 @@ class _ChannelCardState extends State<_ChannelCard> {
   static final RegExp _trailSep = RegExp(r'[\s|·\-–]+$');
   static final Map<String, String> _nameMemo = <String, String>{};
 
-  static String _parseName(Channel c) {
+  static String _parseName(BuildContext context, Channel c) {
+    if (kNovatubeTv) return _tvLiveTitle(context, c);
     final String key = c.cleanName;
     final String? hit = _nameMemo[key];
     if (hit != null) return hit;
@@ -2222,8 +2228,8 @@ class _ChannelRowState extends State<_ChannelRow> {
   @override
   Widget build(BuildContext context) {
     final Channel channel = widget.channel;
-    // Même nom nettoyé que la grille, sans qualité déduite de la playlist.
-    final String name = _ChannelCardState._parseName(channel);
+    // Même libellé que la grille. La qualité mesurée reste dans le bandeau du lecteur.
+    final String name = _ChannelCardState._parseName(context, channel);
     if (widget.restoreFocusId != null && widget.restoreFocusId == channel.id) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -2395,7 +2401,7 @@ class _PreviewInfoState extends State<_PreviewInfo> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            _tvPretty(c.cleanName),
+            _tvLiveTitle(context, c),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TvAppTokens.of(context)
