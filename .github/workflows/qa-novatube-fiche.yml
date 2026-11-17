@@ -1,0 +1,58 @@
+name: NovaTube TV - captures Play sur appareils Android
+on:
+  push:
+    branches: [qa/novatube-tv-play-appareils-1794878682]
+permissions:
+  contents: read
+jobs:
+  verifier:
+    strategy:
+      fail-fast: false
+      matrix:
+        appareil: [telephone, tablette, television]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Reconstituer le contenu compilé de la livraison Play
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 2 -o "$RUNNER_TEMP/reference.apk" 'https://github.com/manzilionellm-dotcom/tvking/releases/download/novatube-tv-test-40906981/NovaTube-TV-test-1.0.0-40906981.apk'
+          src=qa/novatube-fiche
+          base64 -d "$src/ressources.b64" > "$RUNNER_TEMP/ressources.zip"
+          python3 "$src/runtime.py" "$RUNNER_TEMP/reference.apk" "$RUNNER_TEMP/ressources.zip" "$RUNNER_TEMP/runtime.apk" '3da1ee6f7e6cedec3f8b8a078f908a032fdcdf9112cf606fdb65e74586efc476'
+          sdkmanager 'build-tools;35.0.0' >/dev/null
+          work="$ANDROID_HOME/build-tools/35.0.0"
+          "$work/zipalign" -p -f 4 "$RUNNER_TEMP/runtime.apk" "$RUNNER_TEMP/aligned.apk"
+          umask 077
+          PASS=$(openssl rand -hex 24)
+          export PASS
+          keytool -genkeypair -alias qa -keyalg RSA -keysize 2048 -validity 2 -keystore "$RUNNER_TEMP/qa.p12" -storepass:env PASS -keypass:env PASS -dname 'CN=Ephemeral emulator QA' >/dev/null 2>&1
+          "$work/apksigner" sign --ks "$RUNNER_TEMP/qa.p12" --ks-pass env:PASS --key-pass env:PASS --out "$RUNNER_TEMP/test.apk" "$RUNNER_TEMP/aligned.apk"
+          "$work/apksigner" verify "$RUNNER_TEMP/test.apk"
+          rm "$RUNNER_TEMP/qa.p12"
+      - name: Lancer et parcourir la version en paysage
+        env:
+          FORMAT: ${{ matrix.appareil }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tesseract-ocr libpulse0
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          bash qa/novatube-fiche/essai.sh "$RUNNER_TEMP/test.apk" "$FORMAT" "$RUNNER_TEMP/resultats"
+      - name: Conserver les preuves
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: novatube-play-${{ matrix.appareil }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/resultats/
+          retention-days: 1
+          if-no-files-found: warn
