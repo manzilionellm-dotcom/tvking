@@ -42,6 +42,7 @@ import '../../profiles/data/active_profile.dart';
 import '../../profiles/domain/family_profile.dart';
 import '../domain/playlist.dart';
 import '../domain/source_fingerprint.dart';
+import '../domain/open_source_input.dart';
 import '../domain/source_import_problem.dart';
 import '../domain/open_source_input.dart';
 import 'deleted_sources.dart';
@@ -675,10 +676,18 @@ class PlaylistRepository {
       final ({String name, String url}) entry = entries[i];
       onProgress?.call(i, entries.length, entry.name, null);
       try {
-        final Playlist saved = await addM3uPlaylist(
-          name: entry.name,
-          url: entry.url,
-        );
+        // Un lien get.php ouvert dans un lot MAX doit suivre le même
+        // chemin Xtream que dans le formulaire individuel (guide et replay).
+        final draft = kNovatubeMax ? OpenSourceInput.playlistLink(entry.url).draft : null;
+        final Playlist saved;
+        if (draft != null && draft.kind == OpenSourceKind.xtream) {
+          saved = await addXtreamPlaylist(
+            name: entry.name, serverUrl: draft.serverUrl!, username: draft.username!,
+            password: draft.password!, originM3uUrl: entry.url,
+          );
+        } else {
+          saved = await addM3uPlaylist(name: entry.name, url: entry.url);
+        }
         final BatchImportResult ok = BatchImportResult.success(
           name: entry.name,
           channelCount: saved.channelCount,

@@ -47,7 +47,10 @@ class _MaxM3uBatchDialogState extends State<MaxM3uBatchDialog> {
   Future<void> _import() async {
     if (_busy) return;
     final repo = PlaylistRepository.instance;
-    final known = {for (final p in repo.currentPlaylists) ?p.m3uUrl};
+    final known = <String>{
+      for (final p in repo.currentPlaylists)
+        if (p.m3uUrl != null) p.m3uUrl!,
+    };
     late final List<({String name, String url})> entries;
     try {
       entries = MaxM3uBatchDialog.entries(_input.text, known);
