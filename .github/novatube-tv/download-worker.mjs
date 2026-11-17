@@ -5,10 +5,10 @@
 //  https://novatube.zuno8k.com/novatube.apk (adresse tapée dans Downloader
 //  sur la NVIDIA SHIELD).
 //
-//    /novatube.apk, /apk, /, /tv, /tv.apk  → NovaTube TV
+//    /novatube.apk → MAXTUBE ; /apk, /, /tv et /tv.apk → NovaTube TV
 //        Dernier APK de test VÉRIFIÉ par la CI NovaTube TV, copié dans la
 //        pré-version fixe `novatube-tv-download` (nom stable NovaTube-TV.apk).
-//    /version.json                          → métadonnées de cet APK TV
+//    /version.json → MAXTUBE ; /tv/version.json → NovaTube TV
 //
 //    /mobile.apk, /mobile, /mobile/version.json → NovaTube MOBILE
 //        Comportement historique conservé à l'identique (manifeste vérifié
@@ -25,7 +25,19 @@ const RELEASES = "https://github.com/manzilionellm-dotcom/tvking/releases/downlo
 export const TV_TAG = "novatube-tv-download";
 export const TV_APK_URL = `${RELEASES}/${TV_TAG}/NovaTube-TV.apk`;
 export const TV_SUMS_URL = `${RELEASES}/${TV_TAG}/SHA256SUMS.txt`;
-const TV_PATHS = new Set(["/", "/apk", "/novatube.apk", "/tv", "/tv.apk"]);
+const TV_PATHS = new Set(["/", "/apk", "/tv", "/tv.apk"]);
+
+// Le code Downloader 4431009 conserve son adresse d’origine.
+export const MAXTUBE_RELEASE = Object.freeze({
+  schemaVersion: 1,
+  app: "MAXTUBE",
+  package: "com.sevenmotion.novatube.max",
+  versionName: "1.0.1",
+  versionCode: 2,
+  sizeBytes: 60264699,
+  sha256: "68dc23fba7e39ae6f58a411f677fd00b7434f288636efa0d5e1e778ba48da272",
+  url: RELEASES + "/maxtube-v1.0.1-68dc23fb/MAXTUBE-1.0.1.apk",
+});
 
 // ---- NovaTube mobile (historique, inchangé) ----
 export const MANIFEST_URL = "https://raw.githubusercontent.com/manzilionellm-dotcom/tvking/refs/heads/feature/novatube-play-aab/android-app/ci/novatube/latest-download.json";
@@ -130,7 +142,8 @@ export async function handleRequest(request, fetchImpl = fetch) {
   const path = url.pathname;
   const headers = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
   const known = TV_PATHS.has(path) || MOBILE_PATHS.has(path) ||
-    path === "/version.json" || path === "/mobile/version.json";
+    path === "/novatube.apk" || path === "/version.json" ||
+    path === "/tv/version.json" || path === "/mobile/version.json";
   if (url.hostname !== HOST || !known) {
     return new Response("Not found", { status: 404, headers });
   }
@@ -139,7 +152,18 @@ export async function handleRequest(request, fetchImpl = fetch) {
   }
   if (MOBILE_PATHS.has(path)) return handleMobile(request, false, fetchImpl, headers);
   if (path === "/mobile/version.json") return handleMobile(request, true, fetchImpl, headers);
-  if (path === "/version.json") return tvMetadata(request, fetchImpl, headers);
+  if (path === "/tv/version.json") return tvMetadata(request, fetchImpl, headers);
+  if (path === "/novatube.apk") {
+    return new Response(null, { status: 302, headers: {
+      ...headers, Location: MAXTUBE_RELEASE.url, "X-Novatube-SHA256": MAXTUBE_RELEASE.sha256,
+    } });
+  }
+  if (path === "/version.json") {
+    return new Response(request.method === "HEAD" ? null : JSON.stringify(MAXTUBE_RELEASE) + "\n", {
+      headers: { ...headers, "Content-Type": "application/json; charset=utf-8",
+        "X-Novatube-SHA256": MAXTUBE_RELEASE.sha256 },
+    });
+  }
   // NovaTube TV : destination FIXE (aucune donnée externe ne peut la changer).
   return new Response(null, { status: 302, headers: { ...headers, Location: TV_APK_URL } });
 }
