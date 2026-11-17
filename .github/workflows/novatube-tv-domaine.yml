@@ -31,8 +31,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SOURCE_TAG: novatube-tv-test-04f37bda
-  SOURCE_SHA256: e6ad3f3964c58796f585b492403b36275a8f916a25d70e1eea795bd442deb1cb
+  SOURCE_TAG: novatube-tv-test-40906981
+  SOURCE_SHA256: b6ef0db61ecd97c4a6a84714483a4041f9f591e6b382193335a95f0f3a015591
   FIXED_TAG: novatube-tv-download
 
 jobs:
