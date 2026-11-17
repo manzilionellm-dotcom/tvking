@@ -11,7 +11,7 @@
 #     /novatube.apk → NovaTube TV ; NovaTube mobile conservé sur /mobile.apk.
 #     Sauvegarde, vérification en ligne (SHA-256) et retour arrière auto.
 #
-#  Pour servir un autre build : changer SOURCE_TAG ci-dessous et pousser.
+#  Pour servir un autre build : changer SOURCE_TAG et son empreinte ci-dessous puis pousser.
 #  Ne touche ni aux releases Zuno/7 MOTION, ni au Worker Atlas, ni au panel.
 # =========================================================
 name: NovaTube TV — relier le domaine de téléchargement
@@ -31,7 +31,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SOURCE_TAG: novatube-tv-test-6e1e9b9a
+  SOURCE_TAG: novatube-tv-test-04f37bda
+  SOURCE_SHA256: e6ad3f3964c58796f585b492403b36275a8f916a25d70e1eea795bd442deb1cb
   FIXED_TAG: novatube-tv-download
 
 jobs:
@@ -39,7 +40,7 @@ jobs:
     name: APK fixe + Worker novatube-downloads
     if: github.repository == 'manzilionellm-dotcom/tvking'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 55
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,6 +49,37 @@ jobs:
 
       - name: Tests du Worker (aucun réseau)
         run: node --test .github/novatube-tv/download-worker.test.mjs
+
+      - name: Attendre la pré-version validée avant toute modification publique
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 80); do
+            if gh release view "$SOURCE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,isPrerelease,tagName \
+              --jq '[.tagName,.isDraft,.isPrerelease]|@tsv' > source.txt 2>/dev/null; then
+              read -r tag brouillon preversion < source.txt
+              [[ "$tag" == "$SOURCE_TAG" && "$brouillon" == false && "$preversion" == true ]]
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::Pré-version vérifiée introuvable pour $SOURCE_TAG."
+          exit 1
+
+      - name: Sauvegarder les octets servis avant le remplacement
+        id: sauvegarde
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$FIXED_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release download "$FIXED_TAG" --repo "$GITHUB_REPOSITORY" --dir sauvegarde \
+              --pattern 'NovaTube-TV.apk' --pattern 'SHA256SUMS.txt'
+            (cd sauvegarde && sha256sum -c SHA256SUMS.txt)
+            echo 'existe=true' >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Copier l'APK vérifié dans la pré-version fixe
         id: fixe
@@ -61,6 +93,7 @@ jobs:
           (cd src && sha256sum -c SHA256SUMS.txt)
           cp src/NovaTube-TV-test-*.apk out/NovaTube-TV.apk
           sha="$(sha256sum out/NovaTube-TV.apk | awk '{print $1}')"
+          test "$sha" = "$SOURCE_SHA256"
           echo "$sha  NovaTube-TV.apk" > out/SHA256SUMS.txt
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           if ! gh release view "$FIXED_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -72,10 +105,19 @@ jobs:
             gh release create "$FIXED_TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
               --target "$GITHUB_SHA" --title "NovaTube TV — téléchargement fixe (TEST)" --notes-file notes.md
           fi
+          touch "$RUNNER_TEMP/novatube-remplacement"
           gh release upload "$FIXED_TAG" out/NovaTube-TV.apk out/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --clobber
-          curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/$FIXED_TAG/NovaTube-TV.apk" -o pub.apk
-          test "$(sha256sum pub.apk | awk '{print $1}')" = "$sha"
+          fixe_ok=false
+          for i in $(seq 1 12); do
+            if curl --retry 2 -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/$FIXED_TAG/NovaTube-TV.apk" -o pub.apk && \
+              [[ "$(sha256sum pub.apk | awk '{print $1}')" == "$sha" ]]; then
+              fixe_ok=true
+              break
+            fi
+            sleep 5
+          done
+          test "$fixe_ok" = true
           echo "✓ APK fixe publié et vérifié (SHA-256 $sha) depuis $SOURCE_TAG"
 
       - name: Mettre en ligne le Worker (sauvegarde, vérification, retour arrière)
@@ -84,6 +126,27 @@ jobs:
           CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           EXPECTED_SHA256: ${{ steps.fixe.outputs.sha }}
         run: python3 .github/novatube-tv/deploy_download_worker.py
+
+      - name: Restaurer l’APK fixe si le remplacement échoue
+        if: failure() && steps.sauvegarde.outputs.existe == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -f "$RUNNER_TEMP/novatube-remplacement" || exit 0
+          (cd sauvegarde && sha256sum -c SHA256SUMS.txt)
+          gh release upload "$FIXED_TAG" sauvegarde/NovaTube-TV.apk sauvegarde/SHA256SUMS.txt \
+            --clobber --repo "$GITHUB_REPOSITORY"
+          avant=$(sha256sum sauvegarde/NovaTube-TV.apk | awk '{print $1}')
+          for i in $(seq 1 12); do
+            if curl --retry 2 -fsSL "https://novatube.zuno8k.com/novatube.apk" -o restaure.apk && \
+              [[ "$(sha256sum restaure.apk | awk '{print $1}')" == "$avant" ]]; then
+              echo 'Ancien APK de nouveau servi et vérifié.'
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
 
       - name: Conserver l'ancien script (retour manuel possible)
         if: always()
