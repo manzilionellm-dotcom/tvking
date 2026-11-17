@@ -27,7 +27,12 @@ if provenance:
     checks = {'emulator_media.sh', 'emulator_smoke.sh', 'screen_label.py', 'profile_catalogs.py',
               'make_test_media.sh', 'select_test_artifacts.py'}
     allowed = {f'android-app/ci/novatube_tv/{name}' for name in checks}
-    allowed.add('.github/workflows/novatube-tv-test.yml')
+    # Ces deux parcours de livraison lisent le binaire déjà construit.
+    # Une modification du code, de la signature ou des ressources de l'app
+    # impose toujours un nouvel APK.
+    allowed.update({'.github/workflows/novatube-tv-test.yml',
+                    '.github/workflows/novatube-tv-domaine.yml',
+                    '.github/workflows/novatube-tv-essai-manuel.yml'})
     diff = set(git('diff', '--name-only', sha, head).splitlines())
     if not diff or diff - allowed:
         raise SystemExit('Le code ou les entrées du build ont changé. Il faut tester son nouvel APK.')
