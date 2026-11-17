@@ -1,8 +1,8 @@
-name: NovaTube MAX — replay signé avec Atlas local
+name: MAXTUBE Android TV — lecture du fichier signé
 'on':
   push:
     branches:
-    - qa/novatube-max-replay-auth-20261117
+    - qa/maxtube-101-replay-signe-20261117
 permissions:
   contents: read
   actions: read
@@ -34,14 +34,25 @@ jobs:
         java-version: '21'
     - name: SDK Android
       uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
-    - name: Reprendre le bundle chiffré exact du commit dc7dc995
+    - name: Attendre l’artefact chiffré de MAXTUBE
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        name=novatube-max-prive-a6d1976775f231079fe2a51016822e6b54d1d317
+        for i in $(seq 1 120); do
+          if gh api "repos/$GITHUB_REPOSITORY/actions/runs/44094330269/artifacts" --jq '.artifacts[].name' | grep -Fxq "$name"; then exit 0; fi
+          sleep 10
+        done
+        exit 1
+    - name: Reprendre le bundle chiffré exact du commit a6d19767
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         github-token: ${{ github.token }}
-        run-id: '44061956653'
-        name: novatube-max-prive-dc7dc995727a1b0acc67b38b896cc9d278b44d0d
+        run-id: '44094330269'
+        name: novatube-max-prive-a6d1976775f231079fe2a51016822e6b54d1d317
         path: coffre
-    - name: Restituer et vérifier l’APK signé de 59 875 579 octets
+    - name: Restituer et vérifier l’APK MAXTUBE signé
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
@@ -53,6 +64,14 @@ jobs:
           sleep 5
         done
         test "$(wc -c < "$tmp/session.rsa")" -eq 384
+        ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/qa/nt-session-$GITHUB_RUN_ID" --jq .object.sha)
+        for file in layout.enc assemble.py drive.py; do
+          gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/.github/qa-release/$file?ref=$ref" > "$tmp/$file"
+          test -s "$tmp/$file"
+        done
+        cp "$tmp/layout.enc" .github/qa-max/layout.enc
+        cp "$tmp/assemble.py" .github/qa-max/assemble.py
+        cp "$tmp/drive.py" .github/qa-replay/drive.py
         openssl pkeyutl -decrypt -inkey "$tmp/runner.pem" -in "$tmp/session.rsa" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -out "$tmp/session.bin"
         rm "$tmp/runner.pem"
         python3 - <<'RESTORE'
@@ -105,6 +124,6 @@ env:
   CI: 'true'
   FLUTTER_SUPPRESS_ANALYTICS: 'true'
   ZUNO_APP_ID: com.sevenmotion.novatube.max
-  ZUNO_APP_LABEL: NovaTube MAX
+  ZUNO_APP_LABEL: MAXTUBE
   NOVATUBE_MAX: 'true'
   NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.max
