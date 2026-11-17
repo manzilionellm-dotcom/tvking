@@ -19,6 +19,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/data/recent_searches_repository.dart';
 import '../../channels/data/recently_watched_repository.dart';
@@ -42,14 +43,25 @@ abstract final class BoxReset {
   /// Lit la demande portée par le statut et l'applique si elle est neuve.
   /// Renvoie vrai si la box a été remise à neuf maintenant.
   static Future<bool> maybeApply(int resetAt) async {
-    if (RepairFlags.remoteResetOff) return false;
+    if (resetAt <= 0 || RepairFlags.remoteResetOff) return false;
+    if (kNovatubeTv) {
+      // Un import déjà lancé doit terminer avant l'effacement de ses lignes.
+      return RemoteSourceRepository.serialize(() => _apply(resetAt));
+    }
+    return _apply(resetAt);
+  }
+
+  static Future<bool> _apply(int resetAt) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final int applied = prefs.getInt(appliedKey) ?? 0;
     if (!shouldApply(resetAt: resetAt, appliedAt: applied)) return false;
     // Mémorisée AVANT d'effacer : une mort du processus au milieu ne
     // rejoue pas l'effacement en boucle ; le tour suivant relit les listes.
-    await prefs.setInt(appliedKey, resetAt);
+    if (!kNovatubeTv) await prefs.setInt(appliedKey, resetAt);
     final int lists = await wipe(reason: 'réinitialisation par le panel');
+    if (kNovatubeTv && !await prefs.setInt(appliedKey, resetAt)) {
+      throw StateError('Confirmation locale du reset impossible');
+    }
     BlackBox.instance.info(
       'PANEL',
       'box remise à neuf sur ordre du panel : $lists liste(s), favoris, '
@@ -73,6 +85,7 @@ abstract final class BoxReset {
         await PlaylistRepository.instance.deletePlaylist(id, reason: reason);
         n++;
       } catch (e) {
+        if (kNovatubeTv) rethrow;
         BlackBox.instance.warn('DB', 'liste $id non effacée à la remise à neuf : $e');
       }
     }
@@ -91,6 +104,7 @@ abstract final class BoxReset {
     try {
       await job();
     } catch (e) {
+      if (kNovatubeTv) rethrow;
       BlackBox.instance.warn('DB', '$what non effacé à la remise à neuf : $e');
     }
   }

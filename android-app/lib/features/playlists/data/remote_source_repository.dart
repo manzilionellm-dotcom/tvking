@@ -51,6 +51,7 @@ import 'playlist_repository.dart';
 import 'removed_list_notice.dart';
 import 'deleted_sources.dart';
 import 'xtream_client.dart' show XtreamAuthException;
+import 'source_failure_code.dart';
 
 /// Résultat d'une synchro de source distante — sert à afficher un
 /// message PRÉCIS côté UI au lieu d'un vague « pas de chaînes ».
@@ -115,7 +116,7 @@ abstract final class RemoteSourceRepository {
   /// l'autre. Les révocations restent immédiates, hors de cette file.
   static final ValueNotifier<bool> manualImporting = ValueNotifier<bool>(false);
 
-  static Future<T> runUserImport<T>(Future<T> Function() job) => _serial(() async {
+  static Future<T> runUserImport<T>(Future<T> Function() job) => serialize(() async {
     ImportProgressBus.clear();
     manualImporting.value = true;
     try {
@@ -159,7 +160,10 @@ abstract final class RemoteSourceRepository {
       // rejeté. La boîte noire expurge les liens et mots de passe à
       // l'écriture ; on coupe quand même la raison pour rester lisible.
       final String secs = (watch.elapsedMilliseconds / 1000).toStringAsFixed(1);
-      final reason = kNovatubeTv ? e.runtimeType.toString() : shortReason(e);
+      final reason = kNovatubeTv ? sourceFailureCode(e) : shortReason(e);
+      if (kNovatubeTv && (reason == 'denied' || reason == 'expired')) {
+        _providerRefusal = reason;
+      }
       _lastError = 'liste $kind refusée après $secs s : $reason';
       BlackBox.instance.warn(
         'SOURCE',
@@ -209,7 +213,7 @@ abstract final class RemoteSourceRepository {
 
   /// Une seule synchro à la fois. La suivante attend la fin de
   /// la précédente, sans en lancer une deuxième en parallèle.
-  static Future<T> _serial<T>(Future<T> Function() job) {
+  static Future<T> serialize<T>(Future<T> Function() job) {
     final Completer<T> done = Completer<T>();
     _queue = _queue.then((_) async {
       try {
@@ -251,7 +255,7 @@ abstract final class RemoteSourceRepository {
       BlackBox.instance.warn('SOURCE', 'suppression locale impossible : $e');
       return false;
     }
-    await _serial(() => _deleteFromTv(playlist, client: client));
+    await serialize(() => _deleteFromTv(playlist, client: client));
     return true;
   }
 
@@ -324,12 +328,13 @@ abstract final class RemoteSourceRepository {
   }
 
   static Future<RemoteSyncResult> sync({bool force = false}) {
-    return _serial(() async {
+    return serialize(() async {
       ImportProgressBus.clear();
       syncing.value = true;
       try {
         _lastConfigRev = null;
         _lastError = null;
+        _providerRefusal = null;
         _lastKeptPrevious = false;
         final RemoteSyncResult r = await _syncBody(force: force);
         // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
@@ -353,6 +358,8 @@ abstract final class RemoteSourceRepository {
   static SourceSyncReport? lastReport;
   static int? _lastConfigRev;
   static String? _lastError;
+  static String? _providerRefusal;
+  static String? get providerRefusal => _providerRefusal;
   static bool _lastKeptPrevious = false;
 
   /// Mémoire des listes refusées (empreinte → dernier refus, compte).
@@ -660,6 +667,14 @@ abstract final class RemoteSourceRepository {
       // tout le fichier M3U (mesuré : refusé après 90 s chez un
       // fournisseur lent). Si l'API refuse (fournisseur sans player_api,
       // identifiants limités au M3U…), repli sur le fichier, comme avant.
+      Future<int> importFile() async {
+        final saved = await PlaylistRepository.instance.addM3uPlaylist(
+          restoreDeleted: false, name: label, url: m3u,
+          epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
+        );
+        return saved.channelCount;
+      }
+
       final XtreamAccount? account =
           RepairFlags.m3uLinkAsM3u ? null : xtreamFromM3uLink(m3u);
       if (account != null) {
@@ -668,18 +683,32 @@ abstract final class RemoteSourceRepository {
             p.xtreamServer == account.serverUrl &&
             p.xtreamUsername == account.username);
         if (sameAccount) return RemoteSyncResult.loaded;
+        Future<int> importAccount() async {
+          final saved = await PlaylistRepository.instance.addXtreamPlaylist(
+            restoreDeleted: false, name: label, serverUrl: account.serverUrl,
+            username: account.username, password: account.password, originM3uUrl: m3u,
+          );
+          return saved.channelCount;
+        }
+
+        if (kNovatubeTv) {
+          // Le fournisseur peut autoriser le lien M3U et refuser son API.
+          // Les deux essais correspondent à un seul ordre et à un seul résultat.
+          return _timedImport('M3U (lien Xtream)', () async {
+            try {
+              return await importAccount();
+            } catch (error) {
+              if (error == SourceImportProblem.expired) rethrow;
+              BlackBox.instance.info('SOURCE',
+                  'API Xtream : ${sourceFailureCode(error)} ; essai du lien M3U fourni');
+              return importFile();
+            }
+          });
+        }
         Object? apiError;
         final RemoteSyncResult viaApi = await _timedImport('Xtream (lien)', () async {
           try {
-            final Playlist saved = await PlaylistRepository.instance.addXtreamPlaylist(
-              restoreDeleted: false,
-              name: label,
-              serverUrl: account.serverUrl,
-              username: account.username,
-              password: account.password,
-              originM3uUrl: m3u,
-            );
-            return saved.channelCount;
+            return await importAccount();
           } catch (e) {
             apiError = e;
             rethrow;
@@ -703,16 +732,7 @@ abstract final class RemoteSourceRepository {
         );
       }
 
-      return _timedImport('M3U', () async {
-        final Playlist saved = await PlaylistRepository.instance.addM3uPlaylist(
-          restoreDeleted: false,
-          name: label,
-          url: m3u,
-          epgUrl: (epg != null && epg.isNotEmpty) ? epg : null,
-        );
-        if (kDebugMode) debugPrint('[RemoteSource] M3U chargé');
-        return saved.channelCount;
-      });
+      return _timedImport('M3U', importFile);
     }
     return RemoteSyncResult.noSource;
   }

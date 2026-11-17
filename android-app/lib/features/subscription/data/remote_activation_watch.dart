@@ -67,6 +67,7 @@ class RemoteActivationWatch {
   bool _nudge = false;
   bool _allowSourceImport = true;
   bool _novaSourceOrdered = false;
+  bool _novaPanelOrdered = false;
   bool _channelUp = false;
   int _failures = 0;
   int _signalFailures = 0;
@@ -162,6 +163,7 @@ class RemoteActivationWatch {
     _channelUp = false;
     _lastSourceRev = null;
     _novaSourceOrdered = false;
+    _novaPanelOrdered = false;
     _session?.stop();
     _session = null;
     _signalHttp?.close();
@@ -221,9 +223,23 @@ class RemoteActivationWatch {
         return;
       }
       _failures = 0;
+      final atlas = NovatubeAtlas.instance;
+      if (kNovatubeTv) {
+        final requested = _novaPanelOrdered;
+        _novaPanelOrdered = false;
+        await atlas.refreshPanel(force: requested);
+        final fresh = atlas.pendingOrders.where((o) => o['state'] != 'received').toList();
+        // Seule la révision de listes réellement servie peut déclencher
+        // un nouvel essai. Les anciennes commandes ne réinstallent rien.
+        sourceOrdered = sourceOrdered || fresh.any((o) =>
+            channelRefreshesSources(o['kind'] as String? ?? '') &&
+            o['config_rev'] == snapOf().sourceRev);
+        await atlas.acknowledgeOrders(fresh.where(_handlesNovaOrder), 'received', 'received');
+      }
       // Remise à neuf demandée depuis le panel (« Réinitialiser la box ») :
       // tout est effacé AVANT de relire les listes, qui sont alors vides.
-      if (await BoxReset.maybeApply(snapOf().resetAt)) {
+      final resetAt = snapOf().resetAt;
+      if (await BoxReset.maybeApply(resetAt)) {
         _lastSourceRev = null;
         sourceOrdered = true;
       }
@@ -238,10 +254,38 @@ class RemoteActivationWatch {
         sourceOrdered = true;
         _novaSourceOrdered = false;
       }
+      if (kNovatubeTv) {
+        final commands = atlas.pendingOrders.where(atlas.stateCovers).toList();
+        if (resetAt > 0 && commands.any((o) => o['kind'] == 'reset')) {
+          final prefs = await SharedPreferences.getInstance();
+          if (prefs.getInt(BoxReset.appliedKey) == resetAt) {
+            await atlas.acknowledgeOrders(commands.where((o) => o['kind'] == 'reset'),
+                'applied', 'reset_applied');
+          }
+        }
+        // Le statut authentifié vient d’être relu ; l’application ne confirme
+        // ici que les opérations de licence prises en charge par ce statut.
+        await atlas.acknowledgeOrders(commands.where((o) => _novaLicenseOrders.contains(o['kind'])),
+            'applied', 'status_reloaded');
+      }
       await _maybeImportSource(ordered: sourceOrdered);
+    } catch (error) {
+      if (!kNovatubeTv) rethrow;
+      _failures++;
+      BlackBox.instance.warn('PANEL', 'synchronisation NovaTube interrompue ; nouvel essai');
     } finally {
       _tickBusy = false;
     }
+  }
+
+  static const _novaLicenseOrders = {
+    'activate', 'renew', 'expire', 'suspend', 'resume', 'block', 'license',
+  };
+
+  static bool _handlesNovaOrder(Map<String, dynamic> order) {
+    final kind = order['kind'];
+    return kind == 'reset' || kind == 'source' || kind == 'source_clear' ||
+        _novaLicenseOrders.contains(kind);
   }
 
   RemoteSubscriptionStatus snapOf() => SubscriptionState.instance.remote;
@@ -252,6 +296,7 @@ class RemoteActivationWatch {
   Future<void> _maybeImportSource({bool ordered = false}) async {
     if (!_allowSourceImport) return;
     final RemoteSubscriptionStatus snap = SubscriptionState.instance.remote;
+    if (kNovatubeTv && NovatubeAtlas.instance.servedSources == null) return;
     final bool has = PlaylistRepository.instance.currentChannels.isNotEmpty;
     final bool busy = TvActivity.isBusy;
     final bool fetch = SourceFetchDecision.shouldFetch(
@@ -299,12 +344,22 @@ class RemoteActivationWatch {
       // liste différée ou une ancienne révision ne valident jamais l’ensemble.
       if (report == null || report.configRev != rev || report.error != null ||
           report.keptPrevious || result == RemoteSyncResult.sourceFailed) {
+        final refusal = RemoteSourceRepository.providerRefusal;
+        if (report?.configRev == rev && refusal != null) {
+          final atlas = NovatubeAtlas.instance;
+          await atlas.acknowledgeOrders(atlas.pendingOrders.where((o) =>
+              o['kind'] == 'source' && o['config_rev'] == rev),
+              'failed', 'source_failed', errorCode: refusal);
+        }
         return;
       }
       final acked = await NovatubeAtlas.instance.ack(rev);
       BlackBox.instance.info('PANEL', 'listes NovaTube rev $rev : '
           '${acked ? 'reçu envoyé' : 'reçu refusé, nouvel essai plus tard'}');
       if (!acked) return;
+      if (_lastSourceRev != rev || ordered) {
+        await NovatubeAtlas.instance.refreshPanel(force: true);
+      }
     }
     if (rev != null) _lastSourceRev = rev;
     // Ordre du panel appliqué : on remonte l'inventaire tout de suite
@@ -353,6 +408,7 @@ class RemoteActivationWatch {
             }
           }
           if (after > previous) {
+            _novaPanelOrdered = true;
             nudge();
           } else if (clock.elapsed < ActivationPace.fast) {
             // Un proxy qui répond vide immédiatement ne crée pas de boucle.

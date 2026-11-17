@@ -202,7 +202,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // lue (Android 11+). Best-effort : ne bloque jamais le boot.
   await StartupTrace.step(
     'blackBox',
-    () => BlackBox.instance.initialize(flavor: AppPlatform.zunoEditionName),
+    () => BlackBox.instance.initialize(flavor: kNovatubeTv ? 'NovaTube TV' : AppPlatform.zunoEditionName),
   );
   _wireAudioDiagnostic();
   _wireVideoDiagnostic();

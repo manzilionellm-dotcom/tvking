@@ -10,6 +10,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:tv_king/core/app/novatube_tv_edition.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/device/data/novatube_identity.dart';
+import 'package:tv_king/features/playlists/data/box_reset.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
@@ -47,9 +48,19 @@ void main() {
     final origin = 'http://127.0.0.1:${source.port}';
     final suite = Completer<void>();
     addTearDown(() { if (!suite.isCompleted) suite.complete(); });
+    int fileRequests = 0;
     source.listen((req) async {
       final res = req.response;
-      if (req.uri.path == '/refuse.m3u') {
+      if (req.uri.path == '/player_api.php') {
+        res.headers.contentType = ContentType.json;
+        res.write(jsonEncode({'user_info': {'auth': 0}}));
+      } else if (req.uri.path == '/manuel.m3u') {
+        res.write('#EXTM3U\n#EXTINF:-1,Perso\n$origin/manuel.ts\n');
+      } else if (req.uri.path == '/get.php') {
+        fileRequests++;
+        expect(req.uri.queryParameters['password'], 'p+q');
+        res.write('#EXTM3U\n#EXTINF:-1,Mire fournie\n$origin/fournie.ts\n');
+      } else if (req.uri.path == '/refuse.m3u') {
         res.statusCode = HttpStatus.forbidden;
       } else {
         res.write('#EXTM3U\n');
@@ -73,11 +84,30 @@ void main() {
     final mac = await NovatubeIdentity.instance.mac;
     final endpoint = base.resolve('/api/v1/sources/${Uri.encodeComponent(mac)}');
     final auth = {'Content-Type':'application/json','Authorization':'Bearer $token'};
-    Future<void> envoyer(String chemin) async {
+    Future<String> envoyer(String chemin) async {
       final reponse = await http.put(endpoint, headers:auth, body:jsonEncode({
         'sources':[{'type':'m3u','label':'Mire locale','m3u_url':'$origin/$chemin'}],
       }));
       expect(reponse.statusCode, 200);
+      return (jsonDecode(reponse.body) as Map)['order_id'] as String;
+    }
+    Future<String?> ordre(String id) async {
+      final uri = base.resolve('/api/v1/orders').replace(queryParameters: {'mac': mac});
+      final response = await http.get(uri, headers: auth);
+      expect(response.statusCode, 200);
+      final items = (jsonDecode(response.body) as Map)['items'] as List;
+      for (final item in items.whereType<Map<String, dynamic>>()) {
+        if (item['order_id'] == id) return item['state'] as String?;
+      }
+      return null;
+    }
+    Future<void> attendre(Future<bool> Function() condition, String attendu) async {
+      final clock = Stopwatch()..start();
+      while (clock.elapsed < const Duration(seconds: 15)) {
+        if (await condition()) return;
+        await Future<void>.delayed(const Duration(milliseconds: 75));
+      }
+      fail(attendu);
     }
     Future<bool> confirme(int revision) async {
       final r = await http.get(Uri.parse('$endpoint/revisions'), headers:auth);
@@ -113,10 +143,48 @@ void main() {
     }
     RemoteSourceRepository.lastResult.addListener(observe);
     addTearDown(() => RemoteSourceRepository.lastResult.removeListener(observe));
-    await envoyer('refuse.m3u');
+    final refuse = await envoyer('refuse.m3u');
     await refus.future.timeout(const Duration(seconds:5));
     await Future<void>.delayed(const Duration(milliseconds:200));
     expect(await confirme(2), isFalse);
     expect(repo.currentChannels.length, 301);
-  }, skip: fixture == null || !kNovatubeTv ? 'Nécessite la TV NovaTube et le serveur local.' : null);
+    await attendre(() async => await ordre(refuse) == 'failed', 'refus fournisseur remonté');
+    await repo.addM3uPlaylist(name: 'Perso', url: '$origin/manuel.m3u');
+    final ajoutClock = Stopwatch()..start();
+    final ajout = await envoyer('get.php?username=u&password=p%2Bq&type=m3u_plus');
+    await attendre(() async => await ordre(ajout) == 'applied', 'lien M3U utilisable enregistré');
+    // Les mesures de ce test décrivent uniquement le serveur Atlas local.
+    // ignore: avoid_print
+    print('ATLAS_LOCAL ajout_ms=${ajoutClock.elapsedMilliseconds}');
+    expect(await confirme(3), isTrue);
+    expect(fileRequests, 1);
+    expect((await repo.getAllPlaylists()).map((p) => p.name), containsAll(['Perso','Mire locale']));
+
+    final retraitClock = Stopwatch()..start();
+    final retrait = await http.delete(endpoint, headers: auth);
+    expect(retrait.statusCode, 200);
+    final idRetrait = (jsonDecode(retrait.body) as Map)['order_id'] as String;
+    await attendre(() async => await ordre(idRetrait) == 'applied', 'retrait confirmé après effacement');
+    // ignore: avoid_print
+    print('ATLAS_LOCAL retrait_ms=${retraitClock.elapsedMilliseconds}');
+    expect((await repo.getAllPlaylists()).map((p) => p.name), ['Perso']);
+
+    final resetClock = Stopwatch()..start();
+    final reset = await http.post(Uri.parse('$endpoint/reset'), headers: auth);
+    expect(reset.statusCode, 200);
+    final resetBody = jsonDecode(reset.body) as Map<String, dynamic>;
+    final stamp = resetBody['reset_at'] as int;
+    final resetId = resetBody['order_id'] as String;
+    await attendre(() async => (await repo.getAllPlaylists()).isEmpty, 'remise à neuf locale');
+    final prefs = await SharedPreferences.getInstance();
+    await attendre(() async => prefs.getInt(BoxReset.appliedKey) == stamp, 'effacement terminé');
+    await attendre(() async => await ordre(resetId) == 'applied', 'reset confirmé au panel');
+    // ignore: avoid_print
+    print('ATLAS_LOCAL reset_ms=${resetClock.elapsedMilliseconds}');
+    expect(await NovatubeIdentity.instance.mac, mac);
+    expect(licence.status, SubscriptionStatus.trialActive);
+    await repo.addM3uPlaylist(name: 'Après le reset', url: '$origin/manuel.m3u');
+    expect(await BoxReset.maybeApply(stamp), isFalse);
+    expect((await repo.getAllPlaylists()).single.name, 'Après le reset');
+  }, timeout: const Timeout(Duration(minutes: 2)), skip: fixture == null || !kNovatubeTv ? 'Nécessite la TV NovaTube et le serveur local.' : null);
 }
