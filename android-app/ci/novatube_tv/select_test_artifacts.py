@@ -27,6 +27,9 @@ if provenance:
     checks = {'emulator_media.sh', 'emulator_smoke.sh', 'screen_label.py', 'profile_catalogs.py',
               'make_test_media.sh', 'select_test_artifacts.py'}
     allowed = {f'android-app/ci/novatube_tv/{name}' for name in checks}
+    # Ce test de télécommande utilise SQLite sur le poste de test. Les cibles
+    # de compilation Android n'importent pas ce fichier.
+    allowed.add('android-app/test/novatube_tv/novatube_variantes_direct_test.dart')
     # Ces deux parcours de livraison lisent le binaire déjà construit.
     # Une modification du code, de la signature ou des ressources de l'app
     # impose toujours un nouvel APK.
