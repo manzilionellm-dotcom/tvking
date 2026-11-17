@@ -2,7 +2,7 @@ name: MAXTUBE Android TV — lecture du fichier signé
 'on':
   push:
     branches:
-    - qa/maxtube-101-replay-signe-20261117
+    - qa/maxtube-101-replay-final-20261117
 permissions:
   contents: read
   actions: read
@@ -39,18 +39,18 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
-        name=novatube-max-prive-a6d1976775f231079fe2a51016822e6b54d1d317
+        name=novatube-max-prive-3509aa0de389b9db3cf85b9f92416dae1b6bca86
         for i in $(seq 1 120); do
-          if gh api "repos/$GITHUB_REPOSITORY/actions/runs/44094330269/artifacts" --jq '.artifacts[].name' | grep -Fxq "$name"; then exit 0; fi
+          if gh api "repos/$GITHUB_REPOSITORY/actions/runs/44096603046/artifacts" --jq '.artifacts[].name' | grep -Fxq "$name"; then exit 0; fi
           sleep 10
         done
         exit 1
-    - name: Reprendre le bundle chiffré exact du commit a6d19767
+    - name: Reprendre le bundle chiffré exact du commit 3509aa0d
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
       with:
         github-token: ${{ github.token }}
-        run-id: '44094330269'
-        name: novatube-max-prive-a6d1976775f231079fe2a51016822e6b54d1d317
+        run-id: '44096603046'
+        name: novatube-max-prive-3509aa0de389b9db3cf85b9f92416dae1b6bca86
         path: coffre
     - name: Restituer et vérifier l’APK MAXTUBE signé
       env:
