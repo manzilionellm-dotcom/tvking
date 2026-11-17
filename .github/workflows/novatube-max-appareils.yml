@@ -2,7 +2,7 @@ name: NovaTube MAX — replay signé avec Atlas local
 'on':
   push:
     branches:
-    - qa/novatube-max-replay-auth-20261117
+    - qa/novatube-max-replay-telecommande-20261117
 permissions:
   contents: read
   actions: read

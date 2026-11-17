@@ -82,16 +82,26 @@ def playing(mode,limit=70):
         time.sleep(.8)
     return False
 
-past=r'Past (?:programme|program|show)|[ÉE]missions pass[ée]es';hist=r'My (?:watch )?history|Mon historique';future=r'FUTURE\s+NOVA';listing=r'AURORA\s+QA';hub=r'^(?:.?\s*)?Guide(?:\s*.?)?$';current_program=r'LIVE\s+STUDIO';archive=r'ARCHIVE\s+ALPHA'
+past=r'Past (?:programme|program|show)|[ÉE]missions pass[ée]es';hist=r'My (?:watch )?history|Mon historique';future=r'FUTURE\s+NOVA';listing=r'AURORA\s+QA';hub=r'\bGuide\b';current_program=r'LIVE\s+STUDIO';archive=r'ARCHIVE\s+ALPHA'
 def open_channel(limit=50):
-    deadline=time.monotonic()+limit;last_action=0
+    deadline=time.monotonic()+limit;last_action=0;tried_remote=False
     while time.monotonic()<deadline:
         data=ocr()
         if locate(data,past) or locate(data,hist):return True
-        if time.monotonic()-last_action<2.4:continue
-        xy=locate(data,hub) or locate(data,listing)
-        if xy:adb('shell','input','tap',*xy);last_action=time.monotonic();time.sleep(1)
-        else:time.sleep(.7)
+        if time.monotonic()-last_action<2.4:time.sleep(.3);continue
+        channel=locate(data,listing);guide=locate(data,hub)
+        if channel:
+            # Le premier canal du guide a le focus au D-pad.
+            if not proof.get('ligne_telecommande'):
+                key('KEYCODE_DPAD_CENTER',.9);proof['ligne_telecommande']=True;save()
+            else:
+                adb('shell','input','tap',*channel)
+        elif guide:
+            if not tried_remote and (locate(data,r'My playlists') or locate(data,r'Good (?:afternoon|morning|evening)')):
+                for _ in range(3):key('KEYCODE_DPAD_RIGHT',.22)
+                key('KEYCODE_DPAD_CENTER',.8);tried_remote=True
+            else:adb('shell','input','tap',*guide)
+        last_action=time.monotonic();time.sleep(.6)
     return False
 
 def back_to_channel():
@@ -115,7 +125,7 @@ def run():
         if word(r'Sign in and load|Connect and load|Load playlist',3,True):time.sleep(1)
     must(got('get_live_streams'),'Aucun import Xtream reçu')
     proof['import']=True;save();setstep('ouverture du guide');must(open_channel(60),'Impossible d’ouvrir le guide de la chaîne');snap('guide-chaine')
-    setstep('programme futur');must(word(future,20,True),'programme futur introuvable');must(word(r'^Close$|^Fermer$',18,True),'fiche du futur absente');must(not got('replay'),'archive ouverte pour un programme futur');proof['a_venir']=True;save()
+    setstep('programme futur');must(word(future,20,True),'programme futur introuvable');must(word(r'\b(?:Close|Fermer)\b',18,True),'fiche du futur absente');must(not got('replay'),'archive ouverte pour un programme futur');proof['a_venir']=True;save()
     setstep('émission passée');must(word(past,20,True),'onglet du passé absent');must(word(archive,22,True),'émission passée absente');
     if word(r'^REPLAY$',4):word(r'^REPLAY$',5,True)
     must(playing('replay',60),'mire du replay absente');must(got('replay') and not got('wrong_archive'),'adresse de replay erronée');time.sleep(4);save()
