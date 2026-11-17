@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "Multiple M3U lists",
+  "novaBatchHint": "One URL per line",
+  "novaBatchAlready": "These lists have already been added.",
   "novaGuidePast": "Past programmes",
   "novaGuideHistory": "My history",
   "novaGuideHistoryEmpty": "No programmes watched on this channel yet",

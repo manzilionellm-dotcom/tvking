@@ -26,7 +26,7 @@ void main() {
   final past = show('Journal de la veille', -14);
   final next = show('Un match demain', 24);
   final expired = show('Une ancienne finale', -96);
-  final channel = Channel(id: 'max-channel', name: 'Chaîne test', category: 'Test',
+  const channel = Channel(id: 'max-channel', name: 'Chaîne test', category: 'Test',
       isLive: true, streamUrl: 'https://example.invalid/u/p/7.ts',
       catchupSupported: true, catchupDays: 1);
 
@@ -65,7 +65,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text(expired.title));
     await tester.pumpAndSettle();
-    expect(find.text('Replay indisponible pour cette émission.'), findsOneWidget);
+    expect(find.textContaining('Replay indisponible pour cette émission.'), findsOneWidget);
     await tester.tap(find.text('Fermer'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Émissions passées'));

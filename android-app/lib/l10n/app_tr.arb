@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "Birden fazla M3U listesi",
+  "novaBatchHint": "Her satıra bir adres",
+  "novaBatchAlready": "Bu listeler zaten eklendi.",
   "novaGuidePast": "Geçmiş programlar",
   "novaGuideHistory": "İzleme geçmişim",
   "novaGuideHistoryEmpty": "Bu kanalda henüz izlenen program yok",

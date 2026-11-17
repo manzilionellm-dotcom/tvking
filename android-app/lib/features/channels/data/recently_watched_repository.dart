@@ -189,7 +189,9 @@ class RecentlyWatchedRepository {
     String profileId, EpgProgram program, DateTime watchedAt,
   ) async {
     if (!kNovatubeMax || FlavorConfig.current.adultOnly ||
-        program.title.trim().isEmpty || program.stopTime <= program.startTime) return;
+        program.title.trim().isEmpty || program.stopTime <= program.startTime) {
+      return;
+    }
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
     await db.transaction((txn) async {

@@ -28,6 +28,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
 import 'tv_add_source_screen.dart';
+import 'novatube_max_m3u_batch.dart';
 import 'tv_shell.dart';
 import 'tv_source_error_text.dart';
 
@@ -44,11 +45,7 @@ class TvSourcesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
+    final actions = <Widget>[
             Text(
               context.l10n.tvMySources,
               style: TextStyle(
@@ -57,27 +54,39 @@ class TvSourcesScreen extends StatelessWidget {
                 color: TvAppTokens.of(context).text,
               ),
             ),
-            const Spacer(),
+            if (!kNovatubeMax) const Spacer(),
             _Pill(
               icon: Icons.add_rounded,
               label: context.l10n.tvAddXtream,
               autofocus: true,
               onSelect: () => _open(context, OpenEntryMode.xtream),
             ),
-            const SizedBox(width: 12),
+            if (!kNovatubeMax) const SizedBox(width: 12),
             _Pill(
               icon: Icons.playlist_add_rounded,
               label: context.l10n.tvAddM3u,
               onSelect: () => _open(context, OpenEntryMode.m3u),
             ),
-            const SizedBox(width: 12),
+            if (kNovatubeMax) _Pill(
+              icon: Icons.library_add_rounded, label: context.l10n.novaBatchTitle,
+              onSelect: () => showDialog<void>(context: context, barrierDismissible: false,
+                builder: (_) => const MaxM3uBatchDialog()),
+            ),
+            if (!kNovatubeMax) const SizedBox(width: 12),
             _Pill(
               icon: Icons.play_circle_outline_rounded,
               label: OpenSourceInput.playerLabel,
               onSelect: () => _open(context, OpenEntryMode.player),
             ),
-          ],
-        ),
+          ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (kNovatubeMax)
+          Wrap(spacing: 12, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center,
+              children: actions)
+        else
+          Row(children: actions),
         const SizedBox(height: 16),
         Expanded(
           child: StreamBuilder<List<Playlist>>(

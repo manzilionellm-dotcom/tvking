@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "Flere M3U-lister",
+  "novaBatchHint": "Én adresse per linje",
+  "novaBatchAlready": "Disse listene er allerede lagt til.",
   "novaGuidePast": "Tidligere programmer",
   "novaGuideHistory": "Min historikk",
   "novaGuideHistoryEmpty": "Du har ikke sett noen programmer på denne kanalen ennå",

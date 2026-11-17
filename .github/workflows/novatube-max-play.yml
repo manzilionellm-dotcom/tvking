@@ -204,8 +204,8 @@ jobs:
       run: |
         set -euo pipefail
         flags=(--no-pub --dart-define=NOVATUBE_TV=true --dart-define=NOVATUBE_MAX=true --dart-define=PLAY_BUILD=true)
-        flutter analyze --no-pub --no-fatal-infos lib/features/tv/presentation/tv_channel_guide_screen.dart lib/features/tv/presentation/tv_epg_preview_screen.dart lib/features/channels/data/recently_watched_repository.dart test/novatube_max
-        flutter test "${flags[@]}" test/novatube_max test/features/epg/catchup_url_builder_test.dart test/features/epg/epg_replay_keep_test.dart test/features/tv/history_policy_test.dart test/features/playlists/profile_source_switches_test.dart test/features/profiles test/novatube_tv/novatube_m3u_variants_test.dart test/novatube_tv/novatube_panel_list_test.dart test/features/playlists/import_bulk_persistence_test.dart
+        flutter analyze --no-pub --no-fatal-infos lib/features/tv/presentation/tv_channel_guide_screen.dart lib/features/tv/presentation/tv_epg_preview_screen.dart lib/features/channels/data/recently_watched_repository.dart lib/features/tv/presentation/novatube_max_m3u_batch.dart lib/features/tv/presentation/tv_sources_screen.dart test/novatube_max
+        flutter test "${flags[@]}" test/novatube_max test/features/epg/catchup_url_builder_test.dart test/features/epg/epg_replay_keep_test.dart test/features/tv/history_policy_test.dart test/features/tv/tv_scaled_viewport_test.dart test/features/playlists/profile_source_switches_test.dart test/features/profiles test/novatube_tv/novatube_m3u_variants_test.dart test/novatube_tv/novatube_panel_list_test.dart test/features/playlists/import_bulk_persistence_test.dart
     - name: Vérifier le guide TV historique hors MAX
       working-directory: android-app
       run: |

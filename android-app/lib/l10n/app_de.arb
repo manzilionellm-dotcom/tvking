@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "Mehrere M3U-Listen",
+  "novaBatchHint": "Eine Adresse pro Zeile",
+  "novaBatchAlready": "Diese Listen wurden bereits hinzugefügt.",
   "novaGuidePast": "Vergangene Sendungen",
   "novaGuideHistory": "Mein Verlauf",
   "novaGuideHistoryEmpty": "Noch keine Sendungen auf diesem Sender angesehen",

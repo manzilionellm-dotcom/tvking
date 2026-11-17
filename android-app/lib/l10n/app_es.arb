@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "Varias listas M3U",
+  "novaBatchHint": "Una dirección por línea",
+  "novaBatchAlready": "Estas listas ya se han añadido.",
   "novaGuidePast": "Programas anteriores",
   "novaGuideHistory": "Mi historial",
   "novaGuideHistoryEmpty": "Todavía no has visto programas en este canal",

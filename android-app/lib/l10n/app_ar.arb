@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "قوائم M3U متعددة",
+  "novaBatchHint": "رابط واحد في كل سطر",
+  "novaBatchAlready": "تمت إضافة هذه القوائم من قبل.",
   "novaGuidePast": "البرامج السابقة",
   "novaGuideHistory": "سجل المشاهدة",
   "novaGuideHistoryEmpty": "لم تشاهد أي برنامج على هذه القناة بعد",

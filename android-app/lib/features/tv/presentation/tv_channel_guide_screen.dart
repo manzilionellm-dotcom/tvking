@@ -130,6 +130,7 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
             selected: section == _section, button: true,
             child: TvFocusBuilder(
               key: ValueKey(section), scale: TvFocusScale.none,
+              autofocus: section == NovaGuideSection.upcoming,
               onSelect: () => _choose(section),
               builder: (context, focused) {
                 final colors = TvAppTokens.of(context);
@@ -361,8 +362,11 @@ class _TvChannelGuideScreenState extends State<TvChannelGuideScreen> {
                             replay: replay,
                             focusNode: _nodeFor(i),
                             onSelect: replay ? () {
-                              if (ReplayChoice.urlFor(widget.channel, p, DateTime.now()) != null) _replay(p);
-                              else if (kNovatubeMax) _details(p);
+                              if (ReplayChoice.urlFor(widget.channel, p, DateTime.now()) != null) {
+                                _replay(p);
+                              } else if (kNovatubeMax) {
+                                _details(p);
+                              }
                             } : kNovatubeMax && !live ? () => _details(p) :
                                 live && widget.selectLive ? () => _replay(p) : _close,
                           );

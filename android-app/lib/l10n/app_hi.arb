@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "कई M3U सूचियाँ",
+  "novaBatchHint": "हर पंक्ति में एक पता",
+  "novaBatchAlready": "ये सूचियाँ पहले ही जोड़ी गई हैं।",
   "novaGuidePast": "पिछले कार्यक्रम",
   "novaGuideHistory": "मेरा इतिहास",
   "novaGuideHistoryEmpty": "इस चैनल पर अभी तक कोई कार्यक्रम नहीं देखा गया है",

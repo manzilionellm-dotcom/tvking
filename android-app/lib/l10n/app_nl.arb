@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "Meerdere M3U-lijsten",
+  "novaBatchHint": "Eén adres per regel",
+  "novaBatchAlready": "Deze lijsten zijn al toegevoegd.",
   "novaGuidePast": "Eerdere programma’s",
   "novaGuideHistory": "Mijn kijkgeschiedenis",
   "novaGuideHistoryEmpty": "Je hebt nog geen programma’s op deze zender bekeken",

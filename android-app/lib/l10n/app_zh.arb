@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "多个 M3U 列表",
+  "novaBatchHint": "每行一个网址",
+  "novaBatchAlready": "这些列表已添加。",
   "novaGuidePast": "往期节目",
   "novaGuideHistory": "我的观看记录",
   "novaGuideHistoryEmpty": "尚未观看此频道的节目",

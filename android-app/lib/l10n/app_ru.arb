@@ -1,4 +1,7 @@
 {
+  "novaBatchTitle": "Несколько списков M3U",
+  "novaBatchHint": "Один адрес в строке",
+  "novaBatchAlready": "Эти списки уже добавлены.",
   "novaGuidePast": "Прошедшие передачи",
   "novaGuideHistory": "Моя история",
   "novaGuideHistoryEmpty": "На этом канале пока нет просмотренных передач",
