@@ -11,7 +11,11 @@ def save(): (out/'lecture.json').write_text(json.dumps(proof,ensure_ascii=False,
 def adb(*args,timeout=10):return subprocess.run(['adb','-s','emulator-5554',*map(str,args)],capture_output=True,check=True,timeout=timeout).stdout
 def key(k,pause=.7):adb('shell','input','keyevent',k);time.sleep(pause)
 def snap(name=None):
-    b=adb('exec-out','screencap','-p');current.write_bytes(b)
+    try:
+        b=adb('exec-out','screencap','-p',timeout=24)
+    except (subprocess.TimeoutExpired,subprocess.CalledProcessError):
+        adb('shell','screencap','-p','/data/local/tmp/snapshot.png',timeout=28);b=adb('exec-out','cat','/data/local/tmp/snapshot.png',timeout=15)
+    current.write_bytes(b)
     if name:(out/(name+'.png')).write_bytes(b)
     return b
 
@@ -92,9 +96,9 @@ def back_to_channel():
 
 def run():
     setstep('import de la liste personnelle')
-    must(word(r'Add (?:an?\s*)?M3[Uu]|Xtream Codes',25),'Accueil M3U absent');key('KEYCODE_DPAD_CENTER',2)
+    must(word(r'Add.*?M3[Uu1]',25,True),'Accueil M3U absent');time.sleep(2)
     if not word(r'Add my source|Name \(optional\)|Sign in and load',14):
-        must(word(r'Add (?:an?\s*)?M3',7,True),'bouton M3U introuvable');must(word(r'Add my source|Name \(optional\)|Sign in and load',20),'formulaire absent')
+        must(word(r'Add.*?M3[Uu1]',7,True),'bouton M3U introuvable');must(word(r'Add my source|Name \(optional\)|Sign in and load',20),'formulaire absent')
     # Le champ des liens a l’autofocus. Les caractères & restent littéraux dans le shell Android.
     url='http://127.0.0.1:8783/get.php?username=lab&password=lab&type=m3u_plus&output=mpegts'
     adb('shell','input','text',shlex.quote(url));time.sleep(.5);snap('source-saisie');key('KEYCODE_ENTER',2)
@@ -113,6 +117,9 @@ def run():
 
 try:run()
 except Exception as e:
-    proof['echec']={'etape':step,'motif':str(e)[:160]};snap('dernier-ecran');ocr();save();raise
+    proof['echec']={'etape':step,'motif':str(e)[:160]};save()
+    try:snap('dernier-ecran');ocr()
+    except Exception:pass
+    raise
 finally:
     proof['duree_s']=round(time.monotonic()-before,1);proof['appels']=[e['kind'] for e in logs()];save()

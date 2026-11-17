@@ -45,27 +45,14 @@ diagnostic() {
 trap 'diagnostic "$LINENO"' ERR
 trap 'stop_device; sudo ip netns delete "$net" || true' EXIT
 for device in television; do
-  if [[ "$device" == tactile ]]; then
-    image='system-images;android-30;google_apis;x86_64'
-  else
-    sdkmanager --list > "$RUNNER_TEMP/max-android-images.txt"
-    image=$(python3 - "$RUNNER_TEMP/max-android-images.txt" <<'PY'
-from pathlib import Path
-import re,sys
-packages=set(re.findall(r'system-images;android-(\d+);(android-tv|google-tv);x86_64\b',Path(sys.argv[1]).read_text()))
-candidates=sorted((int(api), tag) for api,tag in packages if 28<=int(api)<=36)
-if not candidates: raise SystemExit('Aucune image Android TV x86_64 dans le SDK')
-api,tag=min(candidates,key=lambda x:(x[1]!="android-tv",abs(x[0]-30),-x[0]));print(f'system-images;android-{api};{tag};x86_64')
-PY
-)
-  fi
+  image='system-images;android-30;google_apis;x86_64'
   echo "Installation de $image"
   df -h /
   sdkmanager emulator platform-tools "$image" > "$out/sdk-$device.log"
   avd=max-$device
   avdmanager list device > "$out/peripheriques-$device.log"
   label=pixel_2
-  if [[ "$device" == television ]] && grep -q '"tv_1080p"' "$out/peripheriques-$device.log"; then label=tv_1080p; fi
+  if [[ "$device" != television ]] && grep -q '"tv_1080p"' "$out/peripheriques-$device.log"; then label=tv_1080p; fi
   printf 'no\n' | avdmanager create avd --force -n "$avd" -k "$image" -d "$label" > "$out/avd-$device.log" 2>&1
   isolated "$sdk/emulator/emulator" -avd "$avd" -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader -accel on -memory 3072 -cores 2 -camera-back none -camera-front none > "$out/emulator-$device.log" 2>&1 &
   emulator_pid=$!
@@ -75,6 +62,7 @@ PY
     sleep 4
   done
   test "$(isolated timeout 6s "$sdk/platform-tools/adb" -s "$serial" shell getprop sys.boot_completed | tr -d '\r')" = 1
+  source .github/qa-replay/atlas-laboratoire.sh
   serial_adb shell id > "$out/identite-android.log"
   serial_adb shell settings put global device_provisioned 1
   serial_adb shell settings put secure user_setup_complete 1
@@ -87,18 +75,13 @@ PY
   test -z "$(sudo ip -n "$net" route show default)$(sudo ip -n "$net" -6 route show default)"
   serial_adb shell input keyevent 82
   serial_adb install -g -r "$apk" | grep -q Success
-  category=android.intent.category.LAUNCHER
-  forms=(telephone tablette)
-  if [[ "$device" == television ]]; then
-    serial_adb shell pm list features | grep 'android.software.leanback'
-    category=android.intent.category.LEANBACK_LAUNCHER
-    forms=(television)
-  fi
+  category=android.intent.category.LEANBACK_LAUNCHER
+  forms=(television)
   for form in "${forms[@]}"; do
     case "$form" in
       telephone) size=1080x2160; density=420 ;;
       tablette) size=1600x2560; density=240 ;;
-      television) size=1920x1080; density=320 ;;
+      television) size=1280x720; density=213 ;;
     esac
     serial_adb shell wm size "$size"
     serial_adb shell wm density "$density"
@@ -127,7 +110,7 @@ PY
     isolated /usr/bin/python3 .github/qa-replay/fixture.py "$media" "$out/fournisseur.jsonl" > "$out/fixture.log" 2>&1 &
     fixture_pid=$!
     serial_adb reverse tcp:8783 tcp:8783
-    isolated /usr/bin/python3 .github/qa-replay/drive.py "$out"
+    isolated env OMP_THREAD_LIMIT=1 /usr/bin/python3 .github/qa-replay/drive.py "$out"
     kill "$fixture_pid" 2>/dev/null || true
   done
   stop_device
