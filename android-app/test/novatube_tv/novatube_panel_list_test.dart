@@ -96,7 +96,7 @@ void main() {
       final response = await http.get(uri, headers: auth);
       expect(response.statusCode, 200);
       final items = (jsonDecode(response.body) as Map)['items'] as List;
-      for (final item in items.whereType<Map>()) {
+      for (final item in items.whereType<Map<String, dynamic>>()) {
         if (item['order_id'] == id) return item['state'] as String?;
       }
       return null;
@@ -150,24 +150,34 @@ void main() {
     expect(repo.currentChannels.length, 301);
     await attendre(() async => await ordre(refuse) == 'failed', 'refus fournisseur remonté');
     await repo.addM3uPlaylist(name: 'Perso', url: '$origin/manuel.m3u');
+    final ajoutClock = Stopwatch()..start();
     final ajout = await envoyer('get.php?username=u&password=p%2Bq&type=m3u_plus');
     await attendre(() async => await ordre(ajout) == 'applied', 'lien M3U utilisable enregistré');
+    // Les mesures de ce test décrivent uniquement le serveur Atlas local.
+    // ignore: avoid_print
+    print('ATLAS_LOCAL ajout_ms=${ajoutClock.elapsedMilliseconds}');
     expect(await confirme(3), isTrue);
     expect(fileRequests, 1);
     expect((await repo.getAllPlaylists()).map((p) => p.name), containsAll(['Perso','Mire locale']));
 
+    final retraitClock = Stopwatch()..start();
     final retrait = await http.delete(endpoint, headers: auth);
     expect(retrait.statusCode, 200);
     final idRetrait = (jsonDecode(retrait.body) as Map)['order_id'] as String;
     await attendre(() async => await ordre(idRetrait) == 'applied', 'retrait confirmé après effacement');
+    // ignore: avoid_print
+    print('ATLAS_LOCAL retrait_ms=${retraitClock.elapsedMilliseconds}');
     expect((await repo.getAllPlaylists()).map((p) => p.name), ['Perso']);
 
+    final resetClock = Stopwatch()..start();
     final reset = await http.post(Uri.parse('$endpoint/reset'), headers: auth);
     expect(reset.statusCode, 200);
     final stamp = (jsonDecode(reset.body) as Map)['reset_at'] as int;
     await attendre(() async => (await repo.getAllPlaylists()).isEmpty, 'remise à neuf locale');
     final prefs = await SharedPreferences.getInstance();
     await attendre(() async => prefs.getInt(BoxReset.appliedKey) == stamp, 'effacement terminé');
+    // ignore: avoid_print
+    print('ATLAS_LOCAL reset_ms=${resetClock.elapsedMilliseconds}');
     expect(await NovatubeIdentity.instance.mac, mac);
     expect(licence.status, SubscriptionStatus.trialActive);
     await repo.addM3uPlaylist(name: 'Après le reset', url: '$origin/manuel.m3u');

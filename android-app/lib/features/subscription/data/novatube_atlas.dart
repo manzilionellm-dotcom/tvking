@@ -214,7 +214,7 @@ class NovatubeAtlas {
         });
         final results = reply.body?['results'];
         if (!reply.ok || results is! List) continue;
-        for (final receipt in results.whereType<Map>()) {
+        for (final receipt in results.whereType<Map<String, dynamic>>()) {
           final id = receipt['order_id'];
           if (id is! String || receipt['status'] != 200 || receipt['state'] != state) continue;
           if (state == 'received') {
