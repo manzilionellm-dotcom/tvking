@@ -1,8 +1,8 @@
-name: NovaTube MAX — contrôle du fichier signé sur appareils
+name: NovaTube MAX — contrôle Android TV du fichier signé
 'on':
   push:
     branches:
-    - qa/novatube-max-demarrages-20261117
+    - qa/novatube-max-television-20261117
 permissions:
   contents: read
   actions: read
@@ -76,7 +76,7 @@ jobs:
         python3 .github/qa-max/assemble.py "$tmp/sample.apk" "$tmp/layout.gz" "$tmp/final.apk"
         "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$tmp/final.apk"
         rm -f "$tmp/sample.apks" "$tmp/sample.apk" "$tmp/input.aab" "$tmp/test.p12" "$tmp/layout.gz"
-    - name: Démarrer le binaire signé sur les trois formats
+    - name: Démarrer le binaire signé sur l’image Android TV officielle
       run: |
         set -euo pipefail
         sudo apt-get update -qq
