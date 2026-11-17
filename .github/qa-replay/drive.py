@@ -3,7 +3,7 @@ import collections, csv, io, json, os, re, shlex, subprocess, sys, time
 from pathlib import Path
 from PIL import Image, ImageChops
 
-out=Path(sys.argv[1]); events=out/'fournisseur.jsonl'; pkg='com.sevenmotion.novatube.max'; proof={}; before=time.monotonic(); current=out/'courant.png'; step=''
+out=Path(sys.argv[1]); events=out/'fournisseur.jsonl'; pkg='com.sevenmotion.novatube.max'; proof={}; last_screen=None; before=time.monotonic(); current=out/'courant.png'; step=''
 def setstep(name):
     global step
     step=name; print('Étape',step,flush=True)
@@ -29,7 +29,13 @@ def ocr():
         for w in words:
             l,t,wi,h=[int(w[k]) for k in ('left','top','width','height')]; bounds.append((pos,pos+len(w['text']),l,t,l+wi,t+h));pos+=len(w['text'])+1
         result.append((text,bounds))
-    (out/'ecran-ocr.txt').write_text('\n'.join(v[0] for v in result));return result
+    global last_screen
+    content='\n'.join(v[0] for v in result)
+    (out/'ecran-ocr.txt').write_text(content)
+    if content!=last_screen:
+        with (out/'parcours-ocr.txt').open('a') as f:f.write('\n# '+step+'\n'+content+'\n')
+        last_screen=content
+    return result
 
 def locate(data,expr):
     for line,bounds in data:
@@ -83,7 +89,7 @@ def open_channel(limit=50):
         data=ocr()
         if locate(data,past) or locate(data,hist):return True
         if time.monotonic()-last_action<2.4:continue
-        xy=locate(data,listing) or locate(data,hub)
+        xy=locate(data,hub) or locate(data,listing)
         if xy:adb('shell','input','tap',*xy);last_action=time.monotonic();time.sleep(1)
         else:time.sleep(.7)
     return False
@@ -110,7 +116,9 @@ def run():
     must(got('get_live_streams'),'Aucun import Xtream reçu')
     proof['import']=True;save();setstep('ouverture du guide');must(open_channel(60),'Impossible d’ouvrir le guide de la chaîne');snap('guide-chaine')
     setstep('programme futur');must(word(future,20,True),'programme futur introuvable');must(word(r'^Close$|^Fermer$',18,True),'fiche du futur absente');must(not got('replay'),'archive ouverte pour un programme futur');proof['a_venir']=True;save()
-    setstep('émission passée');must(word(past,20,True),'onglet du passé absent');must(word(archive,22,True),'émission passée absente');must(playing('replay',60),'mire du replay absente');must(got('replay') and not got('wrong_archive'),'adresse de replay erronée');time.sleep(4);save()
+    setstep('émission passée');must(word(past,20,True),'onglet du passé absent');must(word(archive,22,True),'émission passée absente');
+    if word(r'^REPLAY$',4):word(r'^REPLAY$',5,True)
+    must(playing('replay',60),'mire du replay absente');must(got('replay') and not got('wrong_archive'),'adresse de replay erronée');time.sleep(4);save()
     setstep('historique après lecture');must(back_to_channel(),'retour au guide impossible');must(word(hist,20,True),'onglet historique absent');must(word(archive,30),'émission rejouée absente de l’historique');proof['historique']=True;snap('historique');save()
     setstep('retour au direct et repli Xtream');must(word(r'Current and upcoming|Upcoming|en cours et',18,True),'onglet du direct absent');must(word(current_program,20,True),'émission en cours absente');must(playing('live',95),'mire du direct absente');must(got('short404') and got('live'),'transition 404 vers /live non observée');proof['repli_direct']=True;save()
     setstep('état Android');must(adb('shell','pidof',pkg).strip(),'lecteur arrêté');crash=adb('logcat','-b','crash','-d').decode(errors='replace');must(not(re.search(r'FATAL EXCEPTION|Fatal signal',crash) and pkg in crash),'plantage du lecteur');proof['processus_actif']=True;save()

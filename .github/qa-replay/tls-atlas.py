@@ -11,7 +11,11 @@ class Handler(server.BaseHTTPRequestHandler):
     def relay(self):
         conn=client.HTTPConnection('127.0.0.1',8788,timeout=8)
         try:
-            body=self.rfile.read(min(int(self.headers.get('Content-Length','0')),1048576)); conn.request(self.command,self.path,body=body,headers={'Content-Type':self.headers.get('Content-Type','application/json')});r=conn.getresponse();b=r.read();self.send_response(r.status);self.send_header('Content-Type',r.getheader('Content-Type','application/json'));self.send_header('Content-Length',str(len(b)));self.end_headers()
+            body=self.rfile.read(min(int(self.headers.get('Content-Length','0')),1048576))
+            forward = {k: self.headers[k] for k in ('Content-Type','Accept','X-Device-Key','Authorization') if k in self.headers}
+            conn.request(self.command,self.path,body=body,headers=forward)
+            r=conn.getresponse();b=r.read();self.send_response(r.status)
+            self.send_header('Content-Type',r.getheader('Content-Type','application/json'));self.send_header('Content-Length',str(len(b)));self.end_headers()
             with events.open('a') as f:f.write(json.dumps({'name':self.path.split('?',1)[0].split('/')[-1][:25],'status':r.status})+'\n') if self.path.startswith('/api/novatube4k/') else None
             if self.command!='HEAD':self.wfile.write(b)
         finally:conn.close()
