@@ -29,11 +29,28 @@ PY
     profile=tv_1080p; size=1920x1080; density=320
 else
     image='system-images;android-30;google_apis;x86_64'
-    if [[ "$label" == tablette ]]; then profile=pixel_c; size=1080x1920; density=180; else profile=pixel_2; size=1080x1920; density=380; fi
+    case "$label" in
+        tablette7) profile=nexus_7_2013; size=1200x1920; density=320 ;;
+        tablette) profile=pixel_c; size=1080x1920; density=180 ;;
+        telephone) profile=pixel_2; size=1080x1920; density=380 ;;
+        *) exit 2 ;;
+    esac
 fi
 sdkmanager --install emulator platform-tools "$image" > "$RUNNER_TEMP/sdk.log"
 avdmanager list device > "$RUNNER_TEMP/hardware.txt"
-grep -q "\"$profile\"" "$RUNNER_TEMP/hardware.txt"
+if [[ "$label" == tablette7 ]]; then
+    profile=$(python3 - "$RUNNER_TEMP/hardware.txt" <<'PY'
+import re, sys
+from pathlib import Path
+found = re.findall(r'id:\s*\d+\s+or\s+"([^"]+)"', Path(sys.argv[1]).read_text())
+options = [name for name in found if name in ['Nexus 7 2013', 'Nexus 7', 'nexus_7_2013', '7in WSVGA (Tablet)']]
+if not options:
+    raise SystemExit("No official seven-inch tablet profile available")
+print(options[0])
+PY
+)
+fi
+grep -Fq "\"$profile\"" "$RUNNER_TEMP/hardware.txt"
 printf 'no\n' | avdmanager create avd --force -n nvtest -k "$image" -d "$profile" > "$RUNNER_TEMP/avd.log" 2>&1
 # The official TV image reads the host's public ADB key when QEMU starts.
 mkdir -p "$HOME/.android"

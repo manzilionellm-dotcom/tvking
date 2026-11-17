@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        appareil: [television]
+        appareil: [tablette7]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
