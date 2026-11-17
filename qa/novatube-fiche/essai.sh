@@ -35,6 +35,13 @@ sdkmanager --install emulator platform-tools "$image" > "$RUNNER_TEMP/sdk.log"
 avdmanager list device > "$RUNNER_TEMP/hardware.txt"
 grep -q "\"$profile\"" "$RUNNER_TEMP/hardware.txt"
 printf 'no\n' | avdmanager create avd --force -n nvtest -k "$image" -d "$profile" > "$RUNNER_TEMP/avd.log" 2>&1
+# The official TV image reads the host's public ADB key when QEMU starts.
+mkdir -p "$HOME/.android"
+if [[ ! -s "$HOME/.android/adbkey" ]]; then
+    (umask 077; "$sdk/platform-tools/adb" keygen "$HOME/.android/adbkey" >/dev/null 2>&1)
+fi
+test -s "$HOME/.android/adbkey.pub"
+iso "$sdk/platform-tools/adb" start-server >/dev/null 2>&1
 iso "$sdk/emulator/emulator" -avd nvtest -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader -accel on -memory 3072 -cores 2 -camera-back none -camera-front none > "$RUNNER_TEMP/emulator.log" 2>&1 &
 epid=$!
 for _ in {1..120}; do
