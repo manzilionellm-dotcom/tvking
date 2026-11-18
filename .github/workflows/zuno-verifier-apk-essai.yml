@@ -82,8 +82,6 @@ jobs:
         done
         test "$ready" = 1
         dev shell input keyevent 82
-        dev shell settings put global airplane_mode_on 1
-        dev shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true >/dev/null
         dev shell svc wifi disable
         dev shell svc data disable
         dev shell getprop ro.build.version.sdk > "$out/api.txt"
