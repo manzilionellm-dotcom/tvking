@@ -168,7 +168,8 @@ env:
 # écriraient l'APK de l'un et le version.json de l'autre. On fait la queue,
 # on n'annule jamais un téléversement en cours.
 concurrency:
-  group: publish-zuno-tv
+  # Un push de vérification ne publie aucun canal et ne prend pas la place d’une box en attente.
+  group: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/feature/zuno-tv-controle-image-1794878682') && 'controle-zuno-tv-image-1794878682' || 'publish-zuno-tv' }}
   cancel-in-progress: false
 
 defaults:
