@@ -13,6 +13,7 @@ import 'package:tv_king/core/app/app_platform.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/core/tv_provider_channel_name.dart';
+import 'package:tv_king/features/playlists/data/favorites_repository.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 import 'package:tv_king/features/tv/presentation/tv_live_screen.dart';
@@ -37,6 +38,9 @@ void main() {
     FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
     dir = await Directory.systemTemp.createTemp('direct-variantes-');
     PlaylistDatabase.debugFilePath = '${dir.path}/catalogue.db';
+    // Comme au démarrage de ZUNO, la migration des favoris est terminée
+    // avant d'ouvrir le lecteur avec la télécommande.
+    await FavoritesRepository.instance.initialize();
     final server = MockClient((req) async {
       final action = req.url.queryParameters['action'];
       final Object payload = switch (action) {
@@ -73,10 +77,10 @@ void main() {
   });
   tearDownAll(() async {
     removeAhemFonts();
-    PlaylistDatabase.debugFilePath = null;
     AppPlatform.isZuno = false;
     AppPlatform.isTv = false;
     await PlaylistDatabase.instance.closeForTesting();
+    PlaylistDatabase.debugFilePath = null;
     await dir.delete(recursive: true);
   });
 
