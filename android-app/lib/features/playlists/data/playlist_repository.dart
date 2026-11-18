@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
 // ignore: depend_on_referenced_packages — dart:async fournit unawaited
 
 
+import '../../../core/app/app_platform.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/flavor/flavor.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -48,6 +49,7 @@ import 'local_m3u_bytes.dart';
 import 'm3u_fetcher.dart';
 import 'import_progress.dart';
 import 'm3u_parser.dart';
+import 'm3u_variant_catalog.dart';
 import 'playlist_database.dart';
 import 'xtream_client.dart';
 import 'xtream_server_clock.dart';
@@ -114,7 +116,7 @@ class PlaylistRepository {
 
   /// Charge initialement les chaînes depuis la base et émet sur le stream.
   /// À appeler une fois au démarrage de l'app.
-  Future<void> initialize() async {
+  Future<void> initialize({Future<void>? beforeCatalog}) async {
     // Fuseaux des serveurs Xtream déjà connus (heure du catch-up).
     await XtreamServerClock.load();
     await _completePendingDeletions();
@@ -122,6 +124,7 @@ class PlaylistRepository {
     await _loadProfileSwitches();
     ActiveProfile.instance.listenable.removeListener(_onProfileChanged);
     ActiveProfile.instance.listenable.addListener(_onProfileChanged);
+    if (beforeCatalog != null) await beforeCatalog;
     await _emitCurrentState();
   }
 
@@ -207,9 +210,11 @@ class PlaylistRepository {
   /// Le téléphone garde le comportement historique (une active à la fois).
   static bool mergeAllPlaylists = false;
 
-  Future<List<Channel>> getAllChannels() async {
+  Future<List<Channel>> getAllChannels() => _getAllChannels(<String, String>{});
+
+  Future<List<Channel>> _getAllChannels(Map<String, String> guides) async {
     final Database db = await PlaylistDatabase.instance.database;
-    if (mergeAllPlaylists) return _readMergedChannels(db);
+    if (mergeAllPlaylists) return _readMergedChannels(db, guides);
 
     // Phase 1+/Multi-serveurs (2026-06-01) : si une playlist est
     // marquee active, on filtre les chaines pour ne renvoyer que les
@@ -264,7 +269,8 @@ class PlaylistRepository {
   /// que favoris, récents et index restent univoques. La première occurrence
   /// garde son id d'origine → les favoris déjà enregistrés continuent de
   /// fonctionner.
-  Future<List<Channel>> _readMergedChannels(Database db) async {
+  Future<List<Channel>> _readMergedChannels(
+      Database db, Map<String, String> guides) async {
     // Purge des orphelines (même garde-fou que le mode « active »).
     await db.delete(
       'channels',
@@ -274,6 +280,10 @@ class PlaylistRepository {
     // le client peut en activer autant qu'il veut EN MÊME TEMPS.
     final List<Channel> all =
         await _readChannelsBounded(db, null, skipHidden: true);
+    if (AppPlatform.isZunoAndroidTv) {
+      final variants = await M3uVariantCatalog.read(db, all, guides);
+      return _applyFlavorFilter(variants);
+    }
     final Set<String> seen = <String>{};
     final List<Channel> out = <Channel>[];
     for (final Channel c in all) {
@@ -1455,13 +1465,17 @@ class PlaylistRepository {
   Future<void> _emitCurrentState() async {
     final int revision = ++_stateRevision;
     final Stopwatch sw = Stopwatch()..start();
-    final List<Channel> channels = await getAllChannels();
+    final guides = <String, String>{};
+    final List<Channel> channels = await _getAllChannels(guides);
     final List<Playlist> playlists = await getAllPlaylists();
     if (revision != _stateRevision) return;
     BlackBox.instance.info('DB', 'lecture : ${channels.length} chaînes, ${playlists.length} liste(s) en ${sw.elapsedMilliseconds} ms');
     // Met à jour les caches synchrones avant d'émettre
     // (`currentChannels` est ainsi cohérent avec le dernier event).
     _channelsCache = channels;
+    if (AppPlatform.isZunoAndroidTv) {
+      EpgRepository.instance.setM3uVariantGuideIds(guides);
+    }
     _playlistsCache = playlists;
     // Les noms/genres/pays déjà calculés pour des chaînes qui ont quitté le
     // catalogue (liste supprimée, source changée) ne restent plus en mémoire.

@@ -262,6 +262,25 @@ class EpgRepository {
     );
   }
 
+  // Variantes M3U actives du catalogue TV. Le guide XMLTV reste enregistré
+  // une seule fois sous l'identifiant exact du fournisseur, casse comprise.
+  Map<String, String> _guideForVariant = const {};
+  Map<String, List<String>> _variantsForGuide = const {};
+
+  void setM3uVariantGuideIds(Map<String, String> ids) {
+    _guideForVariant = ids;
+    final variants = <String, List<String>>{};
+    for (final entry in ids.entries) {
+      (variants[entry.value] ??= []).add(entry.key);
+    }
+    _variantsForGuide = variants;
+  }
+
+  EpgProgram _forChannel(Map<String, Object?> row, String id) {
+    if (row['channel_id'] == id) return EpgProgram.fromMap(row);
+    return EpgProgram.fromMap({...row, 'channel_id': id});
+  }
+
   /// Vide complètement la base EPG.
   Future<void> clearAll() async {
     await initialize();
@@ -282,11 +301,11 @@ class EpgRepository {
     final List<Map<String, Object?>> rows = await db.query(
       'epg_programs',
       where: 'channel_id = ? AND start_time <= ? AND stop_time > ?',
-      whereArgs: <Object>[channelId, now, now],
+      whereArgs: <Object>[_guideForVariant[channelId] ?? channelId, now, now],
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return EpgProgram.fromMap(rows.first);
+    return _forChannel(rows.first, channelId);
   }
 
   /// Programme suivant après celui en cours (null si rien programmé).
@@ -297,12 +316,12 @@ class EpgRepository {
     final List<Map<String, Object?>> rows = await db.query(
       'epg_programs',
       where: 'channel_id = ? AND start_time > ?',
-      whereArgs: <Object>[channelId, now],
+      whereArgs: <Object>[_guideForVariant[channelId] ?? channelId, now],
       orderBy: 'start_time ASC',
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return EpgProgram.fromMap(rows.first);
+    return _forChannel(rows.first, channelId);
   }
 
   /// Programmes d'une chaîne entre deux instants (pour la grille TV).
@@ -317,10 +336,10 @@ class EpgRepository {
       'epg_programs',
       where:
           'channel_id = ? AND stop_time > ? AND start_time < ?',
-      whereArgs: <Object>[channelId, startMs, endMs],
+      whereArgs: <Object>[_guideForVariant[channelId] ?? channelId, startMs, endMs],
       orderBy: 'start_time ASC',
     );
-    return rows.map(EpgProgram.fromMap).toList(growable: false);
+    return rows.map((row) => _forChannel(row, channelId)).toList(growable: false);
   }
 
   /// Récupère les programmes d'aujourd'hui pour une chaîne donnée.
@@ -362,7 +381,18 @@ class EpgRepository {
         orderBy: 'start_time ASC',
         limit: cap,
       );
-      return rows.map(EpgProgram.fromMap).toList(growable: false);
+      if (_variantsForGuide.isEmpty) {
+        return rows.map(EpgProgram.fromMap).toList(growable: false);
+      }
+      final programs = <EpgProgram>[];
+      for (final row in rows) {
+        final source = row['channel_id'] as String;
+        for (final channel in _variantsForGuide[source] ?? [source]) {
+          programs.add(_forChannel(row, channel));
+          if (programs.length == cap) return programs;
+        }
+      }
+      return programs;
     } catch (e) {
       if (kDebugMode) debugPrint('[EpgRepository] programmes du soir : $e');
       return const <EpgProgram>[];
