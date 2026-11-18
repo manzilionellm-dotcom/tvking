@@ -72,7 +72,17 @@ jobs:
         sudo chmod a+rw /dev/kvm
         "$sdk/emulator/emulator" -avd qa -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader -accel on -memory 2048 -cores 2 -http-proxy http://127.0.0.1:9 -dns-server 127.0.0.1 > "$out/emulator.txt" 2>&1 &
         emu_pid=$!
-        trap 'adb -s emulator-5554 emu kill >/dev/null 2>&1 || true' EXIT
+        finish() {
+          status=$?
+          trap - EXIT
+          adb -s emulator-5554 logcat -b crash -d > "$out/final-crash.txt" 2>&1 || true
+          adb -s emulator-5554 logcat -d -t 2500 > "$out/final-logcat.txt" 2>&1 || true
+          adb -s emulator-5554 shell dumpsys activity activities > "$out/final-activity.txt" 2>&1 || true
+          adb -s emulator-5554 exec-out screencap -p > "$out/final-screen.png" 2>/dev/null || true
+          adb -s emulator-5554 emu kill >/dev/null 2>&1 || true
+          exit "$status"
+        }
+        trap finish EXIT
         dev() { adb -s emulator-5554 "$@"; }
         ready=0
         for i in {1..90}; do
@@ -83,7 +93,7 @@ jobs:
         test "$ready" = 1
         dev shell input keyevent 82
         dev shell svc wifi disable
-        dev shell svc data disable
+        if [[ "$MODE" != television ]]; then dev shell svc data disable; fi
         dev shell getprop ro.build.version.sdk > "$out/api.txt"
         dev shell pm list features > "$out/features.txt"
         if [[ "$MODE" == television ]]; then grep -F 'feature:android.software.leanback' "$out/features.txt"; fi
@@ -94,8 +104,28 @@ jobs:
         dev logcat -c
         for phase in premier relance; do
           dev shell am force-stop "$package"
-          dev shell am start -W -n "$component" | tee "$out/$phase-lancement.txt"
-          grep -F 'Status: ok' "$out/$phase-lancement.txt"
+          start=$(date +%s)
+          dev shell am start -n "$component" | tee "$out/$phase-lancement.txt"
+          displayed=false
+          # On mesure la première interface Flutter lisible. am start -W a son propre
+          # délai système et ne mesure pas le premier écran utilisable de la TV.
+          for i in {1..22}; do
+            dev shell dumpsys activity activities > "$out/$phase-activity.txt"
+            if grep -E 'mResumedActivity|topResumedActivity' "$out/$phase-activity.txt" | grep -F "$package/" >/dev/null; then
+              if timeout 10 adb -s emulator-5554 shell uiautomator dump "/sdcard/$phase.xml" >/dev/null 2>&1 &&
+                 dev pull "/sdcard/$phase.xml" "$out/$phase.xml" >/dev/null 2>&1 &&
+                 python3 - "$out/$phase.xml" <<'PYLABEL'
+        import sys,xml.etree.ElementTree as ET
+        labels=[(n.get('text','')+' '+n.get('content-desc','')).strip() for n in ET.parse(sys.argv[1]).iter('node') if n.get('package')=='com.sevenmotion.tv.seven_tv.imageqa']
+        sys.exit(0 if any(len(s)>2 and s.casefold() not in ('zuno','zuno tv','zuno tv test') for s in labels) else 1)
+        PYLABEL
+              then displayed=true; break; fi
+            fi
+            if (( $(date +%s) - start >= 75 )); then break; fi
+            sleep 2
+          done
+          [[ "$displayed" == true ]]
+          echo "$(( $(date +%s) - start ))" > "$out/$phase-secondes-interface.txt"
           pid=$(dev shell pidof "$package" | tr -d '\r')
           test -n "$pid"
           for i in {1..10}; do
