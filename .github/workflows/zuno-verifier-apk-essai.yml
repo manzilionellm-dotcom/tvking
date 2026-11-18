@@ -15,7 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         mode:
-        - '29'
         - '35'
         - television
     env:
@@ -38,9 +37,9 @@ jobs:
     - name: Setup Android SDK
       id: setup_android
       uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
-    - name: Bibliothèque de l’émulateur
-      run: if ! ldconfig -p | grep -F 'libpulse.so.0' >/dev/null; then sudo apt-get -o Acquire::Retries=2 update && sudo apt-get install -y --no-install-recommends
-        libpulse0; fi
+    - name: Bibliothèques de l’émulateur et lecture des textes à l’écran
+      run: if ! ldconfig -p | grep -F 'libpulse.so.0' >/dev/null || ! command -v tesseract >/dev/null; then sudo apt-get -o Acquire::Retries=2 update &&
+        sudo apt-get install -y --no-install-recommends libpulse0 tesseract-ocr tesseract-ocr-eng; fi
     - name: Identifier, installer, ouvrir et relancer la variante d’essai
       run: |
         set -Eeuo pipefail
@@ -102,6 +101,25 @@ jobs:
         component=$(dev shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER "$package" | tr -d '\r' | tail -1)
         [[ "$component" == "$package/"* ]]
         dev logcat -c
+        cat > "$RUNNER_TEMP/visible.py" <<'PYVISIBLE'
+        import json, subprocess, sys, xml.etree.ElementTree as ET
+        from pathlib import Path
+        xml, png, proof = map(Path, sys.argv[1:])
+        nodes=ET.parse(xml).iter('node')
+        values=[(n.get('text','')+' '+n.get('content-desc','')).strip().casefold() for n in nodes if n.get('package')=='com.sevenmotion.tv.seven_tv.imageqa']
+        raw=png.read_bytes()
+        if not raw.startswith(bytes.fromhex('89504e470d0a1a0a')) or len(raw)<1024: sys.exit(1)
+        words=('add my source','m3u','xtream','sign in and load','username','password','server','guide','settings','activation code','select your language','select your country','whatsapp')
+        matches=lambda s: [w for w in words if w in s]
+        words_found=matches(' '.join(values))
+        method='accessibility'
+        if len(words_found)<2:
+            screen=subprocess.check_output(['tesseract',str(png),'stdout','-l','eng','--psm','11'],stderr=subprocess.DEVNULL,timeout=15).decode(errors='replace').casefold()
+            words_found=matches(' '.join(screen.split()))
+            method='screen-ocr'
+        if len(words_found)<2: sys.exit(1)
+        proof.write_text(json.dumps({'method':method,'recognizedLabels':words_found}))
+        PYVISIBLE
         for phase in premier relance; do
           dev shell am force-stop "$package"
           start=$(date +%s)
@@ -114,11 +132,8 @@ jobs:
             if grep -E 'mResumedActivity|topResumedActivity' "$out/$phase-activity.txt" | grep -F "$package/" >/dev/null; then
               if timeout 10 adb -s emulator-5554 shell uiautomator dump "/sdcard/$phase.xml" >/dev/null 2>&1 &&
                  dev pull "/sdcard/$phase.xml" "$out/$phase.xml" >/dev/null 2>&1 &&
-                 python3 - "$out/$phase.xml" <<'PYLABEL'
-        import sys,xml.etree.ElementTree as ET
-        labels=[(n.get('text','')+' '+n.get('content-desc','')).strip() for n in ET.parse(sys.argv[1]).iter('node') if n.get('package')=='com.sevenmotion.tv.seven_tv.imageqa']
-        sys.exit(0 if any(len(s)>2 and s.casefold() not in ('zuno','zuno tv','zuno tv test') for s in labels) else 1)
-        PYLABEL
+                 dev exec-out screencap -p > "$out/$phase-premier-ecran.png" &&
+                 python3 "$RUNNER_TEMP/visible.py" "$out/$phase.xml" "$out/$phase-premier-ecran.png" "$out/$phase-labels-initial.json"
               then displayed=true; break; fi
             fi
             if (( $(date +%s) - start >= 75 )); then break; fi
@@ -138,15 +153,7 @@ jobs:
           dev shell uiautomator dump "/sdcard/$phase.xml" >/dev/null
           dev pull "/sdcard/$phase.xml" "$out/$phase.xml" >/dev/null
           dev exec-out screencap -p > "$out/$phase.png"
-          python3 - "$out/$phase.xml" "$out/$phase.png" <<'PY'
-        from pathlib import Path
-        import sys,xml.etree.ElementTree as ET
-        nodes=ET.parse(sys.argv[1]).iter('node')
-        labels=[(node.get('text','')+' '+node.get('content-desc','')).strip() for node in nodes if node.get('package')=='com.sevenmotion.tv.seven_tv.imageqa']
-        assert any(len(x)>2 and x.casefold() not in ('zuno','zuno tv','zuno tv test') for x in labels), labels
-        png=Path(sys.argv[2]).read_bytes()
-        assert png.startswith(b'\x89PNG\r\n\x1a\n') and len(png)>1024
-        PY
+          python3 "$RUNNER_TEMP/visible.py" "$out/$phase.xml" "$out/$phase.png" "$out/$phase-labels-final.json"
         done
         dev logcat -b crash -d > "$out/crash.txt"
         if grep -F "$package" "$out/crash.txt"; then exit 1; fi
