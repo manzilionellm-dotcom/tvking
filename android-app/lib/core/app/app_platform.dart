@@ -8,6 +8,8 @@
 //  et les règles de mise à jour de 7 MOTION. `deviceKind` décrit le matériel
 //  localement ; le contrat du heartbeat reste inchangé.
 // =========================================================
+import 'package:flutter/foundation.dart';
+
 class AppPlatform {
   AppPlatform._();
 
@@ -25,6 +27,10 @@ class AppPlatform {
     isZuno = true;
     isTv = !isAndroidHandset;
   }
+
+  /// Réservé au catalogue du lecteur ZUNO sur Android TV et Fire TV.
+  static bool get isZunoAndroidTv =>
+      isZuno && isTv && !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   static String get zunoEditionName => isTv ? 'ZUNO TV' : 'ZUNO Mobile';
 

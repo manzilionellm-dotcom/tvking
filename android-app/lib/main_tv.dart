@@ -139,10 +139,16 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // par les mêmes préférences : on ne le lance pas en même temps,
   // sinon son plafond de 500 ms partirait pendant que le boot
   // occupe encore le canal.
+  // La projection des variantes doit connaître l'édition dès la première
+  // lecture. La détection et l'ouverture SQLite démarrent en parallèle.
+  final Future<void> platformReady = StartupTrace.step('castPlatform', () async {
+    await CastPlatform.initializeZuno();
+    AppPlatform.configureZuno(isAndroidHandset: CastPlatform.isAndroidHandset);
+  });
   PlaylistRepository.mergeAllPlaylists = true;
   StartupTrace.mark('playlists.begin');
   final Future<void> playlistsReady = PlaylistRepository.instance
-      .initialize()
+      .initialize(beforeCatalog: platformReady)
       .timeout(const Duration(seconds: 6), onTimeout: () {});
 
   // DISJONCTEUR anti-boucle de redémarrage : si la TV s'est relancée
@@ -171,8 +177,7 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   // Le paquet ZUNO est également distribué sur téléphone. On distingue
   // le matériel AVANT les services et le diagnostic, sans changer la MAC,
   // la licence ni le namespace historique « tv » de ZUNO dans le panel.
-  await StartupTrace.step('castPlatform', CastPlatform.initializeZuno);
-  AppPlatform.configureZuno(isAndroidHandset: CastPlatform.isAndroidHandset);
+  await platformReady;
 
   // MISE À JOUR IN-APP : la TV ne regarde QUE sa propre release (zuno-tv),
   // publiée par build-zuno-tv.yml (version.json + zuno-tv.apk). Même clé de
