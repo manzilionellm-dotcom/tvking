@@ -1,0 +1,133 @@
+name: ZUNO TV Test · installer l’APK signé et ouvrir la télévision
+'on':
+  push:
+    branches:
+    - qa/zuno-ouverture-117-test-2
+permissions:
+  contents: read
+  actions: read
+jobs:
+  ouvrir:
+    name: Ouvrir sur ${{ matrix.mode }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+        - '29'
+        - '35'
+        - television
+    env:
+      MODE: ${{ matrix.mode }}
+    steps:
+    - name: Télécharger l'APK précis du build de contrôle
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        artifact-ids: '14384302317'
+        run-id: '44205918467'
+        repository: manzilionellm-dotcom/tvking
+        github-token: ${{ github.token }}
+        merge-multiple: true
+        path: apk
+    - name: Setup Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Setup Android SDK
+      id: setup_android
+      uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Bibliothèque de l’émulateur
+      run: if ! ldconfig -p | grep -F 'libpulse.so.0' >/dev/null; then sudo apt-get -o Acquire::Retries=2 update && sudo apt-get install -y --no-install-recommends
+        libpulse0; fi
+    - name: Identifier, installer, ouvrir et relancer la variante d’essai
+      run: |
+        set -Eeuo pipefail
+        out="$GITHUB_WORKSPACE/preuves/$MODE"
+        mkdir -p "$out"
+        apk="$GITHUB_WORKSPACE/apk/zuno-tv.apk"
+        package=com.sevenmotion.tv.seven_tv.imageqa
+        sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+        sdkmanager --list > "$RUNNER_TEMP/packages.txt"
+        if [[ "$MODE" == television ]]; then
+          image=$(awk '$1 ~ /^system-images;android-(29|30|31|32|33|34|35|36);(android-tv|google-tv);x86_64$/ {print $1}' "$RUNNER_TEMP/packages.txt" | sort -Vu | tail -1)
+          test -n "$image"
+          device=tv_1080p
+        else
+          image="system-images;android-$MODE;google_apis;x86_64"
+          device=pixel_2
+        fi
+        echo "$image" > "$out/system-image.txt"
+        sdkmanager "platform-tools" "emulator" "build-tools;35.0.0" "$image" > "$RUNNER_TEMP/sdk-qa.txt"
+        bt="$sdk/build-tools/35.0.0"
+        echo "24c33ebd04ae331b79d1082c5af75359ed4ef1835313c99a36156eb99485481e  $apk" | sha256sum --check
+        "$bt/apksigner" verify --verbose --print-certs "$apk" > "$out/signature.txt"
+        grep -F 'certificate SHA-256 digest: d79f6c3c6ebce01361c25bc88bafd6f43ff859a55cc5a63f39b67acc16bdc658' "$out/signature.txt"
+        "$bt/aapt" dump badging "$apk" > "$out/manifest.txt"
+        grep -F "package: name='$package' versionCode='1794960841' versionName='117-test.2'" "$out/manifest.txt"
+        grep '^leanback-launchable-activity:' "$out/manifest.txt"
+        printf 'no\n' | avdmanager create avd --force --name qa --package "$image" --device "$device"
+        test -c /dev/kvm
+        sudo chmod a+rw /dev/kvm
+        "$sdk/emulator/emulator" -avd qa -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data -gpu swiftshader -accel on -memory 2048 -cores 2 -http-proxy http://127.0.0.1:9 -dns-server 127.0.0.1 > "$out/emulator.txt" 2>&1 &
+        emu_pid=$!
+        trap 'adb -s emulator-5554 emu kill >/dev/null 2>&1 || true' EXIT
+        dev() { adb -s emulator-5554 "$@"; }
+        ready=0
+        for i in {1..90}; do
+          kill -0 "$emu_pid"
+          if [[ "$(dev shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then ready=1; break; fi
+          sleep 3
+        done
+        test "$ready" = 1
+        dev shell input keyevent 82
+        dev shell settings put global airplane_mode_on 1
+        dev shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true >/dev/null
+        dev shell svc wifi disable
+        dev shell svc data disable
+        dev shell getprop ro.build.version.sdk > "$out/api.txt"
+        dev shell pm list features > "$out/features.txt"
+        if [[ "$MODE" == television ]]; then grep -F 'feature:android.software.leanback' "$out/features.txt"; fi
+        dev install "$apk" | tee "$out/install.txt"
+        grep -F 'Success' "$out/install.txt"
+        component=$(dev shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER "$package" | tr -d '\r' | tail -1)
+        [[ "$component" == "$package/"* ]]
+        dev logcat -c
+        for phase in premier relance; do
+          dev shell am force-stop "$package"
+          dev shell am start -W -n "$component" | tee "$out/$phase-lancement.txt"
+          grep -F 'Status: ok' "$out/$phase-lancement.txt"
+          pid=$(dev shell pidof "$package" | tr -d '\r')
+          test -n "$pid"
+          for i in {1..10}; do
+            sleep 2
+            [[ "$(dev shell pidof "$package" | tr -d '\r')" == "$pid" ]]
+            dev shell dumpsys activity activities > "$out/$phase-activity.txt"
+            grep -E 'mResumedActivity|topResumedActivity' "$out/$phase-activity.txt" | grep -F "$package/" >/dev/null
+            echo "$i $pid" >> "$out/$phase-echantillons.txt"
+          done
+          dev shell uiautomator dump "/sdcard/$phase.xml" >/dev/null
+          dev pull "/sdcard/$phase.xml" "$out/$phase.xml" >/dev/null
+          dev exec-out screencap -p > "$out/$phase.png"
+          python3 - "$out/$phase.xml" "$out/$phase.png" <<'PY'
+        from pathlib import Path
+        import sys,xml.etree.ElementTree as ET
+        nodes=ET.parse(sys.argv[1]).iter('node')
+        labels=[(node.get('text','')+' '+node.get('content-desc','')).strip() for node in nodes if node.get('package')=='com.sevenmotion.tv.seven_tv.imageqa']
+        assert any(len(x)>2 and x.casefold() not in ('zuno','zuno tv','zuno tv test') for x in labels), labels
+        png=Path(sys.argv[2]).read_bytes()
+        assert png.startswith(b'\x89PNG\r\n\x1a\n') and len(png)>1024
+        PY
+        done
+        dev logcat -b crash -d > "$out/crash.txt"
+        if grep -F "$package" "$out/crash.txt"; then exit 1; fi
+        echo 'Deux ouvertures contrôlées, package de test au premier plan.' > "$out/resultat.txt"
+    - name: Captures et preuves de l’installation
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: zuno-essai-ouverture-${{ matrix.mode }}
+        path: preuves/
+        if-no-files-found: warn
+        retention-days: 14
