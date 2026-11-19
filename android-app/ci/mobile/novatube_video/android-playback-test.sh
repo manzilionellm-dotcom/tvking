@@ -22,6 +22,7 @@ PY
 flutter pub get
 flutter build apk --debug --target-platform android-x64
 cp build/app/outputs/flutter-apk/app-debug.apk "$trial/probe.apk"
+(cd android && ./gradlew --stop)
 flutter clean >/dev/null
 # Un émulateur refuse de démarrer si Gradle occupe son espace de stockage.
 rm -rf "$trial/gradle"
