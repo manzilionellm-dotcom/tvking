@@ -135,6 +135,13 @@ jobs:
           bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../production
           python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg libpulse0
+          sudo apt-get install -y --no-install-recommends ffmpeg libpulse0 python3-pil
           sudo setfacl -m "u:$(id -un):rw" /dev/kvm
           bash ../mission/android-app/ci/mobile/novatube_video/android-playback-test.sh
+      - name: Conserver les trois captures de l’écran Android
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-mobile-video
+          path: phone/build/video-captures/*.png
+          if-no-files-found: error
+          retention-days: 14
