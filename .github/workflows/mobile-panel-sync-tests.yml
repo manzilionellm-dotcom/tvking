@@ -71,7 +71,11 @@ jobs:
             bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
           fi
           python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
-          flutter pub get
+          if [[ "${{ matrix.edition }}" == "play" ]]; then
+            flutter pub get --enforce-lockfile
+          else
+            flutter pub get
+          fi
           flutter gen-l10n
       - name: Vérifier la numérotation des APK publiés
         working-directory: phone
