@@ -1,0 +1,228 @@
+# Une mise à jour de la fiche existante, adaptée au matériel, sans publication.
+name: ZUNO — mise à jour Play téléphone et TV
+on:
+  push:
+    branches: ['feature/zuno-existing-play-update-20261101', 'feature/zuno-play-update-button-20261101', 'ccr-b93e1afd-gwirw0']
+    paths:
+      - '.github/workflows/build-zuno-play-editions.yml'
+      - '.github/security-config.test.mjs'
+      - 'android-app/**'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: zuno-play-editions-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  SOURCE_SHA: ${{ github.sha }}
+  EXPECTED_CERT: 5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61
+jobs:
+  verify:
+    name: Valider la mise à jour et les capacités téléphone et TV
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+      - name: Contrôler les éditions, l'identité et les protections
+        run: |
+          python3 -m unittest discover -s ci/play_editions -v
+          python3 -m unittest discover -s ci -p test_play_tv_version.py
+          bash ci/test-zuno-device-capabilities.sh
+          node --test ../.github/security-config.test.mjs ../.github/app-release-guard.test.mjs
+      - run: flutter pub get
+      - run: flutter gen-l10n
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test --reporter expanded
+      - name: Vérifier le bouton de mise à jour du build Google Play
+        run: flutter test --reporter expanded --dart-define=PLAY_BUILD=true test/core/update/play_store_update_ui_test.dart
+      - name: Vérifier la connexion temps réel et sa reprise
+        run: |
+          flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_test.dart
+          flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_websocket_test.dart
+  bundles:
+    name: AAB ZUNO ${{ matrix.edition }}
+    needs: verify
+    # Les clés restent réservées à la branche de livraison protégée.
+    if: github.ref == 'refs/heads/ccr-b93e1afd-gwirw0' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.repository == 'manzilionellm-dotcom/tvking'
+    environment: zuno-app-production
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [auto]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ env.SOURCE_SHA }}
+      - name: Autoriser uniquement la construction sans publication
+        working-directory: .
+        env:
+          APP_OPERATION: build
+          APP_PUBLISH: 'false'
+          APP_TEST_BOX: 'false'
+          APP_PLAY_AAB: 'true'
+          APP_VARIANT: box
+        run: node .github/app-release-guard.mjs
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Accepter les licences Android du constructeur existant
+        run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+      - name: Préparer le produit Play sélectionné
+        run: python3 ci/play_editions/prepare.py --edition '${{ matrix.edition }}'
+      - name: Conserver SharedPreferences déjà validé dans le bundle officiel
+        run: |
+          # La mise à jour reprend la version 2.5.0 déjà validée
+          # dans le bundle signé. Ce pin reste local au runner.
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          path = Path('pubspec.yaml')
+          source = path.read_text(encoding='utf-8')
+          anchor = '  shared_preferences: ^2.3.4\n'
+          if source.count(anchor) != 1 or '  shared_preferences_android:' in source:
+              raise SystemExit('Contrainte SharedPreferences inattendue : vérifier le pin TV.')
+          source = source.replace(anchor, anchor + '  shared_preferences_android: 2.5.0\n', 1)
+          path.write_text(source, encoding='utf-8')
+          PYEOF
+
+      - run: flutter pub get
+      - name: Patch screen_brightness_android build.gradle (si nécessaire)
+        run: |
+          set -e
+          FILE=$(find ~/.pub-cache/hosted/pub.dev -path "*/screen_brightness_android-*/android/build.gradle" 2>/dev/null | head -1)
+          if [ -z "$FILE" ]; then
+            echo "⊙ screen_brightness_android pas dans pub-cache, skip"
+            exit 0
+          fi
+          export PATCH_FILE="$FILE"
+          python3 - <<'PYEOF'
+          import os, re
+          file = os.environ['PATCH_FILE']
+          lines = open(file).readlines()
+          out, in_kotlin, depth, removed = [], False, 0, 0
+          for line in lines:
+              if not in_kotlin:
+                  if re.match(r'^\s*kotlin\s*\{', line):
+                      in_kotlin = True
+                      depth = line.count('{') - line.count('}')
+                      removed += 1
+                      if depth <= 0:
+                          in_kotlin = False
+                      continue
+                  out.append(line)
+              else:
+                  depth += line.count('{') - line.count('}')
+                  removed += 1
+                  if depth <= 0:
+                      in_kotlin = False
+          if removed:
+              open(file, 'w').writelines(out)
+              print(f'retiré {removed} ligne(s) kotlin{{}}')
+          else:
+              print('aucun bloc kotlin{} (déjà propre)')
+          PYEOF
+
+      - name: Signature (clé maîtresse des box clients)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -e
+          write_props() {
+            cat > android/key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_PW
+          keyAlias=${KS_ALIAS:-sevenmotion}
+          keyPassword=${KEY_PW:-$KS_PW}
+          EOF
+          }
+          if [ -n "$KS_B64" ] && [ -n "$KS_PW" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.jks
+            write_props
+            echo "✓ clé maîtresse (secret ANDROID_KEYSTORE_BASE64)."
+            echo "SIGNING=release" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          if [ -n "$KS_PW" ] && [ -f ci/release.jks.enc ]; then
+            if openssl enc -d -aes-256-cbc -pbkdf2 -in ci/release.jks.enc \
+                 -out android/app/release.jks -pass pass:"$KS_PW" 2>/dev/null \
+               && keytool -list -keystore android/app/release.jks -storepass "$KS_PW" >/dev/null 2>&1; then
+              write_props
+              echo "✓ clé maîtresse (ci/release.jks.enc déchiffré, même clé que les box 7 MOTION TV)."
+              echo "SIGNING=release" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "::error title=Clé maîtresse illisible::ci/release.jks.enc ne se déchiffre pas avec ANDROID_KEYSTORE_PASSWORD."
+            exit 1
+          fi
+          echo "::warning title=Pas de clé maîtresse::Aucun secret de signature → build de CONTRÔLE (signature jetable). La publication sera refusée."
+          echo "SIGNING=controle" >> "$GITHUB_ENV"
+
+      - run: flutter gen-l10n
+      - name: Générer les icônes ZUNO
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
+      - name: Exiger la clé officielle avant toute compilation
+        run: test "$SIGNING" = release
+      - name: Compiler le bundle de cette édition
+        run: |
+          set -e
+          flutter build appbundle --release --no-tree-shake-icons \
+            --android-skip-build-dependency-validation \
+            --build-number="$PLAY_VERSION_CODE" --build-name="$PLAY_VERSION_NAME" \
+            --obfuscate --split-debug-info=build/symbols-play \
+            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_EDITION="$ZUNO_EDITION" \
+            --dart-define=GIT_SHA="$SOURCE_SHA" --dart-define=APP_BUILD_TS="$(date +%s)" \
+            --target=lib/main_tv.dart
+          mkdir -p build/play
+          cp build/app/outputs/bundle/release/app-release.aab "build/play/ZUNO-$ZUNO_EDITION-$PLAY_VERSION_NAME.aab"
+      - name: Vérifier le bundle signé, son manifeste fusionné et sa provenance
+        run: |
+          set -e
+          AAB="build/play/ZUNO-$ZUNO_EDITION-$PLAY_VERSION_NAME.aab"
+          CERT=$(keytool -printcert -jarfile "$AAB" | grep -m1 -oE 'SHA256: [0-9A-F:]+' | cut -d' ' -f2 | tr -d ':' | tr 'A-F' 'a-f')
+          test "$CERT" = "$EXPECTED_CERT"
+          echo "Certificat officiel vérifié : $CERT"
+          curl -fsSL -o /tmp/bundletool.jar https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar
+          java -jar /tmp/bundletool.jar validate --bundle "$AAB"
+          java -jar /tmp/bundletool.jar dump manifest --bundle "$AAB" > build/play/AndroidManifest.xml
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          python3 ci/tv/verify_apk_jni.py "$AAB" --bundle --dexdump "$BUILD_TOOLS/dexdump"
+          python3 ci/play_editions/verify.py --edition "$ZUNO_EDITION" --manifest build/play/AndroidManifest.xml --bundle "$AAB" --source-sha "$SOURCE_SHA"
+      - name: Conserver le bundle de cette édition
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: zuno-play-${{ matrix.edition }}-${{ env.SOURCE_SHA }}
+          path: android-app/build/play/
+          retention-days: 30
+          if-no-files-found: error

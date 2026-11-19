@@ -110,61 +110,124 @@ class HomeLayoutRepository extends ChangeNotifier {
   /// Config par clé. Vide tant que rien n'est chargé → ordre par défaut.
   Map<String, HomeSectionConfig> _byKey = <String, HomeSectionConfig>{};
   bool _initialized = false;
+  Future<void>? _pending;
+  int _revision = 0;
 
   /// Réglage d'une section, ou `null` si non piloté (→ défauts).
   HomeSectionConfig? config(String key) => _byKey[key];
 
   /// Charge le cache (immédiat) puis rafraîchit depuis le réseau.
-  Future<void> initialize() async {
-    if (_initialized) return;
-    _initialized = true;
-    await _loadCache();
+  Future<void> initialize({bool strict = false}) async {
+    if (!_initialized) {
+      _initialized = true;
+      await _loadCache();
+    } else if (!strict) {
+      return;
+    }
     // Rafraîchissement réseau en tâche de fond (ne bloque pas l'accueil).
-    unawaited(refresh());
+    if (strict) {
+      await refresh(strict: true);
+    } else {
+      unawaited(refresh());
+    }
   }
 
   Future<void> _loadCache() async {
+    final int before = _revision;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? raw = prefs.getString(_cacheKey);
       if (raw == null) return;
-      _applyJsonList(jsonDecode(raw));
+      final next = _parseItems(jsonDecode(raw));
+      // Une commande distante passée pendant la lecture du disque gagne.
+      if (_revision == before) _apply(next);
     } catch (e) {
-      if (kDebugMode) debugPrint('[HomeLayout] cache: $e');
+      if (kDebugMode) debugPrint('[HomeLayout] cache: ${e.runtimeType}');
     }
   }
 
   /// Va chercher la config distante. Silencieux en cas d'échec.
-  Future<void> refresh() async {
+  Future<void> refresh({bool strict = false}) async {
     try {
-      final http.Response resp = await http
-          .get(Uri.parse('$kSubscriptionBaseUrl/api/home-layout'))
-          .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return;
-      final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map<String, dynamic>) return;
-      final Object? items = decoded['items'];
-      if (items is! List) return;
-      _applyJsonList(items);
-      // Mémorise la dernière config valide.
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey, jsonEncode(items));
+      // Une lecture partie avant l'ordre peut encore contenir l'ancienne valeur.
+      // Le strict attend sa fin, puis démarre sa propre lecture après l'ordre.
+      // La boucle sérialise aussi plusieurs ordres stricts sans réponse tardive.
+      if (strict) {
+        while (_pending != null) {
+          final previous = _pending!;
+          try {
+            await previous;
+          } catch (_) {
+            // Seule la nouvelle lecture décide du succès de cet ordre.
+          }
+          if (identical(_pending, previous)) _pending = null;
+        }
+      }
+      final Future<void> pending = _pending ??= _fetchAndApply();
+      try {
+        await pending;
+      } finally {
+        if (identical(_pending, pending)) _pending = null;
+      }
     } catch (e) {
-      if (kDebugMode) debugPrint('[HomeLayout] refresh: $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[HomeLayout] refresh: ${e.runtimeType}');
     }
   }
 
-  void _applyJsonList(Object? list) {
-    if (list is! List) return;
+  Future<void> _fetchAndApply() async {
+      final http.Response resp = await http
+          .get(Uri.parse('$kSubscriptionBaseUrl/api/home-layout'))
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) {
+        throw StateError('Disposition distante non confirmée');
+      }
+      final Object? decoded = jsonDecode(resp.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Disposition distante invalide');
+      }
+      final next = _parseItems(decoded['items']);
+      // Mémorise la dernière config valide.
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final bool saved = await prefs.setString(_cacheKey,
+          jsonEncode(next.values.map((item) => item.toJson()).toList()));
+      if (!saved) throw StateError('Disposition non mémorisée');
+      _apply(next);
+  }
+
+  Map<String, HomeSectionConfig> _parseItems(Object? list) {
+    if (list is! List || list.length > 256) {
+      throw const FormatException('Sections distantes invalides');
+    }
     final Map<String, HomeSectionConfig> next = <String, HomeSectionConfig>{};
     for (final Object? it in list) {
-      if (it is Map<String, dynamic>) {
-        final HomeSectionConfig? c = HomeSectionConfig.fromJson(it);
-        if (c != null) next[c.key] = c;
+      if (it is! Map<String, dynamic> || it['key'] is! String ||
+          (it['key'] as String).trim().isEmpty ||
+          (it['key'] as String).length > 80 ||
+          (it['ribbon'] != null && it['ribbon'] is! String) ||
+          (it['position'] != null &&
+              int.tryParse('${it['position']}') == null)) {
+        throw const FormatException('Section distante invalide');
       }
+      for (final String flag in <String>['enabled', 'featured']) {
+        final Object? value = it[flag];
+        if (value != null && value != true && value != false &&
+            value != 0 && value != 1 && value != '0' && value != '1') {
+          throw const FormatException('Visibilité distante invalide');
+        }
+      }
+      final HomeSectionConfig c = HomeSectionConfig.fromJson(it)!;
+      if (next.containsKey(c.key)) {
+        throw const FormatException('Section distante dupliquée');
+      }
+      next[c.key] = c;
     }
-    if (next.isEmpty) return;
+    return next;
+  }
+
+  void _apply(Map<String, HomeSectionConfig> next) {
     _byKey = next;
+    _revision++;
     notifyListeners();
   }
 

@@ -27,6 +27,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../tv/core/tv_field_keys.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
@@ -317,7 +319,8 @@ class _SearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: TextField(
+      child: TvFieldKeys(
+        child: TextField(
         controller: controller,
         onChanged: onChanged,
         style: AppTextStyles.bodyLarge.copyWith(fontSize: 14),
@@ -347,6 +350,7 @@ class _SearchBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: AppColors.accent, width: 1.5),
           ),
+        ),
         ),
       ),
     );

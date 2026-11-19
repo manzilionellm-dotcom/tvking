@@ -27,6 +27,21 @@
 # ----- Méthodes natives (JNI) : ne JAMAIS renommer -----
 -keepclasseswithmembernames class * { native <methods>; }
 
+# ----- Kotlin appelé par nom depuis les préférences Android (JNI) -----
+# Le build TV 216 gardait le logo : le Dart compilé cherchait getAll avec
+# kotlin.coroutines.Continuation, mais R8 avait renommé ce paramètre w3.d.
+# La lecture des préférences échouait donc avant le premier écran Flutter.
+# Pigeon protège déjà ses classes générées avec @Keep ; ses six dépendances
+# Kotlin doivent aussi conserver leurs noms et leurs membres. On suit les
+# règles officielles, sans désactiver R8 ni conserver toute la bibliothèque :
+# https://flutter.googlesource.com/mirrors/packages/+/refs/heads/main/packages/pigeon/native_interop_guide.md
+-keep class kotlin.Unit { *; }
+-keep class kotlin.Result { *; }
+-keep class kotlin.Result$Failure { *; }
+-keep class kotlin.coroutines.Continuation { *; }
+-keep class kotlin.coroutines.intrinsics.CoroutineSingletons { *; }
+-keep class kotlin.coroutines.intrinsics.IntrinsicsKt { *; }
+
 # ----- Plugins natifs MAISON (native_video_player, tvking_device…) -----
 -keep class com.manzilionellm.** { *; }
 -dontwarn com.manzilionellm.**

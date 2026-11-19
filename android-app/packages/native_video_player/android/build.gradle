@@ -34,6 +34,8 @@ android {
 
     defaultConfig {
         minSdk = 21
+        testApplicationId "com.manzilionellm.native_video_player.test"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 }
 
@@ -46,6 +48,15 @@ dependencies {
     // de robustesse réseau.
     implementation "androidx.media3:media3-exoplayer:1.5.1"
     implementation "androidx.media3:media3-exoplayer-hls:1.5.1"
+    // Traitement de VRAIES trames : Contrast passe par le processeur OpenGL
+    // Media3, puis rend dans la même SurfaceView. Version identique au lecteur.
+    implementation "androidx.media3:media3-effect:1.5.1"
+
+    // Le test instrumenté capture la SurfaceView : une préférence booléenne
+    // seule ne prouverait pas que les pixels de la vidéo sont modifiés.
+    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation "androidx.test:core:1.6.1"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
 
     // SON (30/09/2026) — décodeur audio FFmpeg pour Media3.
     // QUOI : l'extension officielle media3-decoder-ffmpeg, compilée et publiée

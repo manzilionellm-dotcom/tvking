@@ -177,19 +177,10 @@ abstract final class OpenSourceInput {
     if (uri == null || uri.host.isEmpty) {
       return const OpenSourceParse._(error: errNeedUrl);
     }
+    final OpenSourceDraft? detected = _detectXtream(uri);
+    if (detected != null) return OpenSourceParse._(draft: detected);
     if (_isPlayerPath(uri)) {
-      final String user = (uri.queryParameters['username'] ?? '').trim();
-      final String pass = (uri.queryParameters['password'] ?? '').trim();
-      if (user.isEmpty || pass.isEmpty) {
-        return const OpenSourceParse._(error: errNeedPlayerCreds);
-      }
-      return OpenSourceParse._(
-        draft: OpenSourceDraft.xtream(
-          serverUrl: _origin(uri),
-          username: user,
-          password: pass,
-        ),
-      );
+      return const OpenSourceParse._(error: errNeedPlayerCreds);
     }
     if (playerOnly) {
       // Pas un get.php : on accepte quand même une liste http(s).
@@ -214,6 +205,31 @@ abstract final class OpenSourceInput {
   static bool _badScheme(String value) {
     final String lower = value.toLowerCase();
     return !lower.startsWith('http://') && !lower.startsWith('https://');
+  }
+
+  /// get.php, player_api.php, identifiants dans la requête, ou
+  /// `compte:mot@hôte` sans fichier .m3u. Une liste .m3u qui
+  /// contient déjà un compte dans l'adresse reste une liste M3U.
+  static OpenSourceDraft? _detectXtream(Uri uri) {
+    final String user = (uri.queryParameters['username'] ?? '').trim();
+    final String pass = (uri.queryParameters['password'] ?? '').trim();
+    if (user.isNotEmpty && pass.isNotEmpty) {
+      return OpenSourceDraft.xtream(
+        serverUrl: _origin(uri),
+        username: user,
+        password: pass,
+      );
+    }
+    final String info = uri.userInfo;
+    final int colon = info.indexOf(':');
+    if (colon <= 0 || colon >= info.length - 1) return null;
+    final String path = uri.path.toLowerCase();
+    if (path.endsWith('.m3u') || path.endsWith('.m3u8')) return null;
+    return OpenSourceDraft.xtream(
+      serverUrl: _origin(uri),
+      username: Uri.decodeComponent(info.substring(0, colon)),
+      password: Uri.decodeComponent(info.substring(colon + 1)),
+    );
   }
 
   static bool _isPlayerPath(Uri uri) {

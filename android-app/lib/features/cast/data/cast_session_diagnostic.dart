@@ -125,6 +125,7 @@ class AttemptResult {
     required this.durationMs,
     required this.success,
     this.errorMessage,
+    this.lastCastUrlRedacted,
   });
 
   /// Index brut dans la ladder (0 = direct, 1 = relay+full, 2 = relay+min).
@@ -143,6 +144,10 @@ class AttemptResult {
   final bool success;
   final String? errorMessage;
 
+  /// URL exacte transmise a loadMedia pour cette tentative (token masque).
+  /// Null si non applicable (ex: chemin DLNA ou echec avant loadMedia).
+  final String? lastCastUrlRedacted;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'strategy': strategyName,
         'urlKind': urlKind,
@@ -150,6 +155,8 @@ class AttemptResult {
         'durationMs': durationMs,
         'success': success,
         if (errorMessage != null) 'errorMessage': errorMessage,
+        if (lastCastUrlRedacted != null)
+          'lastCastUrlRedacted': lastCastUrlRedacted,
       };
 }
 
@@ -250,10 +257,7 @@ String redactStreamUrl(String url) {
     return '<url invalide>';
   }
   final Map<String, String> q = Map<String, String>.from(u.queryParameters);
-  // `t` = signature HMAC de l'URL /cast-proxy?u=…&e=…&t=<sig> (cf. worker.js
-  // /cast-sign). On la masque comme un secret : elle ne doit pas fuiter dans
-  // les logs de diagnostic Cast.
-  for (final String k in <String>['password', 'pass', 'token', 'pwd', 't']) {
+  for (final String k in <String>['password', 'pass', 'token', 'pwd']) {
     if (q.containsKey(k)) q[k] = '***';
   }
   String path = u.path;

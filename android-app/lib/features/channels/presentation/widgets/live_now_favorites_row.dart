@@ -18,6 +18,8 @@
 //    - Tap → playChannel
 // =========================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -45,14 +47,24 @@ class _LiveNowFavoritesRowState extends State<LiveNowFavoritesRow> {
   List<_LiveSlot> _slots = <_LiveSlot>[];
   bool _loading = true;
 
-  late final Stream<Set<String>> _favStream;
+  // Abonnement GARDÉ pour être annulé : avant, il n'était jamais stocké,
+  // donc jamais annulé — chaque rangée détruite restait en mémoire (avec
+  // son état) et recalculait à chaque changement de favori.
+  StreamSubscription<Set<String>>? _favSub;
 
   @override
   void initState() {
     super.initState();
-    _favStream = FavoritesRepository.instance.favoritesStream;
-    _favStream.listen((Set<String> _) => _recompute());
+    _favSub = FavoritesRepository.instance.favoritesStream
+        .listen((Set<String> _) => _recompute());
     _recompute();
+  }
+
+  @override
+  void dispose() {
+    _favSub?.cancel();
+    _favSub = null;
+    super.dispose();
   }
 
   Future<void> _recompute() async {

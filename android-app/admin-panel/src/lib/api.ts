@@ -731,6 +731,33 @@ export const featuredApi = {
 };
 
 // =========================================================
+//  BANNIÈRES IMAGE (accueil de la box)
+// =========================================================
+//  Même contrat que GET /api/banners. L'enregistrement prévient
+//  le parc (ordre banner) : la box relit sans attendre une ouverture.
+export interface PromoBannerItem {
+  id: string;
+  image: string;
+  title?: string;
+  subtitle?: string;
+  label?: string;
+  cta?: string;
+  channel?: string;
+  url?: string;
+  from?: number;
+  until?: number;
+  kids?: boolean;
+}
+export const bannersApi = {
+  get: () => request<{ version: number; items: PromoBannerItem[] }>('/api/v1/banners'),
+  save: (items: PromoBannerItem[]) =>
+    request<{ ok: boolean; version: number; items: PromoBannerItem[] }>('/api/v1/banners', {
+      method: 'PUT',
+      body: { items },
+    }),
+};
+
+// =========================================================
 //  THÈME DE L'APP (nom affiché + couleur d'accent + fond)
 // =========================================================
 //  L'owner personnalise l'app à distance : son NOM (ex. « WorldCup2026 »)

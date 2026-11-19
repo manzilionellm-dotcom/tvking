@@ -50,7 +50,16 @@ String formatBlackBoxLine(
 }
 
 /// Vrai = cette ligne mérite un fsync tout de suite.
+///
+/// Erreur et fatal seulement (11/11/2026). Les AVERTISSEMENTS rejoignent le
+/// fsync regroupé (≤ 1 s) des informations : un import Xtream peut en écrire
+/// des centaines (catégories ignorées) pendant que SQLite écrit 50 000
+/// chaînes ; sur la flash d'une Fire TV Stick, chaque fsync sur le fil UI
+/// pouvait attendre derrière ces écritures (ext4 « data=ordered »). La ligne
+/// reste écrite de façon SYNCHRONE dans le noyau : elle survit toujours à une
+/// mort du processus ; seul le cas « coupure de courant dans la seconde »
+/// est concerné. Repli : [fsyncAll] (RepairFlags.blackBoxFsyncAll).
 bool blackBoxFlushNow(BbLevel level, {required bool fsyncAll}) {
   if (fsyncAll) return true;
-  return level != BbLevel.info;
+  return level == BbLevel.error || level == BbLevel.fatal;
 }

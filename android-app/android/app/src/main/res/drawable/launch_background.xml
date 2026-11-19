@@ -1,12 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- Aplat Maison Noir. Le build Zuno TV (ci/tv/apply_splash.py) ajoute
+     la calligraphie transparente par-dessus. Le téléphone ne lance pas
+     ce script : pas de mot « Zuno » sur le splash 7 MOTION. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
-
-    <!-- You can insert your own image assets here -->
-    <!-- <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@mipmap/launch_image" />
-    </item> -->
+    <item android:drawable="@color/zuno_splash" />
 </layer-list>

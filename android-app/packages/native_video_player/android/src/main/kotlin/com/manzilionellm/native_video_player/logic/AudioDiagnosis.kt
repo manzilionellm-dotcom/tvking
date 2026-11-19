@@ -152,6 +152,20 @@ object AudioDiagnosis {
     }
 
     /**
+     * Mesures indispensables avant de pouvoir conclure « rien d'anormal ».
+     * Liste vide = mesures suffisantes. N'invente rien : seuls les champs
+     * réellement absents de la fiche sont cités.
+     */
+    fun missingMeasures(s: AudioSnapshot): List<String> = buildList {
+        if (s.mime == null) add("codec reçu")
+        if (s.decoder == null && !s.passthrough) add("décodeur")
+        if (s.outEncoding == null) add("format de sortie")
+        if (!s.passthrough && s.outSampleRate <= 0) add("fréquence de sortie")
+        if (s.probeRequested && s.probeFrames <= 0) add("échantillons de sortie (sonde vide)")
+        if (!s.playerAudible) add("lecture en cours")
+    }
+
+    /**
      * Verdicts en français simple, du plus probable au moins probable.
      * Toujours au moins une ligne.
      */
@@ -199,7 +213,9 @@ object AudioDiagnosis {
         if (s.bitrate in 1 until LOW_BITRATE) {
             out += "SOURCE : débit audio faible (${s.bitrate / 1000} kb/s) → qualité limitée par le fournisseur."
         }
-        if (!aac && s.inSampleRate in 1 until 32_000) {
+        // Codec connu seulement : un HE-AAC annonce 24 kHz pour son cœur, ce
+        // n'est pas un défaut de la source. Codec « ? » → pas de conclusion.
+        if (s.mime != null && !aac && s.inSampleRate in 1 until 32_000) {
             out += "SOURCE : son échantillonné à ${khz(s.inSampleRate)} → aigus absents dès l'origine."
         }
         // 5) Craquements / coupures : sortie son affamée.
@@ -214,7 +230,14 @@ object AudioDiagnosis {
             out += "Info : « Voix claire » allumée (elle baisse les pics forts)."
         }
         if (out.isEmpty()) {
-            out += if (isFfmpeg(s.decoder)) {
+            // Pas de « rien d'anormal » sans mesures : le journal du 03/11/2026
+            // montrait ce verdict avec un codec « ? », une sortie non lue ou un
+            // lecteur à l'arrêt. On dit alors ce qui manque, sans conclure.
+            val missing = missingMeasures(s)
+            out += if (missing.isNotEmpty()) {
+                "MESURES INSUFFISANTES : ${missing.joinToString(", ")} non mesuré(s) → impossible de " +
+                    "conclure. Relancer le diagnostic après quelques secondes de son sur cette chaîne."
+            } else if (isFfmpeg(s.decoder)) {
                 "Rien d'anormal côté app (décodage complet FFmpeg). Si le son reste mauvais : " +
                     "comparer la MÊME chaîne dans une autre app (source)."
             } else {
@@ -453,7 +476,8 @@ object AudioDiagnosis {
             )
         }
 
-        if (!aac && s.inSampleRate in 1 until 32_000) {
+        // Même garde que dans verdicts() : « non AAC » exige un codec connu.
+        if (s.mime != null && !aac && s.inSampleRate in 1 until 32_000) {
             out += Finding(
                 id = "source_basse_freq",
                 confidence = Confidence.HAUTE,

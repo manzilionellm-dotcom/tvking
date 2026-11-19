@@ -22,6 +22,8 @@
 // =========================================================
 
 import 'package:flutter/material.dart';
+
+import '../../tv/core/tv_field_keys.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/branding/verified_badge.dart';
@@ -218,7 +220,8 @@ class _LockScreenState extends State<LockScreen> {
                 // ===== CHAMP PIN =====
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 240),
-                  child: TextField(
+                  child: TvFieldKeys(
+                    child: TextField(
                     controller: _pinCtrl,
                     keyboardType: TextInputType.number,
                     obscureText: true,
@@ -247,6 +250,7 @@ class _LockScreenState extends State<LockScreen> {
                     inputFormatters: <TextInputFormatter>[
                       FilteringTextInputFormatter.digitsOnly,
                     ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),

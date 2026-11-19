@@ -1,0 +1,406 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:tv_king/features/playlists/data/playlist_database.dart';
+import 'package:tv_king/features/playlists/data/favorites_repository.dart';
+import 'package:tv_king/features/channels/data/recently_watched_repository.dart';
+import 'package:tv_king/l10n/generated/app_localizations.dart';
+import 'package:tv_king/core/theme/app_theme.dart';
+import 'package:tv_king/core/flavor/flavor.dart';
+import 'package:tv_king/features/channels/domain/channel.dart';
+import 'package:tv_king/features/country_home/data/featured_repository.dart';
+import 'package:tv_king/features/simple_home/data/home_layout_repository.dart';
+import 'package:tv_king/features/feedback/data/feedback_repository.dart';
+import 'package:tv_king/features/feedback/presentation/feedback_sheet.dart';
+import 'package:tv_king/features/simple_home/presentation/widgets/mobile_panel_sections.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const channels = [
+    Channel(
+        id: 'sport',
+        name: 'Sport Local',
+        category: 'Sports',
+        streamUrl: 'https://fixture.invalid/sport',
+        isLive: true),
+    Channel(
+        id: 'news',
+        name: 'News Local',
+        category: 'News',
+        streamUrl: 'https://fixture.invalid/news',
+        isLive: true),
+    Channel(
+        id: 'kids',
+        name: 'Kids Local',
+        category: 'Kids',
+        streamUrl: 'https://fixture.invalid/kids',
+        isLive: true),
+    Channel(
+        id: 'adult',
+        name: 'Hidden',
+        category: '18+ Adult',
+        streamUrl: 'https://fixture.invalid/adult',
+        isLive: true),
+  ];
+  final repo = FeedbackRepository.instance;
+  test('commande panel : notifier, OFF et refus de faux succès à l’envoi',
+      () async {
+    var enabled = true;
+    var response = http.Response('{"ok":false}', 200);
+    int changes = 0;
+    void listener() => changes++;
+    repo.addListener(listener);
+    addTearDown(() => repo.removeListener(listener));
+    await http.runWithClient(() async {
+      await repo.reload(strict: true);
+      expect(await repo.shouldPrompt(), isTrue);
+      expect(changes, 1);
+      expect(await repo.submit(text: 'Mon avis', rating: 4), isFalse);
+      expect(await repo.shouldPrompt(), isTrue);
+      response = http.Response('panne', 503);
+      expect(await repo.submit(text: 'Mon avis'), isFalse);
+      expect(await repo.shouldPrompt(), isTrue);
+      response = http.Response('{"ok":true}', 200);
+      expect(await repo.submit(text: 'Mon avis'), isTrue);
+      expect(await repo.shouldPrompt(), isFalse);
+      enabled = false;
+      await repo.reload(strict: true);
+      expect(await repo.shouldPrompt(), isFalse);
+    },
+        () => MockClient((request) async {
+              if (request.method == 'GET') {
+                return http.Response(
+                    jsonEncode({'enabled': enabled, 'message': 'Votre avis ?'}),
+                    200);
+              }
+              expect(request.url.path, '/api/feedback');
+              expect((jsonDecode(request.body) as Map)['message'], 'Mon avis');
+              return response;
+            }));
+  });
+  test('une nouvelle invitation ne disparaît pas après l’envoi de l’ancienne',
+      () async {
+    var prompt = 'Premier';
+    final finish = Completer<http.Response>();
+    await http.runWithClient(() async {
+      await repo.reload(strict: true);
+      final send = repo.submit(text: 'Bonjour');
+      await Future<void>.delayed(Duration.zero);
+      prompt = 'Deuxième';
+      await repo.reload(strict: true);
+      finish.complete(http.Response('{"ok":true}', 200));
+      expect(await send, isTrue);
+      expect(await repo.shouldPrompt(), isTrue);
+    },
+        () => MockClient((request) async => request.method == 'GET'
+            ? http.Response(
+                jsonEncode({'enabled': true, 'message': prompt}), 200)
+            : finish.future));
+  });
+
+  late Database db;
+  setUpAll(() async {
+    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
+    SharedPreferences.setMockInitialValues(
+        {'device.virtual_mac.v1': 'MK:11:22:33:44:55'});
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfiNoIsolate;
+    db = await databaseFactory.openDatabase(inMemoryDatabasePath);
+    await PlaylistDatabase.instance.debugCreate(db);
+    PlaylistDatabase.instance.debugUseDatabase(db);
+    await FavoritesRepository.instance.initialize();
+    await RecentlyWatchedRepository.instance.initialize();
+  });
+  tearDownAll(() async {
+    PlaylistDatabase.instance.debugUseDatabase(null);
+    await db.close();
+  });
+  setUp(() {
+    SharedPreferences.setMockInitialValues(
+        {'device.virtual_mac.v1': 'MK:11:22:33:44:55'});
+  });
+  testWidgets(
+      'ordre, visibilité, ruban et vedette ont un effet sans ouvrir de flux',
+      (tester) async {
+    var items = [
+      {
+        'key': 'kids',
+        'position': 0,
+        'enabled': 1,
+        'ribbon': 'Nouveau',
+        'featured': 1
+      },
+      {'key': 'sport', 'position': 1, 'enabled': 0},
+      {'key': 'info', 'position': 2, 'enabled': 1},
+      {'key': 'cinema', 'position': 3, 'enabled': 0},
+    ];
+    var taps = 0;
+    await http.runWithClient(() async {
+      await HomeLayoutRepository.instance.refresh(strict: true);
+      await FeaturedRepository.instance.refresh(strict: true);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.daylight,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate
+        ],
+        supportedLocales: const [Locale('fr')],
+        locale: const Locale('fr'),
+        home: Scaffold(
+            body: SingleChildScrollView(
+                child: MobilePanelSections(
+                    channels: channels,
+                    recent: const SizedBox.shrink(),
+                    favorites: const SizedBox.shrink(),
+                    onChannel: (_) {
+                      taps++;
+                    }))),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('mobile-panel-section-sport')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('mobile-panel-section-cinema')),
+          findsNothing);
+      expect(find.text('Nouveau'), findsOneWidget);
+      expect(find.text('Hidden'), findsNothing);
+      expect(
+          tester
+              .getTopLeft(
+                  find.byKey(const ValueKey('mobile-panel-section-kids')))
+              .dy,
+          lessThan(tester
+              .getTopLeft(
+                  find.byKey(const ValueKey('mobile-panel-section-info')))
+              .dy));
+      expect(taps, 0);
+      items = [
+        {'key': 'sport', 'position': 0, 'enabled': 1}
+      ];
+      await HomeLayoutRepository.instance.refresh(strict: true);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('mobile-panel-section-sport')),
+          findsOneWidget);
+      await tester.tap(find.text('Sport Local'));
+      await tester.pump();
+      expect(taps, 1);
+      await tester.pumpWidget(const SizedBox());
+    },
+        () => MockClient((request) async => http.Response(
+            jsonEncode(request.url.path == '/api/home-layout'
+                ? {'items': items}
+                : {'name': '', 'note': ''}),
+            200)));
+  });
+
+  testWidgets(
+      'favori du panel absent ou adulte ne devient pas une chaîne inventée',
+      (tester) async {
+    await http.runWithClient(() async {
+      await FeaturedRepository.instance.refresh(strict: true);
+      await tester.pumpWidget(MaterialApp(
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate
+          ],
+          supportedLocales: const [
+            Locale('fr')
+          ],
+          locale: const Locale('fr'),
+          home: Scaffold(
+              body: SingleChildScrollView(
+                  child: MobilePanelSections(
+                      channels: channels,
+                      recent: const SizedBox.shrink(),
+                      favorites: const SizedBox.shrink(),
+                      onChannel: (_) {})))));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('mobile-panel-featured')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+        () => MockClient((request) async => http.Response(
+            jsonEncode(request.url.path == '/api/home-layout'
+                ? {'items': <Object>[]}
+                : {'name': 'Hidden', 'note': 'Ignore'}),
+            200)));
+  });
+  testWidgets('la chaîne mise en avant ouvre seulement la vraie chaîne choisie',
+      (tester) async {
+    Channel? opened;
+    await http.runWithClient(() async {
+      await FeaturedRepository.instance.refresh(strict: true);
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.daylight,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate
+          ],
+          supportedLocales: const [Locale('fr')],
+          locale: const Locale('fr'),
+          home: Scaffold(
+              body: SingleChildScrollView(
+                  child: MobilePanelSections(
+                      channels: channels,
+                      recent: const SizedBox.shrink(),
+                      favorites: const SizedBox.shrink(),
+                      onChannel: (channel) {
+                        opened = channel;
+                      })))));
+      await tester.pumpAndSettle();
+      expect(opened, isNull);
+      expect(find.text('Le match ce soir'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mobile-panel-featured')));
+      expect(opened, same(channels.first));
+      await tester.pumpWidget(const SizedBox());
+    },
+        () => MockClient((request) async => http.Response(
+            jsonEncode(request.url.path == '/api/home-layout'
+                ? {'items': <Object>[]}
+                : {'name': 'Sport Local', 'note': 'Le match ce soir'}),
+            200)));
+  });
+
+  testWidgets(
+      'invitation poussée visible puis retirée après réponse, nouvelle invitation visible',
+      (tester) async {
+    var message = 'Votre avis sur le direct ?';
+    await http.runWithClient(() async {
+      await FeaturedRepository.instance.refresh(strict: true);
+      await FeedbackRepository.instance.reload(strict: true);
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.daylight,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate
+          ],
+          supportedLocales: const [Locale('fr')],
+          locale: const Locale('fr'),
+          home: Scaffold(
+              body: SingleChildScrollView(
+                  child: MobilePanelSections(
+                      channels: channels,
+                      recent: const SizedBox.shrink(),
+                      favorites: const SizedBox.shrink(),
+                      onChannel: (_) {})))));
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsOneWidget);
+      await FeedbackRepository.instance.markDone(prompt: message);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('mobile-panel-feedback')), findsNothing);
+      message = 'Votre avis après la mise à jour ?';
+      await FeedbackRepository.instance.reload(strict: true);
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mobile-panel-feedback')));
+      await tester.pumpAndSettle();
+      await maybeShowFeedbackSheet(tester.element(find.byType(TextField)));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+      final promptText = tester.widget<Text>(find.text(message).last);
+      expect(promptText.style!.color!.computeLuminance(), lessThan(.1));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+        () => MockClient((request) async => http.Response(
+            jsonEncode(switch (request.url.path) {
+              '/api/home-layout' => {'items': <Object>[]},
+              '/api/feedback-prompt' => {'enabled': true, 'message': message},
+              _ => {'name': '', 'note': ''},
+            }),
+            200)));
+  });
+
+  testWidgets('les huit clés du panel pilotent toutes des rangées réelles',
+      (tester) async {
+    var items = [
+      for (var i = 0; i < kDefaultHomeOrder.length; i++)
+        {'key': kDefaultHomeOrder[i], 'position': i, 'enabled': 1}
+    ];
+    final all = [
+      ...channels,
+      const Channel(
+          id: 'cinema',
+          name: 'Cinema Local',
+          category: 'Movies',
+          streamUrl: 'https://fixture.invalid/live/movie',
+          isLive: true),
+      const Channel(
+          id: 'entertainment',
+          name: 'Music Local',
+          category: 'Music',
+          streamUrl: 'https://fixture.invalid/live/music',
+          isLive: true),
+      const Channel(
+          id: 'general',
+          name: 'Local One',
+          category: 'General',
+          streamUrl: 'https://fixture.invalid/live/general',
+          isLive: true),
+    ];
+    await tester.runAsync(() async {
+      await RecentlyWatchedRepository.instance.record('sport');
+      await FavoritesRepository.instance.toggle('news');
+    });
+    await http.runWithClient(() async {
+      await HomeLayoutRepository.instance.refresh(strict: true);
+      await FeaturedRepository.instance.refresh(strict: true);
+      await FeedbackRepository.instance.reload(strict: true);
+      await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.daylight,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate
+          ],
+          supportedLocales: const [Locale('fr')],
+          locale: const Locale('fr'),
+          home: Scaffold(
+              body: SingleChildScrollView(
+                  child: MobilePanelSections(
+                      channels: all,
+                      recent: const Text('Historique réel'),
+                      favorites: const Text('Favoris réels'),
+                      onChannel: (_) {})))));
+      await tester.pumpAndSettle();
+      for (final key in kDefaultHomeOrder) {
+        expect(
+            find.byKey(ValueKey('mobile-panel-section-$key')), findsOneWidget,
+            reason: key);
+      }
+      expect(find.text('Historique réel'), findsOneWidget);
+      expect(find.text('Favoris réels'), findsOneWidget);
+      items = [
+        for (var i = 0; i < kDefaultHomeOrder.length; i++)
+          {'key': kDefaultHomeOrder[i], 'position': i, 'enabled': 0}
+      ];
+      await HomeLayoutRepository.instance.refresh(strict: true);
+      await tester.pumpAndSettle();
+      for (final key in kDefaultHomeOrder) {
+        expect(find.byKey(ValueKey('mobile-panel-section-$key')), findsNothing,
+            reason: key);
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+        () => MockClient((request) async => http.Response(
+            jsonEncode(switch (request.url.path) {
+              '/api/home-layout' => {'items': items},
+              '/api/feedback-prompt' => {'enabled': false, 'message': ''},
+              _ => {'name': '', 'note': ''},
+            }),
+            200)));
+  });
+}

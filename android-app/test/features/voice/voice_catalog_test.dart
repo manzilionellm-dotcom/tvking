@@ -9,7 +9,8 @@ import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/cinema/domain/cinema_models.dart';
 import 'package:tv_king/features/voice/domain/voice_catalog.dart';
 
-Channel _ch(String id, String name, {String category = 'Test', bool live = true}) {
+Channel _ch(String id, String name,
+    {String category = 'Test', bool live = true}) {
   return Channel(
     id: id,
     name: name,
@@ -82,6 +83,92 @@ void main() {
     expect(find('grand journal').single.channel?.id, 'grand');
     expect(find('grand journal').map((VoiceHit h) => h.channel?.id),
         isNot(contains('journal')));
+  });
+
+  test('la préparation donne les mêmes chaînes, sans replier à chaque lettre',
+      () {
+    final Map<String, String> hay = <String, String>{};
+    final Set<String> adult = <String>{};
+    for (final Channel c in channels) {
+      prepareChannelSearch(c, hay, adult);
+    }
+    final List<VoiceHit> direct = find('journal');
+    final List<VoiceHit> prepared = searchCatalog(
+      query: 'journal',
+      channels: channels,
+      movies: movies,
+      series: series,
+      channelHay: hay,
+      adultIds: adult,
+    );
+    expect(
+      prepared.map((VoiceHit h) => h.id),
+      direct.map((VoiceHit h) => h.id),
+    );
+    expect(adult, contains('xxx'));
+    expect(
+      searchCatalog(
+        query: 'xxx',
+        channels: channels,
+        movies: const <CinemaTitle>[],
+        series: const <CinemaTitle>[],
+        hideAdult: true,
+        channelHay: hay,
+        adultIds: adult,
+      ),
+      isEmpty,
+    );
+  });
+
+  test('le meilleur nom passe devant, puis le plus court', () {
+    final List<Channel> list = <Channel>[
+      _ch('a', 'Info Sport Week-end'),
+      _ch('b', 'beIN Sports 1'),
+      _ch('c', 'Sport 24 Séries Films'),
+      _ch('d', 'Sport 24'),
+      _ch('e', 'Sportive'),
+    ];
+    final List<String?> ids = searchCatalog(
+      query: 'sport',
+      channels: list,
+      movies: const <CinemaTitle>[],
+      series: const <CinemaTitle>[],
+    ).map((VoiceHit h) => h.channel?.id).toList();
+    // Mot entier en tête (le plus court d'abord), puis début de nom,
+    // puis un mot du nom (le plus court d'abord).
+    expect(ids, <String?>['d', 'c', 'e', 'b', 'a']);
+    expect(searchRank('sport 24 test', 'sport'), 0);
+    expect(searchRank('sportive test', 'sport'), 1);
+    expect(searchRank('bein sports 1 test', 'sport'), 2);
+    expect(searchRank('test sport', 'spo'), 2);
+    expect(searchRank('multisport', 'sport'), 3);
+  });
+
+  test('une faute de frappe trouve quand même la chaîne', () {
+    final List<Channel> list = <Channel>[
+      _ch('euro', 'Eurosport 2'),
+      _ch('nf', 'Netflix Action'),
+      _ch('tf1', 'TF1'),
+    ];
+    List<String?> ids(String q) => searchCatalog(
+          query: q,
+          channels: list,
+          movies: const <CinemaTitle>[],
+          series: const <CinemaTitle>[],
+        ).map((VoiceHit h) => h.channel?.id).toList();
+    expect(ids('eurosprt'), <String?>['euro']); // lettre oubliée
+    expect(ids('eurospotr'), <String?>['euro']); // lettres inversées
+    expect(ids('netflx'), <String?>['nf']);
+    expect(ids('nteflix action'), <String?>['nf']);
+    // Un mot court ne pardonne rien : « tf2 » n'est pas « TF1 ».
+    expect(ids('tf2'), isEmpty);
+    // Trop loin : rien.
+    expect(ids('zzzzzz'), isEmpty);
+    expect(typoBudget(3), 0);
+    expect(typoBudget(5), 1);
+    expect(typoBudget(9), 2);
+    expect(typoDistance('netflx', 'netflix', 1), 1);
+    expect(typoDistance('abcd', 'wxyz', 1), 2);
   });
 
   test('mode enfants : le contenu adulte disparaît', () {

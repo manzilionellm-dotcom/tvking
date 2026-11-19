@@ -38,27 +38,33 @@ class ForceUpdateChecker {
 
   /// `true` si l'app installée doit être mise à jour de force.
   Future<bool> mustUpdate(
-      {Duration timeout = const Duration(seconds: 6)}) async {
+      {Duration timeout = const Duration(seconds: 6), bool strict = false}) async {
     // Play Store : la mise à jour forcée passe par le Store, pas par
     // le sideload GitHub. On ne déclenche jamais ce flux côté Play.
-    if (kIsPlayBuild) return false;
-    if (kBuildTs <= 0) return false; // build local → jamais bloquant
+    if (kIsPlayBuild || kBuildTs <= 0) {
+      if (strict) throw StateError('Commande APK non applicable à ce build');
+      return false;
+    }
     try {
       final Uri uri = Uri.parse(
         '$kSubscriptionBaseUrl/api/app-version?build=$kBuildTs'
         '&platform=${AppPlatform.id}',
       );
       final http.Response resp = await http.get(uri).timeout(timeout);
-      if (resp.statusCode != 200) return false;
+      if (resp.statusCode != 200) throw StateError('Version non confirmée');
       final Object? decoded = jsonDecode(resp.body);
-      if (decoded is! Map) return false;
+      if (decoded is! Map ||
+          int.tryParse('${decoded['minBuildTs']}') == null) {
+        throw const FormatException('Version distante invalide');
+      }
       final Object? raw = decoded['minBuildTs'];
       final int minBuildTs =
           raw is int ? raw : int.tryParse('${raw ?? 0}') ?? 0;
       // Obsolète UNIQUEMENT si l'admin a posé un seuil ET qu'on est avant.
       return minBuildTs > 0 && kBuildTs < minBuildTs;
     } catch (e) {
-      if (kDebugMode) debugPrint('[ForceUpdate] $e');
+      if (strict) rethrow;
+      if (kDebugMode) debugPrint('[ForceUpdate] ${e.runtimeType}');
       return false; // fail-open
     }
   }

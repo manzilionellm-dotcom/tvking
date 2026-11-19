@@ -1,0 +1,80 @@
+// Exécute les mêmes commandes et la même SurfaceView que le lecteur du téléphone.
+// Deux mires locales de résolutions différentes permettent de détecter une image périmée.
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:novatube_video/novatube_video.dart';
+
+void main() => runApp(const MaterialApp(home: Probe()));
+
+class Probe extends StatefulWidget {
+  const Probe({super.key});
+  @override
+  State<Probe> createState() => _ProbeState();
+}
+
+class _ProbeState extends State<Probe> {
+  final phone = PhoneVideoPlayer(vod: true, userAgent: () => '7MOTION-Test');
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(check()));
+  }
+
+  Future<void> until(bool Function() ready) async {
+    final clock = Stopwatch()..start();
+    while (!ready()) {
+      if (clock.elapsed > const Duration(seconds: 25)) {
+        throw StateError('Délai dépassé avant le signal Android attendu');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
+  // Le test Android acquitte chaque capture après avoir contrôlé ses pixels.
+  Future<void> waitForCapture(int step) async {
+    final client = HttpClient();
+    final timeout = Stopwatch()..start();
+    try {
+      while (timeout.elapsed < const Duration(seconds: 30)) {
+        final request = await client.getUrl(Uri.parse('http://127.0.0.1:18910/capture-$step'));
+        final response = await request.close();
+        await response.drain<void>();
+        if (response.statusCode == 200) return;
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      throw StateError('Capture Android $step absente');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> check() async {
+    try {
+      int step = 0;
+      for (final width in [320, 640, 320]) {
+        step++;
+        await phone.open(Media('http://127.0.0.1:18910/$width.mp4'));
+        await until(() => phone.firstFrame && phone.state.width == width &&
+            phone.state.position >= const Duration(milliseconds: 500));
+        await phone.pause();
+        await until(() => !phone.state.playing);
+        debugPrint('SEVEN_VIDEO_FRAME $step $width');
+        await waitForCapture(step);
+        await phone.play();
+        await until(() => phone.state.playing);
+      }
+      await phone.stop();
+      await phone.dispose();
+      debugPrint('SEVEN_VIDEO_PROBE_OK');
+    } catch (error) {
+      debugPrint('SEVEN_VIDEO_PROBE_FAILED $error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(body: PhoneVideoSurface(
+    player: phone, fit: BoxFit.contain,
+    subtitleStyle: const TextStyle(), subtitlePadding: EdgeInsets.zero));
+}

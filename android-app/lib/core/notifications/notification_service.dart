@@ -31,6 +31,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../i18n/l10n_now.dart';
 import '../../features/profiles/data/active_profile.dart';
 import '../../features/profiles/domain/family_profile.dart';
 import '../../features/profiles/domain/reminder_book.dart';
@@ -53,15 +54,12 @@ class NotificationService {
 
   // Canal Android dédié aux rappels (obligatoire depuis Android 8).
   static const String _channelId = 'epg_reminders';
-  static const String _channelName = 'Rappels de programmes';
-  static const String _channelDesc =
-      'Notifications avant le début d\'un programme que vous avez choisi.';
+  static String get _channelName => l10nNow.tvHomeReminders;
 
   // Canal "général" : annonces de l'admin + dispo des mises à jour.
   static const String _generalChannelId = 'general_news';
-  static const String _generalChannelName = 'Annonces & mises à jour';
-  static const String _generalChannelDesc =
-      'Nouveautés, annonces de l\'équipe et disponibilité des mises à jour.';
+  static String get _generalChannelName =>
+      '${l10nNow.sectionNews} · ${l10nNow.aboutUpdates}';
 
   // -------------------------------------------------------------------
   //  Préférences utilisateur (3 interrupteurs côté Réglages)
@@ -113,10 +111,9 @@ class NotificationService {
           _plugin.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
       await android?.createNotificationChannel(
-        const AndroidNotificationChannel(
+        AndroidNotificationChannel(
           _channelId,
           _channelName,
-          description: _channelDesc,
           importance: Importance.high,
         ),
       );
@@ -124,10 +121,9 @@ class NotificationService {
       // pop-up plein écran intrusif), pas de vibration. L'annonce arrive
       // comme une info gentille dans le volet, pas comme une alarme.
       await android?.createNotificationChannel(
-        const AndroidNotificationChannel(
+        AndroidNotificationChannel(
           _generalChannelId,
           _generalChannelName,
-          description: _generalChannelDesc,
           importance: Importance.defaultImportance,
           enableVibration: false,
         ),
@@ -212,8 +208,7 @@ class NotificationService {
         tz.TZDateTime.fromMillisecondsSinceEpoch(tz.UTC, fireMs);
     final DateTime startLocal =
         DateTime.fromMillisecondsSinceEpoch(reminder.startMs);
-    final String hhmm =
-        '${startLocal.hour.toString().padLeft(2, '0')}:'
+    final String hhmm = '${startLocal.hour.toString().padLeft(2, '0')}:'
         '${startLocal.minute.toString().padLeft(2, '0')}';
     final int id = reminderNotificationId(
       profileId: profileId,
@@ -224,13 +219,12 @@ class NotificationService {
       await _plugin.zonedSchedule(
         id,
         reminder.title,
-        'Commence à $hhmm sur ${reminder.channelName}',
+        '${l10nNow.programStartsAt(reminder.title, hhmm)} · ${reminder.channelName}',
         when,
-        const NotificationDetails(
+        NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             _channelName,
-            channelDescription: _channelDesc,
             importance: Importance.high,
             priority: Priority.high,
           ),
@@ -251,8 +245,8 @@ class NotificationService {
   Future<void> _remember(String profileId, ProgramReminder reminder) async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final ReminderBook book =
-          ReminderBook.decode(prefs.getString(ProfileKeys.reminders(profileId)));
+      final ReminderBook book = ReminderBook.decode(
+          prefs.getString(ProfileKeys.reminders(profileId)));
       final ReminderBook next = book.upsert(
         reminder,
         nowMs: DateTime.now().millisecondsSinceEpoch,
@@ -266,7 +260,8 @@ class NotificationService {
   Future<ReminderBook> _loadBook(String profileId) async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      return ReminderBook.decode(prefs.getString(ProfileKeys.reminders(profileId)));
+      return ReminderBook.decode(
+          prefs.getString(ProfileKeys.reminders(profileId)));
     } catch (_) {
       return const ReminderBook();
     }
@@ -351,7 +346,6 @@ class NotificationService {
           android: AndroidNotificationDetails(
             _generalChannelId,
             _generalChannelName,
-            channelDescription: _generalChannelDesc,
             // Doux : pas de heads-up agressif, pas de vibration. Le texte
             // long s'affiche proprement quand on déroule la notif.
             importance: Importance.defaultImportance,
@@ -383,10 +377,10 @@ class NotificationService {
       if (latestTs <= last) return;
       await showNow(
         id: 990001,
-        title: 'Mise à jour disponible',
+        title: l10nNow.forceUpdateTitle,
         body: versionLabel == null || versionLabel.isEmpty
-            ? 'Une nouvelle version de l\'application est prête à installer.'
-            : 'Nouvelle version ($versionLabel) prête à installer.',
+            ? l10nNow.forceUpdateDownloadBtn
+            : '${l10nNow.forceUpdateDownloadBtn} · $versionLabel',
       );
       await p.setInt('notif.update.lastTs', latestTs);
     } catch (e) {
@@ -419,7 +413,7 @@ class NotificationService {
 
       await showNow(
         id: 980000 + (id & 0xffff),
-        title: title.isEmpty ? 'Nouveauté' : title,
+        title: title.isEmpty ? l10nNow.sectionNews : title,
         body: body,
       );
       await p.setInt('notif.announce.lastSeen', id);

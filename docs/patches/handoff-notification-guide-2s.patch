@@ -1,0 +1,14 @@
+--- a/docs/HANDOFF-PANEL-BOX.md
++++ b/docs/HANDOFF-PANEL-BOX.md
+@@ -964,0 +965,11 @@
++
++
++### Notification du guide limitée à deux secondes — 9 octobre 2026
++
++PROUVÉ : test rouge à 2 000 ms (quatre textes encore présents), run 37947967355 ; correctif e2606b0c4666145375c436408cc1dc26c485440d, puis 550 tests Flutter réussis et deux ignorés, run 37948942338. Repli zuno.guide.notice_legacy éteint par défaut ; contre-preuve de la carte historique encore visible après une minute. Une ligne FR/EN, minuterie annulée à la fermeture, non prolongée par un rebuild ; résumé consultable dans le Guide. Aucun changement aux méthodes de lecture et de retour au début.
++
++PROUVÉ : APK de test construit et disponible sur zuno-tv-test, version 107-test.125 (1791558880), run 37949476085 réussi, via build-zuno-tv.yml avec test_box=true et publish=false. Les métadonnées de la release clients sont identiques avant et après.
++
++NON PROUVÉ : installation et constat sur SHIELD, car aucune box n'est connectée à cet environnement. Attendu : une ligne qui disparaît après deux secondes et la trace [GUIDE] notification masquée après N ms. État détaillé et procédure : docs/NOTIFICATION-GUIDE-2S.md. Recherche demandée sur la fidélisation naturelle, sans ajout de comportement : docs/FIDELISATION-NATURELLE-ZUNO.md.
++
++

@@ -67,12 +67,14 @@ void main() {
     );
   });
 
-  test('fsync immédiat seulement pour avertissement, erreur, fatal', () {
+  test('fsync immédiat seulement pour erreur et fatal', () {
     expect(blackBoxFlushNow(BbLevel.info, fsyncAll: false), isFalse);
-    expect(blackBoxFlushNow(BbLevel.warn, fsyncAll: false), isTrue);
+    // Avertissements : fsync regroupé (≤ 1 s), comme les informations.
+    expect(blackBoxFlushNow(BbLevel.warn, fsyncAll: false), isFalse);
     expect(blackBoxFlushNow(BbLevel.error, fsyncAll: false), isTrue);
     expect(blackBoxFlushNow(BbLevel.fatal, fsyncAll: false), isTrue);
     // Repli : l'ancien comportement, un fsync par ligne.
     expect(blackBoxFlushNow(BbLevel.info, fsyncAll: true), isTrue);
+    expect(blackBoxFlushNow(BbLevel.warn, fsyncAll: true), isTrue);
   });
 }

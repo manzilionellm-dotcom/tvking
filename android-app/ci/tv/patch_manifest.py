@@ -148,6 +148,25 @@ def patch(s: str) -> str:
             "    </application>",
             1,
         )
+    # Flutter 3.16+ active SurfaceControl pour les vues plateforme dès
+    # Android 14 (API 34). Avec une SurfaceView vidéo, ce chemin compose
+    # un tampon vide : écran noir, son intact, surtout sur l'API 35.
+    # On garde la composition hybride classique. Le décodage matériel
+    # exige aussi l'accélération (déjà vraie sur l'activité) : un false
+    # quelque part éteindrait MediaCodec et le contraste GL.
+    if 'android:hardwareAccelerated="false"' in s:
+        raise SystemExit(
+            "❌ android:hardwareAccelerated=\"false\" : la vidéo resterait noire."
+        )
+    if "EnableSurfaceControl" not in s:
+        s = s.replace(
+            "</application>",
+            "    <meta-data\n"
+            '            android:name="io.flutter.embedding.android.EnableSurfaceControl"\n'
+            '            android:value="false" />\n'
+            "    </application>",
+            1,
+        )
     # Tablettes et grands écrans sous Android 16 (targetSdk 36) : le système
     # IGNORE screenOrientation="landscape" au-delà de 600 dp et afficherait
     # l'interface TV en portrait (largeurs fixes → débordements). Cette
@@ -195,6 +214,8 @@ def main() -> int:
         'android:screenOrientation="landscape"',
         "tools:overrideLibrary",
         'android:allowBackup="false"',
+        'android:name="io.flutter.embedding.android.EnableSurfaceControl"',
+        'android:value="false"',
     )
     missing = [r for r in required if r not in after]
     if missing:

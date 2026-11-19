@@ -1,0 +1,3600 @@
+diff --git a/lib/core/crash/secret_redactor.dart b/lib/core/crash/secret_redactor.dart
+index 1131c46..8cba55a 100644
+--- a/lib/core/crash/secret_redactor.dart
++++ b/lib/core/crash/secret_redactor.dart
+@@ -11,10 +11,9 @@
+ //  box ET l'envoyait au backend → fuite de secret d'abonné.
+ //
+ //  Ce module est PUR (aucune I/O, aucune dépendance) et TESTABLE : il prend
+-//  un texte libre (pas seulement une URL bien formée, contrairement à
+-//  StreamDiagnostics.maskCredentials qui exige une Uri) et remplace les
+-//  motifs sensibles par « ••• ». Appliqué au point d'étranglement unique
+-//  CrashReporting.recordError → couvre TOUS les puits d'un coup.
++//  un texte libre ou une URL et remplace les motifs sensibles par « ••• ».
++//  Les journaux et StreamDiagnostics utilisent les mêmes règles : une
++//  redirection ne doit pas réintroduire un secret dans le rapport partagé.
+ // =========================================================
+ 
+ /// Caviardeur de secrets pour texte libre (messages d'erreur, traces).
+@@ -41,15 +40,23 @@ class SecretRedactor {
+     caseSensitive: false,
+   );
+ 
+-  // Chemin Xtream : .../USER/PASS/ID.ext — on masque les DEUX segments qui
+-  // précèdent le fichier terminal (schéma /live|/movie|/series ou racine).
+-  // On préserve les préfixes structurels connus (live/movie/series).
++  // Redirection à jeton : /live/play/JETON/ID (extension facultative).
++  // Le jeton reste un seul segment, même s'il contient des %2F encodés.
++  // On conserve « live/play » et l'identifiant du flux pour le diagnostic.
++  static final RegExp _livePlayPath = RegExp(
++    r'''(/live/play/)[^/?#\s"'<>]+''',
++    caseSensitive: false,
++  );
++
++  // Chemin Xtream : /live|movie|series/USER/PASS/… — l'extension du flux
++  // ne détermine pas si les deux segments précédents sont des secrets.
+   static final RegExp _xtreamPath = RegExp(
+-    r'/(live|movie|series)/([^/\s]+)/([^/\s]+)/(\d+\.[a-zA-Z0-9]+)',
++    r'''/(live|movie|series)/([^/?#\s"'<>]+)/([^/?#\s"'<>]+)(?=/)''',
+     caseSensitive: false,
+   );
+   static final RegExp _xtreamBarePath = RegExp(
+-    r'(://[^/\s]+)/([^/\s]+)/([^/\s]+)/(\d+\.[a-zA-Z0-9]+)',
++    r'''(://[^/?#\s"'<>]+)/([^/?#\s"'<>]+)/([^/?#\s"'<>]+)/(\d+(?:\.[a-zA-Z0-9]+)?)(?=$|[/?#\s"'<>),;\]])''',
++    caseSensitive: false,
+   );
+ 
+   /// Renvoie [text] avec tous les secrets connus remplacés par « ••• ».
+@@ -59,7 +66,7 @@ class SecretRedactor {
+     if (text.isEmpty) return text;
+     // Sortie rapide : tous les motifs sensibles exigent un '/' (chemin ou
+     // scheme://) ou un '=' (paramètre de query). Une ligne qui n'a ni l'un
+-    // ni l'autre ne peut rien contenir à caviarder — on évite 4 passes
++    // ni l'autre ne peut rien contenir à caviarder — on évite les passes
+     // regex sur le cas de très loin le plus fréquent (ligne de log banale).
+     if (!text.contains('/') && !text.contains('=')) return text;
+     try {
+@@ -67,7 +74,13 @@ class SecretRedactor {
+           _userInfo, (Match m) => '${m.group(1)}$_mask:$_mask@');
+       out = out.replaceAllMapped(_query, (Match m) => '${m.group(1)}$_mask');
+       out = out.replaceAllMapped(
+-          _xtreamPath, (Match m) => '/${m.group(1)}/$_mask/$_mask/${m.group(4)}');
++          _livePlayPath, (Match m) => '${m.group(1)}$_mask');
++      out = out.replaceAllMapped(_xtreamPath, (Match m) {
++        // La forme à jeton vient d'être traitée ; « play » est structurel,
++        // pas un nom d'utilisateur à masquer une seconde fois.
++        if (_livePlayPath.hasMatch(m.group(0)!)) return m.group(0)!;
++        return '/${m.group(1)}/$_mask/$_mask';
++      });
+       out = out.replaceAllMapped(_xtreamBarePath,
+           (Match m) => '${m.group(1)}/$_mask/$_mask/${m.group(4)}');
+       return out;
+@@ -75,4 +88,59 @@ class SecretRedactor {
+       return text;
+     }
+   }
++
++  /// Variante pour une URL isolée destinée à l'affichage. La sérialisation
++  /// Uri conserve le format historique (masques encodés) et décode les noms
++  /// de paramètres avant de vérifier s'ils sont sensibles. Les règles de
++  /// redirection restent celles de [redact], également utilisées en texte
++  /// libre par les erreurs et les journaux.
++  static String redactUrl(String url) {
++    final String fallback = redact(url);
++    try {
++      final Uri? u = Uri.tryParse(url);
++      if (u == null) return fallback;
++
++      Map<String, String>? query;
++      if (u.queryParameters.isNotEmpty) {
++        const Set<String> sensitive = <String>{
++          'username',
++          'password',
++          'token',
++          'u',
++          'p',
++          'pass',
++          'user',
++        };
++        query = <String, String>{};
++        u.queryParameters.forEach((String name, String value) {
++          query![name] = sensitive.contains(name.toLowerCase()) ? _mask : value;
++        });
++      }
++
++      final List<String> segments = u.pathSegments.toList();
++      // Ce filet historique protège aussi les fichiers Xtream nommés
++      // (pas uniquement les identifiants numériques). On exclut la forme
++      // à jeton à l'aide de la règle commune, après normalisation Uri.
++      final bool tokenPath =
++          _livePlayPath.hasMatch(u.replace(pathSegments: segments).toString());
++      if (!tokenPath && segments.length >= 3 && segments.last.contains('.')) {
++        final int userIndex = segments.length - 3;
++        final String originalUser = segments[userIndex];
++        segments[segments.length - 2] = _mask;
++        const Set<String> structural = <String>{'live', 'movie', 'series'};
++        if (!structural.contains(originalUser.toLowerCase())) {
++          segments[userIndex] = _mask;
++        }
++      }
++
++      final String masked = redact(
++        u.replace(pathSegments: segments, queryParameters: query).toString(),
++      );
++      return Uri.tryParse(masked)?.toString() ?? masked;
++    } catch (_) {
++      // Même si une query mal formée fait échouer Uri, on garde le
++      // caviardage en texte libre au lieu de rendre l'entrée brute.
++      return fallback;
++    }
++  }
+ }
+diff --git a/lib/core/playback/stream_slot.dart b/lib/core/playback/stream_slot.dart
+index efd420b..4c27b2a 100644
+--- a/lib/core/playback/stream_slot.dart
++++ b/lib/core/playback/stream_slot.dart
+@@ -44,7 +44,7 @@ typedef StreamTeardown = Future<void> Function();
+ 
+ class _Holder {
+   _Holder(this.owner, this.group, this.teardown, this.label,
+-      {this.isHandOff = false});
++      {this.isHandOff = false, this.onRevoked});
+ 
+   /// Détenteur de TRANSITION (fermeture d'un lecteur quitté) : droit à un
+   /// budget de démontage plus long, cf. _kHandOffBudget.
+@@ -53,6 +53,15 @@ class _Holder {
+   final String group;
+   final StreamTeardown teardown;
+   final String label;
++  final void Function()? onRevoked;
++
++  /// Être inscrit ne signifie pas encore avoir obtenu le créneau. Une
++  /// nouvelle route peut attendre son premier claim derrière la précédente.
++  bool ownsSlot = false;
++
++  /// Une demande déjà en file avant la révocation ne peut pas reprendre
++  /// le créneau après elle, même si son écran est toujours inscrit/monté.
++  int generation = 0;
+ }
+ 
+ class StreamSlot {
+@@ -99,21 +108,35 @@ class StreamSlot {
+   /// l'autre, sinon le second démonte ce que le premier vient d'ouvrir.
+   Future<void> _chain = Future<void>.value();
+ 
+-  /// Déclare un consommateur de connexion. À appeler à l'initialisation de
+-  /// l'écran ; [teardown] doit fermer la connexion pour de bon (stop, pas
+-  /// pause) et n'être tenu de rien d'autre.
++  /// Déclare un consommateur de connexion, sans lui attribuer le créneau.
++  /// [teardown] ferme réellement la connexion (stop, pas pause).
++  /// [onRevoked] invalide synchroniquement les timers/récupérations dès la
++  /// perte du créneau, AVANT toute attente de fermeture. Il n'est appelé
++  /// qu'après un octroi : un nouvel écran encore en attente ne doit pas
++  /// être annulé par le claim qui le précède dans la file.
+   void register(
+     Object owner, {
+     required StreamTeardown teardown,
+     String group = groupSolo,
+     String label = '',
++    void Function()? onRevoked,
+   }) {
+-    _holders[owner] = _Holder(owner, group, teardown, label);
++    final _Holder? previous = _holders.remove(owner);
++    if (previous != null) _revoke(<_Holder>[previous]);
++    _holders[owner] =
++        _Holder(owner, group, teardown, label, onRevoked: onRevoked);
+   }
+ 
++  /// Seul un claim abouti donne le droit d'agir sur la lecture partagée.
++  /// Plusieurs détenteurs d'un même groupe non-solo peuvent le posséder.
++  bool owns(Object owner) => _holders[owner]?.ownsSlot ?? false;
++
+   /// Retire un consommateur (dispose de l'écran). Ne démonte rien : l'écran
+-  /// qui part a déjà fait son ménage.
+-  void unregister(Object owner) => _holders.remove(owner);
++  /// qui part a déjà fait son ménage. Révoque aussi ses demandes en attente.
++  void unregister(Object owner) {
++    final _Holder? holder = _holders.remove(owner);
++    if (holder != null) _revoke(<_Holder>[holder]);
++  }
+ 
+   /// SORTIE D'ÉCRAN (dispose) : remplace [owner] par un détenteur de
+   /// TRANSITION lié à [shutdown], sa fermeture réseau réellement en cours.
+@@ -137,7 +160,7 @@ class StreamSlot {
+ 
+   void handOff(Object owner, Future<void> shutdown, {String label = ''}) {
+     _lastHandOffAt = DateTime.now();
+-    _holders.remove(owner);
++    unregister(owner);
+     // Les erreurs de fermeture sont avalées : un stop raté ne doit jamais
+     // casser la chaîne des réclamations (même règle que _claimNow). Et une
+     // fermeture qui ne répond JAMAIS (thread lecteur natif bloqué) ne doit
+@@ -166,10 +189,24 @@ class StreamSlot {
+   /// AUTRE groupe et attend qu'ils aient fini. À appeler juste AVANT
+   /// d'ouvrir une URL.
+   ///
+-  /// N'échoue jamais : les démontages sont indépendants et plafonnés.
+-  Future<void> claim(Object owner) {
++  /// [isCancelled] est relu au début du travail puis après les attentes.
++  /// Un zap dépassé ne démonte donc personne lorsqu'il sort enfin de la
++  /// file ; s'il est dépassé pendant le démontage, il n'obtient pas le
++  /// créneau. L'appelant vérifie aussi sa génération après son await.
++  /// Une inscription remplacée/retirée ou révoquée annule les demandes
++  /// déjà en file, sans exiger de callback d'annulation de l'appelant.
++  /// Les anciens appelants sans inscription (diagnostic/avant résolution)
++  /// gardent leur barrière de démontage, mais n'obtiennent aucun droit.
++  /// On distingue ce cas d'une inscription retirée pendant l'attente :
++  /// celle-ci doit être annulée, jamais redevenir une demande anonyme.
++  ///
++  /// Les démontages sont indépendants et plafonnés (fail-open conservé).
++  Future<void> claim(Object owner, {bool Function()? isCancelled}) {
++    final _Holder? holder = _holders[owner];
++    final int? generation = holder?.generation;
+     _pendingClaims++;
+-    final Future<void> next = _chain.then((_) => _claimNow(owner));
++    final Future<void> next =
++        _chain.then((_) => _claimNow(owner, holder, generation, isCancelled));
+     // La chaîne ne doit pas mourir sur une erreur d'un maillon.
+     _chain = next.catchError((Object _) {});
+     return next.whenComplete(() => _pendingClaims--);
+@@ -180,10 +217,20 @@ class StreamSlot {
+   /// en vol — réclamer serait alors un pur no-op ASYNCHRONE, et ces sauts
+   /// de microtâches ont un coût réel : ils ont cassé le contrat « l'aperçu
+   /// démarre dans la même frame » (tests widget rouges du 19/08). Sinon,
+-  /// une vraie réclamation, à attendre.
+-  Future<void>? claimIfNeeded(Object owner) {
+-    if (_pendingClaims == 0 && !_hasOthers(owner)) return null;
+-    return claim(owner);
++  /// une vraie réclamation, à attendre. Pour un appelant inscrit, le retour
++  /// null attribue le créneau immédiatement : owns(owner) est déjà vrai,
++  /// sans saut de microtâche. Un ancien appelant anonyme conserve ce chemin
++  /// sans attente, mais ne reçoit jamais de droit de propriété.
++  Future<void>? claimIfNeeded(Object owner, {bool Function()? isCancelled}) {
++    final _Holder? holder = _holders[owner];
++    if (!_canProceed(holder, holder?.generation, isCancelled)) {
++      return Future<void>.value();
++    }
++    if (_pendingClaims == 0 && !_hasOthers(owner)) {
++      if (holder != null) holder.ownsSlot = true;
++      return null;
++    }
++    return claim(owner, isCancelled: isCancelled);
+   }
+ 
+   /// Y a-t-il un détenteur d'un AUTRE groupe que [owner] à démonter ?
+@@ -196,8 +243,45 @@ class StreamSlot {
+         !(h.group == myGroup && myGroup != groupSolo));
+   }
+ 
+-  Future<void> _claimNow(Object owner) async {
+-    final _Holder? me = _holders[owner];
++  bool _canProceed(
++      _Holder? holder, int? generation, bool Function()? isCancelled) {
++    if (holder != null &&
++        (!identical(_holders[holder.owner], holder) ||
++            generation != holder.generation)) return false;
++    try {
++      return !(isCancelled?.call() ?? false);
++    } catch (e) {
++      // Une garde d'écran mort qui lève ne doit jamais autoriser une
++      // ouverture ni empoisonner la file des réclamations suivantes.
++      if (kDebugMode) debugPrint('[Slot] garde d’annulation KO : $e');
++      return false;
++    }
++  }
++
++  void _revoke(List<_Holder> holders) {
++    final List<_Holder> revoked = <_Holder>[];
++    for (final _Holder holder in holders) {
++      if (!holder.ownsSlot) continue;
++      holder.ownsSlot = false;
++      holder.generation++;
++      revoked.add(holder);
++    }
++    // Tous les droits ont disparu avant le premier callback, et tous les
++    // callbacks ont fini avant le premier teardown/await. Les anciens
++    // lecteurs ne peuvent pas encore se croire propriétaires entre deux
++    // arrêts natifs, y compris en sortant d'une multi-vue.
++    for (final _Holder holder in revoked) {
++      try {
++        holder.onRevoked?.call();
++      } catch (e) {
++        if (kDebugMode) debugPrint('[Slot] révocation KO : $e');
++      }
++    }
++  }
++
++  Future<void> _claimNow(Object owner, _Holder? me, int? generation,
++      bool Function()? isCancelled) async {
++    if (!_canProceed(me, generation, isCancelled)) return;
+     final String myGroup = me?.group ?? groupSolo;
+     final List<_Holder> others = _holders.values
+         .where((_Holder h) =>
+@@ -205,13 +289,17 @@ class StreamSlot {
+             // Même groupe non-solo = cohabitation voulue (multi-vue).
+             !(h.group == myGroup && myGroup != groupSolo))
+         .toList(growable: false);
+-    if (others.isEmpty) return;
++
++    _revoke(others);
++    // Une fois leurs droits révoqués, leurs connexions doivent être
++    // fermées même si le demandeur est annulé pendant un callback.
+ 
+     await Future.wait(
+       others.map((_Holder h) async {
+         try {
+-          await h.teardown().timeout(
+-              h.isHandOff ? _kHandOffBudget : _kTeardownBudget);
++          await h
++              .teardown()
++              .timeout(h.isHandOff ? _kHandOffBudget : _kTeardownBudget);
+           if (kDebugMode) debugPrint('[Slot] démonté: ${h.label}');
+         } catch (e) {
+           // Fail-open ASSUMÉ : on préfère un refus du panel (message clair,
+@@ -220,6 +308,9 @@ class StreamSlot {
+         }
+       }),
+     );
++    if (me != null && _canProceed(me, generation, isCancelled)) {
++      me.ownsSlot = true;
++    }
+   }
+ 
+   /// Visible pour les tests : qui est déclaré en ce moment.
+diff --git a/lib/features/player/data/local_stream_relay.dart b/lib/features/player/data/local_stream_relay.dart
+index 77b3224..22b0b11 100644
+--- a/lib/features/player/data/local_stream_relay.dart
++++ b/lib/features/player/data/local_stream_relay.dart
+@@ -223,8 +223,17 @@ class LocalStreamRelay {
+   /// lecteur doit ouvrir à la place de l'URL IPTV réelle. L'URL réelle
+   /// est passée percent-encodée dans le paramètre `u` (Dart la décode
+   /// automatiquement côté serveur via `queryParameters`).
+-  Future<String> playUrlFor(String realUrl) async {
++  Future<String> playUrlFor(String realUrl,
++      {bool Function()? isCancelled}) async {
++    void checkCurrent() {
++      if (isCancelled?.call() ?? false) {
++        throw StateError('Ouverture relais annulée');
++      }
++    }
++
++    checkCurrent();
+     await _ensureServer();
++    checkCurrent();
+     // ZAP / bascule de variante : une seule lecture à la fois. On ferme
+     // toute session d'une AUTRE URL (sauf enregistrement en cours) —
+     // sinon les relais des chaînes quittées continuaient leurs
+@@ -235,6 +244,7 @@ class LocalStreamRelay {
+     // où le lecteur se connecte à l'URL renvoyée) qu'APRÈS que les anciennes
+     // ont été coupées → jamais deux connexions amont qui se chevauchent.
+     await closeOtherPlaybacks(realUrl);
++    checkCurrent();
+     _terminalPlaybackUrl = null;
+     final String token = Uri.encodeComponent(realUrl);
+     return 'http://127.0.0.1:$_port/s?u=$token';
+@@ -317,10 +327,20 @@ class LocalStreamRelay {
+   /// NORMALISE (HlsPlaylistNormalizer) et la sert avec le bon
+   /// Content-Type. Les SEGMENTS restent en DIRECT vers le CDN (URIs
+   /// absolues) — seul le petit document texte transite ici.
+-  Future<String> hlsPlaylistUrlFor(String realUrl) async {
++  Future<String> hlsPlaylistUrlFor(String realUrl,
++      {bool Function()? isCancelled}) async {
++    void checkCurrent() {
++      if (isCancelled?.call() ?? false) {
++        throw StateError('Ouverture HLS annulée');
++      }
++    }
++
++    checkCurrent();
+     await _ensureServer();
++    checkCurrent();
+     // Une seule lecture à la fois : ferme (et attend) les sessions TS restantes.
+     await closeOtherPlaybacks(realUrl);
++    checkCurrent();
+     final String token = Uri.encodeComponent(realUrl);
+     return 'http://127.0.0.1:$_port/hls?u=$token';
+   }
+diff --git a/lib/features/player/data/playback_transition.dart b/lib/features/player/data/playback_transition.dart
+new file mode 100644
+index 0000000..de07702
+--- /dev/null
++++ b/lib/features/player/data/playback_transition.dart
+@@ -0,0 +1,29 @@
++/// Prépare une nouvelle lecture en libérant d'abord la précédente, puis
++/// en attendant que le fournisseur rende son créneau disponible.
++///
++/// Fermer une socket locale ne remet pas nécessairement le compteur du
++/// fournisseur à zéro immédiatement. Cet ordre évite aussi de consulter
++/// ce compteur alors que notre propre ancienne lecture l'occupe encore.
++///
++/// L'appelant conserve sa file d'ouvertures et les délais de fermeture.
++/// Il fournit une garde liée à la sélection courante : un zap pendant
++/// l'une des attentes doit rendre cette préparation obsolète. Seul un
++/// résultat vrai autorise ensuite l'ouverture du nouveau média.
++///
++/// Les erreurs des callbacks remontent à l'appelant, qui connaît la
++/// stratégie de fermeture et de récupération de son moteur de lecture.
++Future<bool> preparePlaybackTransition({
++  required Future<void> Function() release,
++  required Future<void> Function() waitForSlot,
++  required bool Function() isCancelled,
++}) async {
++  if (isCancelled()) return false;
++
++  await release();
++  // Cette garde couvre à la fois le retour de la fermeture et l'entrée
++  // dans l'attente réseau : une ancienne sélection ne doit plus sonder.
++  if (isCancelled()) return false;
++
++  await waitForSlot();
++  return !isCancelled();
++}
+diff --git a/lib/features/player/data/stream_blocked_fallback.dart b/lib/features/player/data/stream_blocked_fallback.dart
+index 18e365a..283fca7 100644
+--- a/lib/features/player/data/stream_blocked_fallback.dart
++++ b/lib/features/player/data/stream_blocked_fallback.dart
+@@ -700,17 +700,18 @@ class StreamBlockedFallback {
+   }
+ 
+   /// PRÉ-ATTENTE MESURÉE du créneau FOURNISSEUR (transition cinéma ↔ chaîne
+-  /// « trop fluide », demande du 21/08). Avant la PREMIÈRE ouverture d'un
+-  /// écran de lecture qui suit une sortie de lecture, le panel peut encore
+-  /// compter la session FANTÔME de la lecture quittée : ouvrir tout de
++  /// « trop fluide », demande du 21/08). Après la fermeture de la lecture
++  /// précédente, y compris pendant un zap dans le même écran, le panel
++  /// peut encore compter sa session : ouvrir tout de
+   /// suite brûle une connexion refusée + un aller-retour d'erreur avant que
+   /// la patrouille 458 ne prenne la main. Ici on lit les compteurs du
+   /// compte (player_api — une requête d'API, pas un flux) et on n'ouvre que
+   /// quand la ligne est libre, borné à [budget] (fail-open : au-delà on
+   /// ouvre quand même, la patrouille couvre la suite).
+   ///
+-  /// ZÉRO COÛT pour les comptes multi-connexions (retour immédiat dès que
+-  /// max_connections > 1 est connu) et pour les sources non-Xtream.
++  /// Les compteurs sont lus sur le compte de cette chaîne : une ancienne
++  /// mesure multi-connexions d'une autre source ne peut pas dispenser de
++  /// ce contrôle. Une source non-Xtream rend immédiatement la main.
+   static Future<void> awaitProviderSlot(
+     Channel channel, {
+     Duration budget = const Duration(seconds: 10),
+@@ -720,6 +721,10 @@ class StreamBlockedFallback {
+   }) async {
+     void log(String m, {String level = 'info'}) =>
+         StreamDiagnostics.instance.recordEvent('preflight', m, level: level);
++    if (isCancelled?.call() ?? false) return;
++    final Stopwatch elapsed = Stopwatch()..start();
++    bool expired = false;
++    bool shouldStop() => expired || (isCancelled?.call() ?? false);
+     try {
+       Future<XtreamAccountInfo> Function()? probe = probeOverride;
+       if (probe == null) {
+@@ -730,12 +735,6 @@ class StreamBlockedFallback {
+             src.xtreamPassword == null) {
+           return; // pas une source Xtream : rien à mesurer
+         }
+-        // Ligne multi-connexions DÉJÀ connue → jamais de pré-attente : ces
+-        // comptes ne se battent pas pour un créneau, on ne leur ajoute pas
+-        // une milliseconde de latence.
+-        if ((StreamDiagnostics.instance.xtreamMaxConnections ?? 0) > 1) {
+-          return;
+-        }
+         final XtreamClient client = XtreamClient(
+           serverUrl: src.xtreamServer!,
+           username: src.xtreamUsername!,
+@@ -744,49 +743,68 @@ class StreamBlockedFallback {
+         );
+         probe = client.fetchAccountInfo;
+       }
+-      final DateTime start = DateTime.now();
+-      // Borne par NOMBRE de sondages (pas par horloge murale : les tests
+-      // fakeAsync ne simulent pas DateTime.now(), et un panel lent ajoute
+-      // déjà sa propre latence au budget réel).
+-      final int maxPolls =
+-          budget.inMilliseconds ~/ pollEvery.inMilliseconds; // ~6 par défaut
+-      int polls = 0;
+       bool announced = false;
+-      while (true) {
+-        final XtreamAccountInfo info = await probe();
+-        final int? max = info.maxConnections;
+-        final int? active = info.activeCons;
+-        if (max == null || active == null || max <= 0 || active < max) {
+-          if (announced) {
+-            log('créneau LIBÉRÉ après '
+-                '${DateTime.now().difference(start).inMilliseconds} ms de '
+-                'pré-attente → ouverture immédiate');
++      Future<void> poll() async {
++        while (true) {
++          if (shouldStop()) return;
++          final XtreamAccountInfo info = await probe!();
++          // Une réponse peut arriver après un zap ou la fin du budget :
++          // elle ne doit plus armer de délai ni de nouvelle consultation.
++          if (shouldStop()) return;
++          final int? max = info.maxConnections;
++          final int? active = info.activeCons;
++          if (max == null || active == null || max <= 0) {
++            log('compteurs non concluants après '
++                '${elapsed.elapsedMilliseconds} ms de pré-attente '
++                '→ essai d’ouverture autorisé');
++            return;
+           }
+-          return;
++          if (active < max) {
++            if (announced) {
++              log('créneau LIBÉRÉ après '
++                  '${elapsed.elapsedMilliseconds} ms de '
++                  'pré-attente → ouverture immédiate');
++            }
++            return;
++          }
++          if (!announced) {
++            announced = true;
++            log('transition : créneau fournisseur encore occupé ($active/$max) '
++                '→ pré-attente mesurée avant d’ouvrir (aucune connexion '
++                'brûlée)');
++          }
++          if (shouldStop()) return;
++          await Future<void>.delayed(pollEvery);
++          if (shouldStop()) return;
+         }
+-        if (polls >= maxPolls) {
++      }
++
++      // Le délai couvre toutes les réponses ET les pauses cumulées.
++      // Compter seulement les sondages pouvait transformer 10 s annoncées
++      // en plus de 30 s. Future.timeout repose sur un Timer : cette borne
++      // est aussi exercée avec l’horloge contrôlée des tests fakeAsync.
++      await poll().timeout(budget, onTimeout: () {
++        expired = true;
++        if (!(isCancelled?.call() ?? false)) {
+           log(
+-            'créneau toujours occupé ($active/$max) après '
+-                '${DateTime.now().difference(start).inMilliseconds} ms de '
+-                'pré-attente → on ouvre quand même (la patrouille 458 '
+-                'prendra le relais)',
++            'pré-attente terminée après ${elapsed.elapsedMilliseconds} ms '
++                '(budget ${budget.inMilliseconds} ms) : '
++                'aucun créneau libre confirmé → essai d’ouverture autorisé',
+             level: 'warn',
+           );
+-          return;
+         }
+-        polls++;
+-        if (!announced) {
+-          announced = true;
+-          log('transition : créneau fournisseur encore occupé ($active/$max) '
+-              '→ pré-attente mesurée avant d\'ouvrir (aucune connexion '
+-              'brûlée)');
+-        }
+-        await Future<void>.delayed(pollEvery);
+-        if (isCancelled?.call() ?? false) return;
+-      }
++      });
+     } catch (_) {
+-      // Best-effort ABSOLU : la pré-attente ne doit jamais empêcher ni
+-      // retarder durablement une ouverture (panel muet → on ouvre).
++      // Un contrôle de compte non concluant conserve le contrat fail-open.
++      // Le journal ne déduit ni panne ni expiration de cette seule mesure
++      // et ne recopie aucune URL ou exception contenant des identifiants.
++      if (!shouldStop()) {
++        log('contrôle du créneau non concluant après '
++            '${elapsed.elapsedMilliseconds} ms → essai d’ouverture autorisé',
++            level: 'warn');
++      }
++    } finally {
++      elapsed.stop();
+     }
+   }
+ 
+diff --git a/lib/features/player/data/stream_diagnostics.dart b/lib/features/player/data/stream_diagnostics.dart
+index 1b3df03..0891f8e 100644
+--- a/lib/features/player/data/stream_diagnostics.dart
++++ b/lib/features/player/data/stream_diagnostics.dart
+@@ -23,6 +23,7 @@
+ 
+ import 'package:flutter/foundation.dart';
+ 
++import '../../../core/crash/secret_redactor.dart';
+ import 'line_expiry.dart';
+ 
+ /// Raison CLAIRE d'un échec de lecture, à écrire noir sur blanc à l'écran
+@@ -116,7 +117,8 @@ class StreamDiagnostics extends ChangeNotifier {
+   /// (rempli par le relais pour le live ; par la sonde sinon).
+   int? httpStatus;
+ 
+-  /// URL finale après suivi des redirections 301/302/307/308.
++  /// URL finale après suivi des redirections 301/302/307/308, masquée dès
++  /// son enregistrement : ce champ sert uniquement au diagnostic.
+   String? httpFinalUrl;
+ 
+   /// Content-Type renvoyé par le serveur.
+@@ -127,8 +129,8 @@ class StreamDiagnostics extends ChangeNotifier {
+   String? audioCodec;
+   String? resolution;
+ 
+-  /// Dernière erreur EXACTE remontée par le moteur (libmpv/ExoPlayer),
+-  /// sans reformulation « friendly ».
++  /// Dernière erreur remontée par le moteur (libmpv/ExoPlayer), sans
++  /// reformulation « friendly », mais avec les secrets masqués.
+   String? lastPlayerError;
+ 
+   DateTime? sessionStart;
+@@ -333,7 +335,7 @@ class StreamDiagnostics extends ChangeNotifier {
+     String source = 'http',
+   }) {
+     if (status != null) httpStatus = status;
+-    if (finalUrl != null) httpFinalUrl = finalUrl;
++    if (finalUrl != null) httpFinalUrl = maskCredentials(finalUrl);
+     if (mime != null) httpMime = mime;
+     final StringBuffer b = StringBuffer();
+     if (status != null) b.write('HTTP $status');
+@@ -371,17 +373,18 @@ class StreamDiagnostics extends ChangeNotifier {
+       changed = true;
+     }
+     if (changed) {
+-      _add('player',
++      _add(
++          'player',
+           'Codecs: vidéo=${videoCodec ?? '?'} audio=${audioCodec ?? '?'} '
+-          '${this.resolution ?? ''}');
++              '${this.resolution ?? ''}');
+       notifyListeners();
+     }
+   }
+ 
+-  /// Erreur du moteur de lecture, TELLE QUELLE. [fatal] = elle a
+-  /// interrompu la lecture (sinon simple warning filtré par l'UI).
++  /// Erreur du moteur de lecture, sans reformulation hors secrets masqués.
++  /// [fatal] = elle a interrompu la lecture (sinon simple warning filtré).
+   void recordPlayerError(String message, {bool fatal = true}) {
+-    if (fatal) lastPlayerError = message;
++    if (fatal) lastPlayerError = SecretRedactor.redact(message);
+     _add('player', message, level: fatal ? 'error' : 'warn');
+     notifyListeners();
+   }
+@@ -418,9 +421,9 @@ class StreamDiagnostics extends ChangeNotifier {
+     // sur la photo du 20/08, les trois lignes « Compte: … » entremêlées de
+     // deux comptes différents. Jamais l'utilisateur (un screenshot du debug
+     // ne doit pas fuiter la ligne).
+-    final StringBuffer b = StringBuffer(
+-        'Compte${serverHost == null ? '' : ' ($serverHost)'}: '
+-        '${status ?? 'inconnu'}');
++    final StringBuffer b =
++        StringBuffer('Compte${serverHost == null ? '' : ' ($serverHost)'}: '
++            '${status ?? 'inconnu'}');
+     if (expDate != null) {
+       b.write(' · expire ${expDate.toString().split('.').first}');
+       b.write(' (dernier jour couvert : '
+@@ -436,7 +439,8 @@ class StreamDiagnostics extends ChangeNotifier {
+     if (panelClock != null) {
+       final Duration ecart = DateTime.now().difference(panelClock);
+       if (ecart.abs() > const Duration(minutes: 5)) {
+-        b.write(' · ⚠ horloge appareil ${ecart.isNegative ? 'en retard' : 'en avance'} '
++        b.write(
++            ' · ⚠ horloge appareil ${ecart.isNegative ? 'en retard' : 'en avance'} '
+             'de ${ecart.abs().inMinutes} min sur le panel');
+       }
+     }
+@@ -453,7 +457,14 @@ class StreamDiagnostics extends ChangeNotifier {
+   }
+ 
+   void _add(String tag, String message, {String level = 'info'}) {
+-    _events.add(StreamDiagEvent(tag: tag, message: message, level: level));
++    // Les exceptions interpolées par le relais peuvent contenir une URL
++    // brute. Le journal affichable ne la conserve jamais, même si l'appelant
++    // n'a pas pensé à masquer son message avant recordEvent/recordHttp.
++    _events.add(StreamDiagEvent(
++      tag: SecretRedactor.redact(tag),
++      message: SecretRedactor.redact(message),
++      level: level,
++    ));
+     if (_events.length > _kMaxEvents) _events.removeAt(0);
+     notifyListeners();
+   }
+@@ -489,7 +500,9 @@ class StreamDiagnostics extends ChangeNotifier {
+     for (final StreamDiagEvent e in events) {
+       b.writeln(e.toString());
+     }
+-    return b.toString();
++    // Les métadonnées libres (titre, MIME, UA…) peuvent aussi contenir une
++    // URL. Même filet à la sortie, avant toute copie du rapport de support.
++    return SecretRedactor.redact(b.toString());
+   }
+ 
+   /// Masque les identifiants dans une URL Xtream pour l'affichage /
+@@ -497,43 +510,7 @@ class StreamDiagnostics extends ChangeNotifier {
+   ///
+   ///   http://host/live/USER/PASS/123.ts  → http://host/live/•••/•••/123.ts
+   ///   http://host/USER/PASS/123.ts       → http://host/•••/•••/123.ts
++  ///   …/live/play/JETON/123             → …/live/play/•••/123
+   ///   …?username=U&password=P&token=T    → valeurs remplacées par •••
+-  static String maskCredentials(String url) {
+-    final Uri? u = Uri.tryParse(url);
+-    if (u == null) return url;
+-
+-    // 1. Query : masque les paramètres sensibles connus.
+-    Map<String, String>? q;
+-    if (u.queryParameters.isNotEmpty) {
+-      const Set<String> sensitive = <String>{
+-        'username', 'password', 'token', 'u', 'p', 'pass', 'user',
+-      };
+-      q = <String, String>{};
+-      u.queryParameters.forEach((String k, String v) {
+-        q![k] = sensitive.contains(k.toLowerCase()) ? '•••' : v;
+-      });
+-    }
+-
+-    // 2. Chemin : sur .../SEG/SEG/fichier.ext (schéma Xtream), masque
+-    //    les 2 segments juste avant le fichier (user/pass).
+-    List<String> segs = u.pathSegments.toList();
+-    if (segs.length >= 3 && segs.last.contains('.')) {
+-      segs[segs.length - 2] = '•••';
+-      segs[segs.length - 3] = '•••';
+-      // Ne pas masquer les préfixes structurels connus par erreur :
+-      // si le segment masqué était live/movie/series, on le restaure.
+-      const Set<String> structural = <String>{'live', 'movie', 'series'};
+-      final String original3 = u.pathSegments[segs.length - 3];
+-      if (structural.contains(original3.toLowerCase())) {
+-        segs[segs.length - 3] = original3;
+-      }
+-    }
+-
+-    return u
+-        .replace(
+-          pathSegments: segs,
+-          queryParameters: q,
+-        )
+-        .toString();
+-  }
++  static String maskCredentials(String url) => SecretRedactor.redactUrl(url);
+ }
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index f08184a..b82fc47 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -71,6 +71,7 @@ import '../data/local_stream_relay.dart';
+ import '../data/pip_service.dart';
+ import '../data/audio_passthrough.dart';
+ import '../data/player_settings.dart';
++import '../data/playback_transition.dart';
+ import '../domain/decoder_fallback.dart';
+ import '../domain/image_engine.dart';
+ import '../domain/playback_lease.dart';
+@@ -163,6 +164,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   bool _playbackTerminated = false;
+   Future<void> _playerOptionsReady = Future<void>.value();
+ 
++  // Un écran recouvert reste monté. La propriété réseau, elle, se termine
++  // dès qu'un autre consommateur prend le créneau, avant tout await.
++  bool _slotRevoked = false;
++  bool _disposing = false;
++  Future<void> _slotShutdown = Future<void>.value();
++  final Set<Object> _downloadHolds = <Object>{};
++  bool get _screenActive => mounted && !_disposing && !_slotRevoked;
++  bool get _ownsPlayback => _screenActive && StreamSlot.instance.owns(this);
++  bool _openCancelled(int generation) =>
++      !_screenActive || generation != _openGeneration;
++
+   /// Un seul lecteur audible (pub de démarrage comprise) et un jeton
+   /// par ouverture : un jeton périmé ne remonte pas le son.
+   final PlaybackSession _audioSession = PlaybackSession();
+@@ -177,11 +189,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   bool _sawFrame = false;
+   String? _lastOpenedUrl;
+ 
+-  /// Pré-attente fournisseur (parité TV, fluidité cinéma ↔ chaîne) : une
+-  /// seule fois par écran, à la première ouverture — jamais sur les zaps.
+-  bool _providerPrewaitDone = false;
+-
+-
+   bool _overlayVisible = true;
+   Timer? _hideOverlayTimer;
+   // Heartbeat périodique pendant le visionnage → garde l'app « en ligne »
+@@ -204,6 +211,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   bool _shieldBlocked = false;
+   bool _isBuffering = true;
+   bool _isPlaying = false;
++  bool _userPaused = false;
+ 
+   /// Suivi de l'etat cast pour le handoff (style YouTube) : on ne
+   /// reagit qu'aux TRANSITIONS (idle->cast et cast->idle), pas a chaque
+@@ -449,14 +457,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     StreamSlot.instance.register(
+       this,
+       label: 'lecteur telephone',
+-      teardown: () => _player.stop(),
++      onRevoked: _onSlotRevoked,
++      teardown: () => _slotRevoked
++          ? _slotShutdown
++          : _stopPlaybackNetwork(closeRelay: false),
+     );
+ 
+     // Rapporte tout de suite la chaîne en cours, puis rafraîchit toutes les
+     // 3 min tant que le lecteur est ouvert (présence + chaîne à jour).
+     _reportNowPlaying();
+     _presenceTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+-      SubscriptionState.instance.syncWithBackend();
++      if (_ownsPlayback) SubscriptionState.instance.syncWithBackend();
+     });
+ 
+     // Écoute les changements d'état PiP côté natif. Quand l'OS bascule
+@@ -466,11 +477,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // Actions de la MINI-FENÊTRE PiP (🎧 mode Écouteurs / ⏯ pause) —
+     // parité « The Few Master » (21/08). Le natif relaie l'appui, la
+     // logique reste ici (mêmes bascules que les boutons de l'overlay).
+-    PipService.instance.onPipControl = (String action) {
+-      if (!mounted) return;
+-      if (action == 'headphones') _toggleAudioOnly();
+-      if (action == 'playpause') _togglePlayPause();
+-    };
++    PipService.instance.onPipControl = _handlePipControl;
+     // Aspect ratio par défaut — la plupart des flux IPTV sont 16:9.
+     PipService.instance.setAspectRatio(numerator: 16, denominator: 9);
+ 
+@@ -622,7 +629,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   void _attachPlayerListeners() {
+     final Player evidenceSource = _player;
+     _subs.add(_player.stream.buffering.listen((bool buffering) {
+-      if (_playbackTerminated || !identical(evidenceSource, _player)) return;
++      if (!_ownsPlayback ||
++          _playbackTerminated ||
++          !identical(evidenceSource, _player)) {
++        return;
++      }
+       _onBufferingChanged(buffering);
+     }));
+     // Durée du flux : quand elle devient connue (> 0), c'est de la
+@@ -638,7 +649,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // NEUVE dès que son track-list expose la piste (cf. _maybeReapplyVideoTrack).
+     _subs.add(_player.stream.tracks.listen(_maybeReapplyVideoTrack));
+     _subs.add(_player.stream.playing.listen((bool p) {
+-      if (_playbackTerminated || !identical(evidenceSource, _player)) return;
++      if (!_ownsPlayback ||
++          _playbackTerminated ||
++          !identical(evidenceSource, _player)) {
++        return;
++      }
+       if (mounted) {
+         setState(() {
+           _isPlaying = p;
+@@ -672,8 +687,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // n'apparaît que si la reprise échoue (budget watchdog, puis
+     // diagnostic complet).
+     _subs.add(_player.stream.completed.listen((bool done) {
+-      if (!done || !mounted || _playbackTerminated ||
+-          !identical(evidenceSource, _player)) return;
++      if (!done ||
++          !_ownsPlayback ||
++          _playbackTerminated ||
++          !identical(evidenceSource, _player)) {
++        return;
++      }
+       final bool liveDecoded = widget.overrideUrl == null &&
+           _currentChannel.isLive &&
+           _playedChannelId == _currentChannel.id;
+@@ -688,8 +707,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       _maybeStartUpNext();
+     }));
+     _subs.add(_player.stream.error.listen((String e) {
+-      if (!mounted || _playbackTerminated ||
+-          !identical(evidenceSource, _player)) return;
++      if (!_ownsPlayback ||
++          _playbackTerminated ||
++          !identical(evidenceSource, _player)) {
++        return;
++      }
+       _lastPlayerError = e; // sert au tri « format » vs « créneau occupé »
+       // Boîte noire : TOUTES les erreurs libmpv, exactes, y compris
+       // celles que l'UI filtre. `fatal` est ajusté plus bas si on
+@@ -766,6 +788,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // remontées par media_kit). Indispensable pour diagnostiquer un HLS
+     // en 200 qui n'affiche aucune frame.
+     _subs.add(_player.stream.log.listen((PlayerLog l) {
++      if (!_screenActive || !identical(evidenceSource, _player)) return;
+       final bool isError = l.level == 'error' || l.level == 'fatal';
+       StreamDiagnostics.instance.recordEvent(
+         'mpv',
+@@ -778,6 +801,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // flux ouvert — consultables dans l'écran debug caché (appui long
+     // sur la version, écran À propos). Même source que l'overlay stats.
+     _subs.add(_player.stream.tracks.listen((_) {
++      if (!_ownsPlayback || !identical(evidenceSource, _player)) return;
+       StreamDiagnostics.instance.recordCodecs(
+         video: _player.state.track.video.codec,
+         audio: _player.state.track.audio.codec,
+@@ -802,6 +826,107 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     }));
+   }
+ 
++  void _handlePipControl(String action) {
++    if (!_ownsPlayback) return;
++    if (action == 'headphones') _toggleAudioOnly();
++    if (action == 'playpause') _togglePlayPause();
++  }
++
++  /// La fermeture du relais est lancée ici, AVANT toute attente : sa liste
++  /// de sessions et son intention de lecture appartiennent encore à cet
++  /// écran. Une fin de stop tardive ne ferme jamais le prochain relais.
++  Future<void> _stopPlaybackNetwork({required bool closeRelay}) {
++    final Player stoppedPlayer = _player;
++    final Future<void> relayClosed = closeRelay
++        ? LocalStreamRelay.instance.closeOtherPlaybacks('')
++        : Future<void>.value();
++    return Future.wait<void>(<Future<void>>[
++      () async {
++        try {
++          await stoppedPlayer.stop().timeout(const Duration(seconds: 5));
++        } catch (e) {
++          StreamDiagnostics.instance.recordEvent(
++              'player', 'Arrêt du moteur incomplet : $e',
++              level: 'warn');
++        }
++      }(),
++      relayClosed,
++    ]).then<void>((_) {}).catchError((Object e) {
++      StreamDiagnostics.instance.recordEvent(
++          'player', 'Fermeture réseau incomplète : $e', level: 'warn');
++    });
++  }
++
++  void _releaseDownloadHolds(Iterable<Object> holds) {
++    for (final Object hold in holds) {
++      VodDownloadService.instance.releasePlaybackHold(hold);
++      _downloadHolds.remove(hold);
++    }
++  }
++
++  /// Révocation synchrone par StreamSlot. `mounted` n'est pas une preuve
++  /// de propriété : l'écran peut rester dans la pile de navigation.
++  void _onSlotRevoked() {
++    if (_slotRevoked || _disposing) return;
++    _slotRevoked = true;
++    ++_openGeneration;
++    _playbackTerminated = true;
++    _playbackEvidence.revoke();
++    _fallback.detach();
++    _audioSession.open(); // invalide aussi une première image audio tardive
++    _audible = false;
++    _playedChannelId = null;
++    _pauseRelease.reset();
++    _userPaused = false;
++    _pauseConnectionReleased = false;
++    _startupTimer?.cancel();
++    _watchdogTimer?.cancel();
++    _vodRelayFallbackTimer?.cancel();
++    _eofReopenTimer?.cancel();
++    _bufferNoticeTimer?.cancel();
++    _zapDebounce?.cancel();
++    _upNextTimer?.cancel();
++    _reconnectGate.reset();
++    _isPlaying = false;
++    _isBuffering = false;
++    if (_audioOnly) {
++      _audioOnly = false;
++      PipService.instance.setAudioOnlyMode(false);
++      if (!CastManager.instance.isCasting) {
++        PipService.instance.stopBackgroundAudio();
++      }
++    }
++    final List<Object> holds = _downloadHolds.toList(growable: false);
++    _slotShutdown = _stopPlaybackNetwork(closeRelay: true);
++    unawaited(_slotShutdown.whenComplete(() => _releaseDownloadHolds(holds)));
++    StreamDiagnostics.instance.recordEvent('creneau',
++        'Lecture transférée : ancien écran révoqué, récupérations annulées');
++    if (mounted) setState(() {});
++  }
++
++  /// Un ancien écran ne reprend le créneau que sur un geste explicite
++  /// lorsqu'il est revenu au premier plan, jamais depuis un timer.
++  bool _resumeSlotFromUser() {
++    if (!_slotRevoked) return _screenActive;
++    if (!mounted || _disposing || ModalRoute.of(context)?.isCurrent != true) {
++      return false;
++    }
++    _slotRevoked = false;
++    _fallback.attach();
++    _fallback.beginPlaybackAttempt(resetDiagnosis: true);
++    PipService.instance.onPipControl = _handlePipControl;
++    WakelockPlus.enable();
++    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
++    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
++      DeviceOrientation.portraitUp,
++      DeviceOrientation.landscapeLeft,
++      DeviceOrientation.landscapeRight,
++    ]);
++    _reportNowPlaying();
++    _startWatchdog();
++    return true;
++  }
++
+   /// Suite d'initState APRÈS la création du player (exécutée UNE fois —
+   /// contrairement à _createPlayer qui rejoue à chaque recyclage).
+   void _initStateAfterPlayer() {
+@@ -813,7 +938,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       getChannel: () => _currentChannel,
+       getOverrideUrl: () => widget.overrideUrl,
+       getEffectiveUrl: () => _effectiveUrl,
+-      isAlive: () => mounted,
++      isAlive: () => _ownsPlayback,
+       hasDecodedFrames: () => _playedChannelId == _currentChannel.id,
+       getAdoptedAltUrl: () => _adoptedAltUrl,
+       setAdoptedAltUrl: (String? url) => _adoptedAltUrl = url,
+@@ -822,21 +947,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // connexion — mpv peut encore tenir sa socket sur le chemin du
+       // watchdog de démarrage (audit 19/08). `_player` est capturé au
+       // moment de l'appel (l'instance est recyclée à chaque ouverture).
+-      releaseForDiagnosis: () async {
+-        try {
+-          await _player.stop().timeout(const Duration(seconds: 5));
+-        } catch (_) {
+-          // stop qui expire/échoue : le recyclage de la réouverture fermera.
+-        }
+-        try {
+-          await LocalStreamRelay.instance.closeOtherPlaybacks('');
+-        } catch (_) {
+-          // best-effort : le relais journalise ses propres échecs.
+-        }
++      releaseForDiagnosis: () {
++        if (!_ownsPlayback) return Future<void>.value();
++        _playbackTerminated = true;
++        _playbackEvidence.revoke();
++        return _stopPlaybackNetwork(closeRelay: true);
+       },
+       reopen: _openMedia,
+       showBlocked: (BlockedVerdict verdict) {
+-        if (!mounted) return;
++        if (!_ownsPlayback) return;
+         _stopTerminalPlayback();
+         setState(() {
+           _hasError = true;
+@@ -928,7 +1047,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     //  été quitté entre-temps, créer un lecteur NEUF ici en ferait un
+     //  orphelin que personne ne fermera — une instance mpv et, dès son
+     //  prochain open, une connexion fournisseur que rien ne rend.
+-    if (!mounted) return;
++    if (!_screenActive) return;
+     _createPlayer();
+     // ÉTAT DE LECTURE remis à neuf AVANT que les listeners de la nouvelle
+     // instance n'émettent (M1) : sinon le watchdog lisait la position 0 de
+@@ -1038,6 +1157,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // Ignore si on est déjà sur cette chaîne (évite un `_player.open`
+     // redondant qui re-démarrerait le buffering pour rien).
+     if (next.id == _currentChannel.id) return;
++    if (!_resumeSlotFromUser()) return;
++    _fallback.stopRecovery();
+     // Si on enregistre la chaîne qu'on quitte, on clôt proprement
+     // l'enregistrement AVANT de changer : l'enregistrement est lié au
+     // flux en cours dans le relais (1 connexion). Le fichier est sauvé.
+@@ -1317,7 +1438,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// jamais deux lectures en vol. Une ouverture dépassée par un zap plus
+   /// récent est abandonnée (garde de génération, journalisée).
+   Future<void> _openMedia(String realUrl) {
++    if (!_screenActive) return _openChain;
+     final int gen = ++_openGeneration;
++    _userPaused = false;
+     _playbackTerminated = true;
+     _playbackEvidence.revoke();
+     _fallback.stopRecovery();
+@@ -1349,7 +1472,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       return _openChain;
+     }
+     _shieldBlocked = false;
+-    VodDownloadService.instance.setPlaybackHold(!isLocal);
++    // Un jeton par tentative : la fermeture tardive de la précédente ne
++    // peut pas libérer le verrou de celle qui vient de la remplacer.
++    final Object downloadHold = Object();
++    _downloadHolds.add(downloadHold);
++    VodDownloadService.instance.claimPlaybackHold(downloadHold, network: true);
+     // Toute NOUVELLE ouverture (zap, retry, reprise) supersède l'état
+     // « connexion rendue par la pause » : sans ça, un zap pendant une pause
+     // longue laissait le drapeau levé et le play suivant « reprenait » à la
+@@ -1376,42 +1503,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // fini dans le budget → la connexion suivante part quand même
+     // (fail-open) et peut se chevaucher : le journal le dira noir sur blanc.
+     final DateTime claimStart = DateTime.now();
+-    _openChain = _openChain
+-        .then((_) => StreamSlot.instance.claim(this))
+-        .then((_) {
+-          final int waitedMs =
+-              DateTime.now().difference(claimStart).inMilliseconds;
+-          if (waitedMs > 50) {
+-            StreamDiagnostics.instance.recordEvent(
+-              'creneau',
+-              'Créneau réseau obtenu après $waitedMs ms de démontage des '
+-                  'consommateurs précédents'
+-                  '${waitedMs >= 1150 ? ' — BUDGET ATTEINT : un démontage n\'a pas fini, la connexion part quand même' : ''}',
+-              level: waitedMs >= 1150 ? 'warn' : 'info',
+-            );
+-          }
+-        })
+-        // PRÉ-ATTENTE FOURNISSEUR (parité TV, fluidité cinéma ↔ chaîne du
+-        // 21/08) : à la PREMIÈRE ouverture de cet écran, si on vient de
+-        // quitter une autre lecture (handOff récent), le panel peut encore
+-        // compter sa session fantôme — on attend la libération MESURÉE
+-        // (compteurs player_api) au lieu de brûler une connexion refusée.
+-        // Jamais pour un fichier local, ni sur les zaps suivants ; zéro
+-        // coût hors Xtream et sur les comptes multi-connexions.
+-        .then((_) async {
+-          if (_providerPrewaitDone || isLocal) return;
+-          _providerPrewaitDone = true;
+-          final DateTime? left = StreamSlot.instance.lastHandOffAt;
+-          if (left != null &&
+-              DateTime.now().difference(left) < const Duration(minutes: 2)) {
+-            await StreamBlockedFallback.awaitProviderSlot(
+-              _currentChannel,
+-              isCancelled: () => !mounted || gen != _openGeneration,
+-            );
+-          }
+-        })
+-        .then((_) => _openMediaInner(realUrl, gen))
+-        .catchError(
++    _openChain = _openChain.then((_) async {
++      if (_openCancelled(gen)) return;
++      await StreamSlot.instance
++          .claim(this, isCancelled: () => _openCancelled(gen));
++      if (_openCancelled(gen) || !_ownsPlayback) return;
++      final int waitedMs = DateTime.now().difference(claimStart).inMilliseconds;
++      if (waitedMs > 50) {
++        StreamDiagnostics.instance.recordEvent('creneau',
++            'Démontage des consommateurs précédents attendu : $waitedMs ms');
++      }
++      await _openMediaInner(realUrl, gen, downloadHold);
++    }).catchError(
+       (Object e, StackTrace st) {
+         StreamDiagnostics.instance.recordEvent(
+           'player',
+@@ -1421,11 +1524,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+         );
+         // On ne réagit que si cette ouverture est encore la plus récente
+         // (sinon un zap plus récent est déjà en cours : on ne l'écrase pas).
+-        if (mounted && gen == _openGeneration) {
++        if (!_openCancelled(gen) && _ownsPlayback) {
+           setState(() {
+             _hasError = true;
+-            _errorMessage =
+-              _blockMessage(context.l10n.playerStreamInterrupted);
++            _errorMessage = _blockMessage(context.l10n.playerStreamInterrupted);
+           });
+         }
+       },
+@@ -1433,9 +1535,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     return _openChain;
+   }
+ 
+-  Future<void> _openMediaInner(String realUrl, int gen) async {
+-    if (!mounted) return;
+-    if (gen != _openGeneration) {
++  Future<void> _openMediaInner(
++      String realUrl, int gen, Object downloadHold) async {
++    if (_openCancelled(gen) || !_ownsPlayback) {
+       StreamDiagnostics.instance.recordEvent(
+         'player',
+         'Ouverture obsolète abandonnée (un zap plus récent est en file) : '
+@@ -1443,11 +1545,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       );
+       return;
+     }
+-    // FERMETURE ATTENDUE + instance mpv neuve AVANT toute connexion.
++    // À CHAQUE zap : fermer réellement le flux, vérifier le compteur
++    // du fournisseur, puis seulement demander la nouvelle chaîne. Le
++    // compteur ne doit pas mesurer notre propre ancien flux encore ouvert.
+     _playbackEvidence.revoke();
+-    await _recyclePlayer();
+-    await _playerOptionsReady;
+-    if (!mounted || gen != _openGeneration) return;
++    final bool isLocal = realUrl.startsWith('file:') || realUrl.startsWith('/');
++    final bool ready = await preparePlaybackTransition(
++      isCancelled: () => _openCancelled(gen) || !_ownsPlayback,
++      release: () async {
++        // Le relais capture immédiatement ses sessions ; la suite attend
++        // ensemble le stop/dispose mpv et la fermeture de son amont.
++        final Future<void> relayClosed =
++            LocalStreamRelay.instance.closeOtherPlaybacks('');
++        await _recyclePlayer();
++        await relayClosed;
++        await _playerOptionsReady;
++      },
++      waitForSlot: () async {
++        if (isLocal) return;
++        await StreamBlockedFallback.awaitProviderSlot(_currentChannel,
++            isCancelled: () => _openCancelled(gen) || !_ownsPlayback);
++      },
++    );
++    if (!ready) return;
++    _releaseDownloadHolds(_downloadHolds
++        .where((Object owner) => !identical(owner, downloadHold))
++        .toList());
++    VodDownloadService.instance
++        .claimPlaybackHold(downloadHold, network: !isLocal);
+     _playbackTerminated = false;
+     _fallback.beginPlaybackAttempt();
+     _playbackEvidence.bind(_player);
+@@ -1467,7 +1592,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // voyagent plus en clair. Sondé une fois par serveur, jamais sur l'URL
+     // du flux, mémorisé. No-op bouclier éteint.
+     realUrl = await PrivacyShield.instance.preferredUrl(realUrl);
+-    if (!mounted || gen != _openGeneration) return;
++    if (_openCancelled(gen) || !_ownsPlayback) return;
+     // FORMAT MÉMORISÉ (zapping instantané) : si la cascade a déjà trouvé
+     // le format d'URL gagnant pour cette source (et ce type de contenu),
+     // on l'applique DIRECTEMENT — pas de re-cascade à chaque zap. On ne
+@@ -1481,6 +1606,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+             StreamBlockedFallback.contentTypeOf(_currentChannel);
+         final String? code = await XtreamUrlFormatStore.instance
+             .winningFormat(src!.id!, type);
++        if (_openCancelled(gen) || !_ownsPlayback) return;
+         // AUTO-CORRECTIF (terrain 2026-07-09) : un format HLS mémorisé
+         // pour du LIVE (« live:m3u8 » / « none:m3u8 ») ouvre PLUSIEURS
+         // connexions (playlist repollée + segments) et sature les comptes
+@@ -1517,15 +1643,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+         // mpv lisent PlayerSettings au moment de connecter.
+         final String? sourceUa =
+             await XtreamUrlFormatStore.instance.sourceUserAgent(src.id!);
+-        if (sourceUa != null &&
+-            sourceUa != PlayerSettings.instance.userAgent) {
++        if (_openCancelled(gen) || !_ownsPlayback) return;
++        if (sourceUa != null && sourceUa != PlayerSettings.instance.userAgent) {
+           await PlayerSettings.instance.setUserAgent(sourceUa);
++          if (_openCancelled(gen) || !_ownsPlayback) return;
+           StreamDiagnostics.instance.recordEvent(
+             'probe',
+             'Signature mémorisée pour cette source appliquée : "$sourceUa"',
+           );
+         }
+-        if (!mounted || gen != _openGeneration) return;
++        if (_openCancelled(gen) || !_ownsPlayback) return;
+       }
+     }
+     // Boîte noire : nouvelle tentative d'ouverture (URL réelle + UA).
+@@ -1563,7 +1690,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // connexion : sur un compte 1-connexion, un chevauchement de quelques
+       // centaines de ms suffit au refus (parité TV 19/08).
+       await LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+-      if (!mounted || gen != _openGeneration) return;
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       // Redirection (panel → CDN tokenisé) RÉSOLUE AVANT mpv : certains
+       // empilements ffmpeg résolvent mal les URIs RELATIVES des
+       // segments après une redirection de playlist (base URL = l'URL
+@@ -1573,7 +1700,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       String hlsUrl = realUrl;
+       final String? finalUrl =
+           await HlsPreflight.resolveFinalPlaylistUrl(realUrl);
+-      if (!mounted || gen != _openGeneration) return;
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       if (finalUrl != null && finalUrl != realUrl) {
+         StreamDiagnostics.instance.recordEvent(
+           'hls',
+@@ -1590,14 +1717,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // NORMALISÉE par le relais local (route /hls : re-téléchargée à
+       // chaque poll live, #EXTM3U garanti, URIs de segments ABSOLUES →
+       // les octets vidéo partent en DIRECT vers le CDN).
+-      final String normalizedUrl =
+-          await LocalStreamRelay.instance.hlsPlaylistUrlFor(hlsUrl);
+-      if (!mounted || gen != _openGeneration) return;
++      final String normalizedUrl = await LocalStreamRelay.instance
++          .hlsPlaylistUrlFor(hlsUrl,
++              isCancelled: () => _openCancelled(gen) || !_ownsPlayback);
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       // FILET : force le démuxeur HLS de ffmpeg sur ce contenu, au cas
+       // où un panel servirait un document encore plus exotique. Remis à
+       // « auto » sur le chemin TS (_applyMpvOptions n'y touche pas).
+-      final bool forced =
+-          await _setMpvProperty('demuxer-lavf-format', 'hls');
++      final bool forced = await _setMpvProperty('demuxer-lavf-format', 'hls');
+       StreamDiagnostics.instance.recordEvent(
+         'hls',
+         'Playlist normalisée servie en local → mpv ; démuxeur HLS forcé : '
+@@ -1605,6 +1732,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       );
+       // (la fermeture attendue a déjà eu lieu dans _recyclePlayer :
+       // l'instance est NEUVE, aucune socket précédente à chevaucher)
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       _playerOpenedOnce = true;
+       _player.open(Media(normalizedUrl));
+       return;
+@@ -1623,7 +1751,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // précédente doit être fermée AVANT que mpv ouvre la VOD en direct —
+       // sinon les deux connexions se chevauchent sur un compte 1-connexion.
+       await LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+-      if (!mounted || gen != _openGeneration) return;
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       StreamDiagnostics.instance.recordEvent(
+         'player',
+         isLocalFile
+@@ -1642,7 +1770,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // vhost. Range/seek natifs conservés (on ne repasse pas par le relais).
+       final (String openUrl, Map<String, String>? headers) =
+           await _vodDirectTarget(realUrl);
+-      if (!mounted || gen != _openGeneration) return;
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       _playerOpenedOnce = true;
+       _player.open(Media(openUrl, httpHeaders: headers));
+       // FILET « jamais bloqué » (terrain 2026-07-18) : si la lecture
+@@ -1677,16 +1805,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Repli sur la lecture directe si le relais ne démarre pas.
+   Future<void> _openViaRelay(String realUrl, int gen) async {
+     try {
+-      final String localUrl =
+-          await LocalStreamRelay.instance.playUrlFor(realUrl);
+-      if (!mounted || gen != _openGeneration) return;
++      final String localUrl = await LocalStreamRelay.instance.playUrlFor(
++          realUrl,
++          isCancelled: () => _openCancelled(gen) || !_ownsPlayback);
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       _playerOpenedOnce = true;
+       _player.open(Media(localUrl));
+     } catch (e) {
+       // Si le relais ne démarre pas (cas improbable), on retombe sur la
+       // lecture directe pour ne jamais priver l'utilisateur de l'image.
+       debugPrint('[Player] relais indisponible, lecture directe: $e');
+-      if (!mounted || gen != _openGeneration) return;
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       _playerOpenedOnce = true;
+       _player.open(Media(realUrl));
+     }
+@@ -1701,7 +1830,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   void _armVodCascadeFallback(int gen) {
+     _vodRelayFallbackTimer?.cancel();
+     _vodRelayFallbackTimer = Timer(_kVodDirectGrace, () {
+-      if (!mounted || gen != _openGeneration) return;
++      if (_openCancelled(gen) || !_ownsPlayback) return;
+       if (_playedChannelId == _currentChannel.id || _hasError) return;
+       StreamDiagnostics.instance.recordEvent(
+         'player',
+@@ -2169,6 +2298,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   }
+ 
+   void _onSettingsChanged() {
++    if (!_screenActive) return;
+     // Quand l'utilisateur change un réglage en cours de lecture
+     // → applique en live ce qui peut l'être à chaud.
+     _applyMpvOptions();
+@@ -2189,6 +2319,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   ///   - engage   = connecting | casting | paused (un device est pris)
+   ///   - non engage = idle | error | discovering
+   void _onCastStateChanged() {
++    if (!_screenActive) return;
+     final CastState st = CastManager.instance.state;
+     final bool engaged = st == CastState.connecting ||
+         st == CastState.casting ||
+@@ -2249,7 +2380,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   //  precis ou l'on revient sur l'ecran. Jamais en pleine lecture.
+   @override
+   void didChangeAppLifecycleState(AppLifecycleState state) {
+-    if (state != AppLifecycleState.resumed) return;
++    if (state != AppLifecycleState.resumed || !_ownsPlayback) return;
+     unawaited(() async {
+       try {
+         await _player.setAudioDevice(AudioDevice.auto());
+@@ -2263,11 +2394,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+ 
+   @override
+   void dispose() {
++    final bool wasOwner = StreamSlot.instance.owns(this);
++    final bool controlsOwner =
++        PipService.instance.onPipControl == _handlePipControl;
++    final List<Object> holds = _downloadHolds.toList(growable: false);
++    _disposing = true;
++    ++_openGeneration;
++    _playbackTerminated = true;
++    _playbackEvidence.revoke();
++    _audioSession.open();
+     WidgetsBinding.instance.removeObserver(this);
+     _licenseGuard?.dispose();
+     PrivacyShield.instance.removeListener(_onShieldChanged);
+     // Les actions PiP ne doivent plus viser cet écran mort.
+-    PipService.instance.onPipControl = null;
++    if (controlsOwner) PipService.instance.onPipControl = null;
+     // S3 : la session de métriques est résumée en UNE ligne boîte noire
+     // (TTFF, stalls, rebuffering, erreurs par famille, reconnexions).
+     _flushStatsSession();
+@@ -2292,14 +2432,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // keep-alive du cast utilise le MÊME service de premier plan ; le
+     // couper ici gelait le relais (socket panel à moitié ouverte) dès que
+     // l'écran s'éteignait, et le cast « coupait » sans trace.
+-    if (!CastManager.instance.isCasting) {
+-      PipService.instance.stopBackgroundAudio();
++    if (controlsOwner) {
++      if (!CastManager.instance.isCasting) {
++        PipService.instance.stopBackgroundAudio();
++      }
++      PipService.instance.setAudioOnlyMode(false);
+     }
+-    PipService.instance.setAudioOnlyMode(false);
+     // On ne regarde plus rien → on le signale au panel (heartbeat avec
+     // channel vide). Fire-and-forget.
+-    NowPlaying.instance.clear();
+-    SubscriptionState.instance.syncWithBackend();
++    if (controlsOwner) {
++      NowPlaying.instance.clear();
++      SubscriptionState.instance.syncWithBackend();
++    }
+     for (final StreamSubscription<dynamic> s in _subs) {
+       s.cancel();
+     }
+@@ -2391,24 +2535,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       'Sortie du lecteur (${_currentChannel.isLive ? 'direct' : 'film'}) → '
+           'fermeture réseau lancée (stop mpv puis session relais)',
+     );
+-    // 2.3 (05/09/2026) — même garde que la TV : on note le rang de la
+-    // dernière session relais AVANT les `await` ; l'écran suivant a pu
+-    // ouvrir la sienne pendant qu'on attend le stop, on ne la touche pas.
+-    final int relayGen = LocalStreamRelay.instance.sessionGeneration;
++    // Une sortie d'écran déjà révoqué n'a aucun droit sur le relais
++    // global actuel. La fermeture de sa propre session a été capturée
++    // synchroniquement lors du transfert de propriété.
++    final Future<void> networkClosed = wasOwner
++        ? _stopPlaybackNetwork(closeRelay: true)
++        : _slotShutdown.then((_) => _stopPlaybackNetwork(closeRelay: false));
+     final Future<void> shutdown = () async {
+-      try {
+-        // stop() ferme démuxeur + socket mpv (même chemin que le handoff
+-        // cast) ; borné comme dans _recyclePlayer.
+-        await player.stop().timeout(const Duration(seconds: 5));
+-      } catch (_) {
+-        // stop qui expire/échoue : dispose ci-dessous fermera la socket.
+-      }
+-      try {
+-        await LocalStreamRelay.instance
+-            .closeOtherPlaybacks('', upToGeneration: relayGen);
+-      } catch (_) {
+-        // best-effort : le relais journalise déjà ses propres échecs.
+-      }
++      await networkClosed;
+       try {
+         await player.dispose().timeout(const Duration(seconds: 5));
+       } catch (_) {
+@@ -2421,24 +2555,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+             '(stop mpv + session relais + dispose)',
+       );
+     }();
+-    StreamSlot.instance
+-        .handOff(this, shutdown, label: 'fermeture lecteur quitté');
++    if (wasOwner) {
++      StreamSlot.instance
++          .handOff(this, shutdown, label: 'fermeture lecteur quitté');
++    } else {
++      StreamSlot.instance.unregister(this);
++    }
+     // Le verrou des téléchargements se lève quand la ligne est VRAIMENT
+     // rendue — jamais avant. Filet : même si le shutdown échoue, on lève.
+-    unawaited(shutdown.whenComplete(
+-        () => VodDownloadService.instance.setPlaybackHold(false)));
+-    WakelockPlus.disable();
++    unawaited(shutdown.whenComplete(() => _releaseDownloadHolds(holds)));
++    if (controlsOwner) WakelockPlus.disable();
+     // À la sortie du lecteur, on dit au natif "plus de playback"
+     // pour qu'un futur appui HOME ne déclenche pas le PiP par erreur
+     // (ex. si l'user revient sur la home pour zapper rapidement).
+-    PipService.instance.setPlaybackActive(false);
++    if (controlsOwner) PipService.instance.setPlaybackActive(false);
+     PipService.instance.removeListener(_onPipChanged);
+-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+-    // Restaure portrait-only en quittant le player (l'accueil et les
+-    // autres écrans sont conçus en portrait).
+-    SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+-      DeviceOrientation.portraitUp,
+-    ]);
++    if (controlsOwner) {
++      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
++      // Restaure portrait-only en quittant le player (l'accueil et les
++      // autres écrans sont conçus en portrait).
++      SystemChrome.setPreferredOrientations(<DeviceOrientation>[
++        DeviceOrientation.portraitUp,
++      ]);
++    }
+     super.dispose();
+   }
+ 
+@@ -2463,13 +2602,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Appelé chaque fois que l'état PiP change côté natif. On force
+   /// l'overlay à se cacher dès qu'on entre en mini-fenêtre.
+   void _onPipChanged() {
+-    if (!mounted) return;
++    if (!_ownsPlayback) return;
+     if (PipService.instance.isInPipMode && _overlayVisible) {
+       setState(() => _overlayVisible = false);
+     }
+   }
+ 
+   void _togglePlayPause() {
++    if (_slotRevoked) {
++      if (_resumeSlotFromUser()) _retry();
++      return;
++    }
++    if (!_ownsPlayback) return;
+     // VAGUE B — apres un cast, le lecteur est reste volontairement a
+     // l'arret (media ferme). `play()` ne suffirait pas : il faut
+     // rouvrir le flux. C'est le SEUL chemin de reprise locale.
+@@ -2488,8 +2632,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       return;
+     }
+     if (_player.state.playing) {
++      _userPaused = true;
+       _player.pause();
+     } else {
++      _userPaused = false;
+       _player.play();
+     }
+     _scheduleHideOverlay();
+@@ -2501,19 +2647,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// politique testée [VodPauseReleasePolicy], du moment où une pause VOD a
+   /// assez duré pour rendre la connexion au panel.
+   void _vodPauseReleaseTick() {
+-    if (_pauseConnectionReleased) return; // déjà rendue : on attend la reprise
++    if (!_ownsPlayback || _playbackTerminated || _pauseConnectionReleased) {
++      return;
++    }
+     // Seekable = film/épisode/catch-up (position à retenir). Le DIRECT est
+     // éligible AUSSI (audit 19/08 : un téléphone en pause sur un direct
+     // tenait le 1/1 indéfiniment) — il n'a juste rien à reprendre : la
+     // reprise rouvre au bord du live.
+-    final bool seekable =
+-        widget.overrideUrl != null || !_currentChannel.isLive;
++    final bool seekable = widget.overrideUrl != null || !_currentChannel.isLive;
+     final String url = _effectiveUrl;
+     final bool isLocalFile = url.startsWith('file:') || url.startsWith('/');
+     // Pause VOLONTAIRE d'un flux réseau : pas un buffering, pas une erreur,
+     // pas un cast (le handoff cast a déjà stoppé la lecture locale), et le
+     // contenu a réellement joué (sinon c'est un démarrage, pas une pause).
+-    final bool pausedOnNetwork = !_isPlaying &&
++    final bool pausedOnNetwork = _userPaused &&
++        !_isPlaying &&
+         !_isBuffering &&
+         !_hasError &&
+         !_wasCasting &&
+@@ -2553,10 +2701,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+           '${seekable ? ' ; position mémorisée' : ''}). La reprise '
+           'ré-ouvrira le flux.',
+     );
+-    unawaited(_player.stop());
+-    // La ligne est libre : la file de téléchargements Cinéma peut en
+-    // profiter (re-suspendue par le _openMedia de la reprise).
+-    VodDownloadService.instance.setPlaybackHold(false);
++    _playbackTerminated = true;
++    _playbackEvidence.revoke();
++    _fallback.stopRecovery();
++    final List<Object> holds = _downloadHolds.toList(growable: false);
++    final Future<void> stopped = _stopPlaybackNetwork(closeRelay: true);
++    _openChain = Future.wait<void>(<Future<void>>[_openChain, stopped])
++        .then<void>((_) {});
++    // La reprise attend aussi cette fermeture ; seule cette tentative
++    // rend ses jetons, sans lever le verrou d'un lecteur plus récent.
++    unawaited(stopped.whenComplete(() => _releaseDownloadHolds(holds)));
+   }
+ 
+   void _resumeAfterPauseRelease() {
+@@ -2582,7 +2736,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// 404. C'est ce drapeau qui décide « coupure réseau » (erreur
+   /// directe) vs « jamais lu » (sonde + cascade de variantes).
+   void _markPlaybackStarted(Player source) {
+-    if (!mounted || !_playbackEvidence.accepts(source)) return;
++    if (!_ownsPlayback || !_playbackEvidence.accepts(source)) return;
+     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
+     _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
+     // REPRISE APRÈS PAUSE LONGUE : le flux vient d'être ré-ouvert après que
+@@ -2662,10 +2816,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// mesure objective du « zéro saccade ». Appelée à la première frame
+   /// puis toutes les ~30 s de lecture stable (via le watchdog).
+   Future<void> _logPlaybackMetrics(String moment) async {
++    if (!_ownsPlayback) return;
++    final int generation = _openGeneration;
++    final Player source = _player;
+     Future<String?> prop(String name) async {
+       try {
+         // ignore: invalid_use_of_protected_member
+-        final dynamic native = (_player.platform as dynamic);
++        final dynamic native = (source.platform as dynamic);
+         final dynamic v = await native?.getProperty(name);
+         final String out = '$v'.trim();
+         return out.isEmpty || out == 'null' ? null : out;
+@@ -2678,6 +2835,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     final String? codec = await prop('video-codec');
+     final String? fps = await prop('estimated-vf-fps');
+     final String? dropped = await prop('frame-drop-count');
++    if (_openCancelled(generation) || !_ownsPlayback ||
++        !identical(source, _player)) {
++      return;
++    }
+     final bool hwActive =
+         hwdec != null && hwdec != 'no' && hwdec != 'none';
+     StreamDiagnostics.instance.recordEvent(
+@@ -2693,6 +2854,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// l'overlay laissait FFmpeg reconnecter, puis masquer l'erreur avec un
+   /// événement « playing » tardif. Les ouvertures suivantes attendent stop.
+   void _stopTerminalPlayback() {
++    if (!_ownsPlayback) return;
++    final List<Object> holds = _downloadHolds.toList(growable: false);
+     _playbackTerminated = true;
+     _openGeneration++;
+     _fallback.stopRecovery();
+@@ -2712,24 +2875,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     final Future<void> stopped = () async {
+       try {
+         await stoppedPlayer.stop().timeout(const Duration(seconds: 5));
+-        StreamDiagnostics.instance.recordEvent('player',
+-            'Arrêt du moteur confirmé après le verdict définitif');
++        StreamDiagnostics.instance.recordEvent(
++            'player', 'Arrêt du moteur confirmé après le verdict définitif');
+       } catch (e) {
+-        StreamDiagnostics.instance.recordEvent('player',
+-            'Arrêt définitif du lecteur incomplet : $e', level: 'warn');
++        StreamDiagnostics.instance.recordEvent(
++            'player', 'Arrêt définitif du lecteur incomplet : $e',
++            level: 'warn');
+       }
+       await relayClosed;
+     }();
++    unawaited(stopped.whenComplete(() => _releaseDownloadHolds(holds)));
+     _openChain = Future.wait<void>(<Future<void>>[_openChain, stopped])
+-        .then<void>((_) {}).catchError((Object e) {
+-      StreamDiagnostics.instance.recordEvent('player',
+-          'Fermeture définitive incomplète : $e', level: 'warn');
++        .then<void>((_) {})
++        .catchError((Object e) {
++      StreamDiagnostics.instance.recordEvent(
++          'player', 'Fermeture définitive incomplète : $e',
++          level: 'warn');
+     });
+     StreamDiagnostics.instance.recordEvent('player',
+         'Arrêt de lecture demandé : tentatives automatiques annulées');
+   }
+ 
+-  void _retry() {
++  void _retry({bool userInitiated = false}) {
++    if (userInitiated && !_resumeSlotFromUser()) return;
++    if (!_screenActive) return;
+     _fallback.beginPlaybackAttempt(resetDiagnosis: true);
+     setState(() {
+       _hasError = false;
+@@ -2746,23 +2915,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   ///     sessions relais, message du bouclier ;
+   ///   • VPN revenu alors qu'on était bloqué → reprise automatique.
+   void _onShieldChanged() {
+-    if (!mounted) return;
++    if (!_screenActive) return;
+     final PrivacyShield s = PrivacyShield.instance;
+     final bool networkContent = !PrivacyShield.isLocalUrl(_effectiveUrl);
+     if (s.blocksNetworkPlayback && !_shieldBlocked && networkContent) {
+       _shieldBlocked = true;
+-      unawaited(() async {
+-        try {
+-          await _player.stop();
+-        } catch (_) {
+-          // instance mpv déjà libérée : rien ne joue.
+-        }
+-        try {
+-          await LocalStreamRelay.instance.closeOtherPlaybacks('');
+-        } catch (_) {
+-          // best-effort : le relais journalise ses propres échecs.
+-        }
+-      }());
++      ++_openGeneration;
++      _playbackTerminated = true;
++      _playbackEvidence.revoke();
++      _fallback.stopRecovery();
++      unawaited(_stopPlaybackNetwork(closeRelay: _ownsPlayback));
+       StreamDiagnostics.instance.recordEvent(
+         'bouclier',
+         'VPN perdu pendant la lecture → coupe-circuit : lecture arrêtée, '
+@@ -2821,12 +2983,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   void _armStartupTimeout() {
+     _startupTimer?.cancel();
+     _startupTimer = Timer(_kStartupTimeout, () {
+-      if (!mounted || _isPlaying || _hasError) return;
++      if (!_ownsPlayback || _playbackTerminated || _isPlaying || _hasError)
++        return;
+       if (_playedChannelId == _currentChannel.id) {
+         setState(() {
+           _hasError = true;
+-          _errorMessage =
+-              _blockMessage(context.l10n.playerStreamInterrupted);
++          _errorMessage = _blockMessage(context.l10n.playerStreamInterrupted);
+         });
+       } else if (_offerEngineSwitch(PictureSignal.blackOrFrozen) &&
+           _scheduleSilentReopen('pas d\'image au démarrage')) {
+@@ -2847,7 +3009,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   }
+ 
+   void _watchdogTick() {
+-    if (!mounted) return;
++    if (!_ownsPlayback || _playbackTerminated) return;
+     // « Pause longue = connexion rendue » : décision prise sur le même
+     // tick (aucun réveil de plus). Avant les sorties anticipées : elle
+     // concerne justement les contenus seekables que le watchdog ignore.
+@@ -2947,7 +3109,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// true = une réouverture est armée (1/2/4/8 s). false = une attente
+   /// est déjà en cours, ou le budget silencieux est épuisé.
+   bool _scheduleSilentReopen(String why) {
+-    if (_playbackTerminated) return false;
++    if (!_ownsPlayback || _playbackTerminated) return false;
+     final int? delay = _reconnectGate.arm(maxAttempts: ReconnectPlan.maxSilent);
+     if (delay == null) return false;
+     _eofReopenTimer?.cancel();
+@@ -2961,7 +3123,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     );
+     _eofReopenTimer = Timer(Duration(milliseconds: delay), () {
+       if (!_reconnectGate.fire()) return;
+-      if (!mounted || _playbackTerminated || generation != _openGeneration) return;
++      if (_openCancelled(generation) || !_ownsPlayback || _playbackTerminated)
++        return;
+       if (widget.overrideUrl == null &&
+           _currentChannel.isLive &&
+           !HlsPreflight.isHlsUrl(url)) {
+@@ -3125,6 +3288,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// continue de décoder et de jouer le SON. C'est exactement le
+   /// comportement « écran éteint, ça continue » de YouTube.
+   void _toggleAudioOnly() {
++    if (!_ownsPlayback) return;
+     final bool enabling = !_audioOnly;
+     setState(() => _audioOnly = enabling);
+     _scheduleHideOverlay();
+@@ -3139,6 +3303,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     PipService.instance.setAudioOnlyMode(enabling);
+     if (enabling) {
+       final String title = widget.overrideTitle ?? _currentChannel.cleanName;
++      final int generation = _openGeneration;
+       // Android 13+ : sans POST_NOTIFICATIONS accordée, la notification du
+       // foreground service ne S'AFFICHE PAS (l'utilisateur croit que le mode
+       // Écouteurs est cassé). On la demande MAINTENANT — l'app est encore au
+@@ -3148,7 +3313,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       unawaited(
+         NotificationService.instance
+             .requestPermission()
+-            .whenComplete(() => PipService.instance.startBackgroundAudio(title)),
++            .whenComplete(() {
++          if (!_openCancelled(generation) && _ownsPlayback && _audioOnly) {
++            PipService.instance.startBackgroundAudio(title);
++          }
++        }),
+       );
+     } else {
+       PipService.instance.stopBackgroundAudio();
+@@ -3852,7 +4021,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+                       color: Colors.white,
+                     ),
+                     tooltip: context.l10n.tooltipReloadStream,
+-                    onPressed: _retry,
++                    onPressed: () => _retry(userInitiated: true),
+                   ),
+                 ],
+               ),
+@@ -4135,7 +4304,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+                 ),
+                 const SizedBox(width: 12),
+                 ElevatedButton.icon(
+-                  onPressed: _retry,
++                  onPressed: () => _retry(userInitiated: true),
+                   style: ElevatedButton.styleFrom(
+                     backgroundColor: AppColors.accent,
+                     foregroundColor: AppColors.onAccent,
+diff --git a/lib/features/vod/data/vod_download_service.dart b/lib/features/vod/data/vod_download_service.dart
+index c6a2b3d..47ca1ef 100644
+--- a/lib/features/vod/data/vod_download_service.dart
++++ b/lib/features/vod/data/vod_download_service.dart
+@@ -168,7 +168,10 @@ class VodDownloadService extends ChangeNotifier {
+       this,
+       group: StreamSlot.groupDownloads,
+       label: 'telechargements',
+-      teardown: () async => setPlaybackHold(true),
++      // Suspension immédiate pendant le transfert du créneau. Ce n'est
++      // pas une lecture legacy : le propriétaire mobile déclare sa propre
++      // demande et doit pouvoir libérer la file une fois son flux fermé.
++      teardown: () async => _applyPlaybackHold(true),
+     );
+   }
+   static final VodDownloadService instance = VodDownloadService._();
+@@ -196,6 +199,13 @@ class VodDownloadService extends ChangeNotifier {
+   /// la file patiente pour ne pas voler le créneau 1-connexion du panel.
+   bool _playbackHold = false;
+ 
++  // Les appels historiques (notamment TV) restent indépendants des jetons
++  // mobiles. Chaque ouverture utilise une identité distincte : la fermeture
++  // asynchrone de A ne peut pas lever la protection de B, et l'annulation de
++  // B ne peut pas libérer A encore actif.
++  bool _legacyPlaybackHold = false;
++  final Set<Object> _playbackOwners = Set<Object>.identity();
++
+   /// « Télécharger pendant que je regarde » (façon YouTube). Ces ids ont le
+   /// DROIT de se télécharger MÊME pendant une lecture réseau (2e connexion).
+   /// Réservé au film qu'on est en train de regarder → à la fin, il est déjà
+@@ -311,7 +321,37 @@ class VodDownloadService extends ChangeNotifier {
+   /// voler le créneau 1-connexion pendant un visionnage (audit 19/08).
+   bool get playbackHold => _playbackHold;
+ 
++  /// Déclare la demande réseau d'une ouverture précise. Un contenu local
++  /// retire seulement la demande de [owner], jamais celle d'un autre flux.
++  /// Répéter la demande avec la même identité est sans effet cumulatif.
++  void claimPlaybackHold(Object owner, {required bool network}) {
++    if (network) {
++      _playbackOwners.add(owner);
++    } else {
++      _playbackOwners.remove(owner);
++    }
++    _applyPlaybackHold(_legacyPlaybackHold || _playbackOwners.isNotEmpty);
++  }
++
++  /// À appeler après la fermeture effective du flux de [owner], ou après
++  /// l'annulation de son ouverture. Une libération tardive reste locale à
++  /// cette identité, même si un nouveau lecteur est déjà en route.
++  void releasePlaybackHold(Object owner) {
++    _playbackOwners.remove(owner);
++    _applyPlaybackHold(_legacyPlaybackHold || _playbackOwners.isNotEmpty);
++  }
++
++  /// API historique conservée. Lever ce booléen n'annule pas les demandes
++  /// par identité ; leurs propriétaires doivent les libérer eux-mêmes.
+   void setPlaybackHold(bool hold) {
++    _legacyPlaybackHold = hold;
++    _applyPlaybackHold(_legacyPlaybackHold || _playbackOwners.isNotEmpty);
++  }
++
++  /// Applique l'état effectif à la file sans changer ses propriétaires.
++  /// Le teardown du créneau passe aussi ici pour fermer immédiatement les
++  /// clients réseau, sans fabriquer un verrou legacy permanent.
++  void _applyPlaybackHold(bool hold) {
+     if (_playbackHold == hold) return;
+     _playbackHold = hold;
+     _releaseGrace?.cancel();
+@@ -654,7 +694,8 @@ class VodDownloadService extends ChangeNotifier {
+       try {
+         final HttpClientRequest req =
+             await client.getUrl(Uri.parse(d.streamUrl));
+-        req.headers.set(HttpHeaders.userAgentHeader, 'VLC/3.0.20 LibVLC/3.0.20');
++        req.headers
++            .set(HttpHeaders.userAgentHeader, 'VLC/3.0.20 LibVLC/3.0.20');
+         // REPRISE : on demande la suite à partir de l'octet déjà écrit.
+         if (already > 0) {
+           req.headers.set(HttpHeaders.rangeHeader, 'bytes=$already-');
+diff --git a/test/core/crash/secret_redactor_test.dart b/test/core/crash/secret_redactor_test.dart
+index 2e95090..941bdf9 100644
+--- a/test/core/crash/secret_redactor_test.dart
++++ b/test/core/crash/secret_redactor_test.dart
+@@ -31,6 +31,74 @@ void main() {
+       expect(out, isNot(contains('motdepasse')));
+     });
+ 
++    test('masque le jeton de redirection sans perdre /live/play/ ni le flux',
++        () {
++      for (final String stream in <String>['12345', '12345.ts', '12345.m3u8']) {
++        final String message =
++            'relay: https://edge.invalid/live/play/FAKE_OPAQUE_TOKEN/$stream';
++        expect(
++          SecretRedactor.redact(message),
++          'relay: https://edge.invalid/live/play/•••/$stream',
++        );
++      }
++    });
++
++    test('masque le jeton encodé, les URLs multiples et les chemins relatifs',
++        () {
++      const String message =
++          'de https://edge.invalid/live/play/FAKE%2FENCODED%3FSECRET/17 '
++          'vers /LIVE/PLAY/FAKE_SECOND_TOKEN/18?token=FAKE_QUERY_TOKEN';
++      expect(
++        SecretRedactor.redact(message),
++        'de https://edge.invalid/live/play/•••/17 '
++        'vers /LIVE/PLAY/•••/18?token=•••',
++      );
++    });
++
++    test('masque aussi les identifiants Xtream sans extension terminale', () {
++      for (final String prefix in <String>['live/', 'movie/', 'series/', '']) {
++        final String message =
++            'échec https://panel.invalid/${prefix}FAKE_USER/FAKE_PASS/12345';
++        final String masked = SecretRedactor.redact(message);
++        expect(masked, isNot(contains('FAKE_USER')));
++        expect(masked, isNot(contains('FAKE_PASS')));
++        expect(masked, contains('/$prefix•••/•••/12345'));
++      }
++    });
++
++    test('un jeton numérique ne fait pas masquer le préfixe live/play', () {
++      expect(
++        SecretRedactor.redact('https://edge.invalid/live/play/123456789/42'),
++        'https://edge.invalid/live/play/•••/42',
++      );
++    });
++
++    test('le schéma court protège aussi un compte nommé comme un préfixe', () {
++      expect(
++        SecretRedactor.redact('https://panel.invalid/live/FAKE_BARE_PASS/42'),
++        'https://panel.invalid/•••/•••/42',
++      );
++    });
++
++    test('préserve les URLs de placeholder utiles au diagnostic', () {
++      const String message =
++          'HTTP 200 : https://edge.invalid/video/black.ts (video/mp2t)';
++      expect(SecretRedactor.redact(message), message);
++    });
++
++    test('le jeton masqué reste stable dans un journal JSON et à la relecture',
++        () {
++      const String message =
++          '{"url":"https://edge.invalid/live/play/FAKE_JSON_TOKEN/123.ts",'
++          '"status":200}';
++      final String masked = SecretRedactor.redact(message);
++      expect(
++        masked,
++        '{"url":"https://edge.invalid/live/play/•••/123.ts","status":200}',
++      );
++      expect(SecretRedactor.redact(masked), masked);
++    });
++
+     test('masque les paramètres de query sensibles', () {
+       const String msg =
+           'Erreur GET http://h/player_api.php?username=bob&password=p4ss&action=x';
+@@ -78,7 +146,7 @@ void main() {
+       final String big = 'x' * 200000;
+       expect(SecretRedactor.redact(big), big);
+       // Même chose avec des '/' dedans (la sortie rapide ne s'applique
+-      // plus : les 4 regex tournent) — reste linéaire grâce à la borne.
++      // plus : les regex tournent) — reste linéaire grâce à la borne.
+       final String bigSlashes = List<String>.filled(20000, 'seg').join('/');
+       expect(SecretRedactor.redact(bigSlashes), bigSlashes);
+     });
+diff --git a/test/core/playback/stream_slot_test.dart b/test/core/playback/stream_slot_test.dart
+index dbd8d98..c3c2160 100644
+--- a/test/core/playback/stream_slot_test.dart
++++ b/test/core/playback/stream_slot_test.dart
+@@ -30,6 +30,8 @@ void main() {
+ 
+     await slot.claim(chaine);
+     expect(demontes, <String>['film']);
++    expect(slot.owns(chaine), isTrue);
++    expect(slot.owns(film), isFalse);
+   });
+ 
+   test('la réclamation ATTEND la fin du démontage', () async {
+@@ -57,6 +59,7 @@ void main() {
+ 
+     // Fail-open assumé : mieux vaut un refus serveur qu'un écran noir.
+     await expectLater(slot.claim(neuf), completes);
++    expect(slot.owns(neuf), isTrue);
+   });
+ 
+   test('un démontage qui ne rend jamais la main est plafonné', () async {
+@@ -67,6 +70,7 @@ void main() {
+     slot.register(neuf, label: 'neuf', teardown: () async {});
+ 
+     await expectLater(slot.claim(neuf), completes);
++    expect(slot.owns(neuf), isTrue);
+   });
+ 
+   test('les tuiles multi-vue se tolèrent entre elles', () async {
+@@ -174,7 +178,8 @@ void main() {
+   //  natif + session relais + attente réseau (jusqu'à 3 s). Plafonnée à
+   //  1,2 s comme un démontage ordinaire, elle était court-circuitée à CHAQUE
+   //  sortie de film : le créneau rendait la main avant la fermeture réelle.
+-  test('un détenteur de transition dispose d\'un budget plus long '
++  test(
++      'un détenteur de transition dispose d\'un budget plus long '
+       '(≥ 2 s, pas 1,2 s)', () async {
+     final Object ecran = Object();
+     final Object suivant = Object();
+@@ -234,7 +239,9 @@ void main() {
+       () {
+     final Object seul = Object();
+     slot.register(seul, label: 'seul', teardown: () async {});
++    expect(slot.owns(seul), isFalse);
+     expect(slot.claimIfNeeded(seul), isNull);
++    expect(slot.owns(seul), isTrue);
+   });
+ 
+   test('claimIfNeeded → vraie réclamation quand un autre détenteur existe',
+@@ -252,7 +259,8 @@ void main() {
+     expect(demonte, isTrue);
+   });
+ 
+-  test('claimIfNeeded → non-null tant qu\'une réclamation est en vol '
++  test(
++      'claimIfNeeded → non-null tant qu\'une réclamation est en vol '
+       '(la sérialisation est préservée)', () async {
+     final Object lent = Object();
+     final Object a = Object();
+@@ -291,5 +299,345 @@ void main() {
+     // La cible n'est démontée qu'une fois, et personne ne double l'autre.
+     expect(ordre.first, 'demontage');
+     expect(ordre.length, greaterThanOrEqualTo(3));
++    expect(slot.owns(un), isFalse);
++    expect(slot.owns(deux), isTrue);
++  });
++
++  // ---- Propriété : un écran encore monté peut avoir perdu la lecture ----
++
++  test('A → B révoque A avant le stop et accorde B après le stop', () async {
++    final Object a = Object();
++    final Object b = Object();
++    final List<String> ordre = <String>[];
++    final Completer<void> stopCommence = Completer<void>();
++    final Completer<void> stopTermine = Completer<void>();
++    slot.register(a, label: 'a', onRevoked: () {
++      expect(slot.owns(a), isFalse);
++      expect(slot.owns(b), isFalse);
++      ordre.add('revoque-a');
++    }, teardown: () {
++      ordre.add('stop-a');
++      stopCommence.complete();
++      return stopTermine.future;
++    });
++    await slot.claim(a);
++    slot.register(b, label: 'b', teardown: () async {});
++
++    final Future<void> transfert = slot.claim(b);
++    await stopCommence.future;
++    expect(ordre, <String>['revoque-a', 'stop-a']);
++    expect(slot.owns(a), isFalse);
++    expect(slot.owns(b), isFalse);
++    expect(slot.holdersForTest, hasLength(2),
++        reason: 'A reste inscrit/monté, mais ses callbacks ne possèdent rien');
++
++    stopTermine.complete();
++    await transfert;
++    expect(slot.owns(b), isTrue);
++    expect(slot.owns(a), isFalse);
++  });
++
++  test('la demande A en file avant sa révocation ne peut pas stopper B',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    int stopsA = 0;
++    int stopsB = 0;
++    slot.register(a, teardown: () async => stopsA++);
++    await slot.claim(a);
++    slot.register(b, teardown: () async => stopsB++);
++
++    // A possède encore le créneau lorsque son ancienne récupération est
++    // mise en file derrière B. La révocation par B doit l'invalider,
++    // même sans isCancelled fourni par cet ancien appelant.
++    final Future<void> nouveau = slot.claim(b);
++    final Future<void> ancien = slot.claim(a);
++    await Future.wait(<Future<void>>[nouveau, ancien]);
++
++    expect(stopsA, 1);
++    expect(stopsB, 0);
++    expect(slot.owns(a), isFalse);
++    expect(slot.owns(b), isTrue);
++  });
++
++  test('une demande annulée avant son tour ne révoque ni ne stoppe B',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    int stopsB = 0;
++    int revocationsB = 0;
++    slot.register(b,
++        onRevoked: () => revocationsB++, teardown: () async => stopsB++);
++    await slot.claim(b);
++    slot.register(a, teardown: () async {});
++    bool cancelled = false;
++    final Future<void> obsolete = slot.claim(a, isCancelled: () => cancelled);
++    cancelled = true;
++    await obsolete;
++
++    expect(stopsB, 0);
++    expect(revocationsB, 0);
++    expect(slot.owns(b), isTrue);
++    expect(slot.owns(a), isFalse);
++  });
++
++  test('annuler pendant le démontage ne donne pas le créneau au demandeur',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    final Completer<void> stopCommence = Completer<void>();
++    final Completer<void> stopTermine = Completer<void>();
++    slot.register(a, teardown: () {
++      stopCommence.complete();
++      return stopTermine.future;
++    });
++    await slot.claim(a);
++    slot.register(b, teardown: () async {});
++    bool cancelled = false;
++    final Future<void> transfert = slot.claim(b, isCancelled: () => cancelled);
++    await stopCommence.future;
++    cancelled = true;
++    stopTermine.complete();
++    await transfert;
++
++    expect(slot.owns(a), isFalse,
++        reason: 'un ancien lecteur arrêté ne doit pas ressusciter');
++    expect(slot.owns(b), isFalse);
++  });
++
++  test('unregister révoque immédiatement et une seule fois', () async {
++    final Object a = Object();
++    int revocations = 0;
++    int stops = 0;
++    slot.register(a,
++        onRevoked: () {
++          expect(slot.owns(a), isFalse);
++          revocations++;
++        },
++        teardown: () async => stops++);
++    await slot.claim(a);
++
++    slot.unregister(a);
++    expect(revocations, 1);
++    expect(slot.owns(a), isFalse);
++    slot.unregister(a);
++    await slot.claim(a);
++    expect(revocations, 1);
++    expect(stops, 0);
++    expect(slot.owns(a), isFalse);
++  });
++
++  test('handOff révoque immédiatement tout en conservant la fermeture',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    final Completer<void> fermeture = Completer<void>();
++    int revocations = 0;
++    slot.register(a, onRevoked: () => revocations++, teardown: () async {});
++    await slot.claim(a);
++    slot.handOff(a, fermeture.future);
++    expect(revocations, 1);
++    expect(slot.owns(a), isFalse);
++    slot.register(b, teardown: () async {});
++
++    final Future<void> transfert = slot.claim(b);
++    await Future<void>.delayed(Duration.zero);
++    expect(slot.owns(b), isFalse);
++    fermeture.complete();
++    await transfert;
++    expect(slot.owns(b), isTrue);
++    expect(revocations, 1);
++  });
++
++  test('retirer puis réinscrire la même clé invalide le claim précédent',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    final Completer<void> stopCommence = Completer<void>();
++    final Completer<void> stopTermine = Completer<void>();
++    slot.register(a, teardown: () {
++      if (!stopCommence.isCompleted) stopCommence.complete();
++      return stopTermine.future;
++    });
++    await slot.claim(a);
++    slot.register(b, teardown: () async {});
++    final Future<void> ancien = slot.claim(b);
++    await stopCommence.future;
++    slot.unregister(b);
++    slot.register(b, teardown: () async {});
++    stopTermine.complete();
++    await ancien;
++    expect(slot.owns(b), isFalse,
++        reason: 'la nouvelle inscription n’hérite pas d’un ancien await');
++
++    await slot.claim(b);
++    expect(slot.owns(b), isTrue);
++  });
++
++  test('les demandes de deux nouveaux écrans restent valides dans l’ordre',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    int revocationsB = 0;
++    slot.register(a, teardown: () async {});
++    slot.register(b, onRevoked: () => revocationsB++, teardown: () async {});
++    final Future<void> first = slot.claim(a);
++    final Future<void> second = slot.claim(b);
++    await Future.wait(<Future<void>>[first, second]);
++
++    expect(revocationsB, 0,
++        reason: 'inscrit mais pas encore propriétaire, B attendait son tour');
++    expect(slot.owns(a), isFalse);
++    expect(slot.owns(b), isTrue);
++  });
++
++  test('les copropriétaires multi-vue sont tous révoqués avant les stops',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    final Object solo = Object();
++    final List<String> ordre = <String>[];
++    for (final MapEntry<Object, String> entry in <Object, String>{
++      a: 'a',
++      b: 'b',
++    }.entries) {
++      slot.register(entry.key,
++          group: StreamSlot.groupMultiview,
++          onRevoked: () {
++            expect(slot.owns(a), isFalse);
++            expect(slot.owns(b), isFalse);
++            ordre.add('revoque-${entry.value}');
++          },
++          teardown: () async => ordre.add('stop-${entry.value}'));
++    }
++    await slot.claim(a);
++    expect(slot.claimIfNeeded(b), isNull);
++    expect(slot.owns(a), isTrue);
++    expect(slot.owns(b), isTrue);
++    expect(ordre, isEmpty);
++
++    slot.register(solo, teardown: () async {});
++    await slot.claim(solo);
++    expect(ordre, <String>['revoque-a', 'revoque-b', 'stop-a', 'stop-b']);
++    expect(slot.owns(solo), isTrue);
++  });
++
++  test('les téléchargements cohabitent puis cèdent à une lecture', () async {
++    final Object a = Object();
++    final Object b = Object();
++    final Object lecteur = Object();
++    int stops = 0;
++    slot.register(a,
++        group: StreamSlot.groupDownloads, teardown: () async => stops++);
++    slot.register(b,
++        group: StreamSlot.groupDownloads, teardown: () async => stops++);
++    await slot.claim(a);
++    await slot.claim(b);
++    expect(slot.owns(a), isTrue);
++    expect(slot.owns(b), isTrue);
++    expect(stops, 0);
++
++    slot.register(lecteur, teardown: () async {});
++    await slot.claim(lecteur);
++    expect(slot.owns(a), isFalse);
++    expect(slot.owns(b), isFalse);
++    expect(slot.owns(lecteur), isTrue);
++    expect(stops, 2);
++  });
++
++  test('une révocation qui lève ne saute pas le stop ni le prochain octroi',
++      () async {
++    final Object a = Object();
++    final Object b = Object();
++    bool stopped = false;
++    slot.register(a,
++        onRevoked: () => throw StateError('callback mort'),
++        teardown: () async => stopped = true);
++    await slot.claim(a);
++    slot.register(b, teardown: () async {});
++    await slot.claim(b);
++
++    expect(stopped, isTrue);
++    expect(slot.owns(a), isFalse);
++    expect(slot.owns(b), isTrue);
++  });
++
++  test('claimIfNeeded annulé ou non inscrit ne donne aucun droit', () async {
++    final Object a = Object();
++    final Future<void>? nonInscrit = slot.claimIfNeeded(a);
++    expect(nonInscrit, isNull,
++        reason: 'le chemin anonyme historique garde son coût nul à vide');
++    await nonInscrit;
++    expect(slot.owns(a), isFalse);
++    slot.register(a, teardown: () async {});
++    final Future<void>? annule = slot.claimIfNeeded(a, isCancelled: () => true);
++    expect(annule, isNotNull);
++    await annule;
++    expect(slot.owns(a), isFalse);
++    expect(slot.claimIfNeeded(a), isNull);
++    expect(slot.owns(a), isTrue);
++  });
++
++  test('claim anonyme conserve le démontage historique sans octroi', () async {
++    final Object lecteur = Object();
++    final Object diagnostic = Object();
++    int stops = 0;
++    int revocations = 0;
++    slot.register(lecteur,
++        onRevoked: () => revocations++, teardown: () async => stops++);
++    await slot.claim(lecteur);
++
++    await slot.claim(diagnostic, isCancelled: () => true);
++    expect(stops, 0);
++    expect(slot.owns(lecteur), isTrue);
++    await slot.claim(diagnostic);
++    expect(stops, 1);
++    expect(revocations, 1);
++    expect(slot.owns(lecteur), isFalse);
++    expect(slot.owns(diagnostic), isFalse);
++    expect(slot.holdersForTest, hasLength(1),
++        reason: 'la barrière historique ne crée pas de détenteur fantôme');
++  });
++
++  test('claimIfNeeded anonyme attend le démontage sans devenir propriétaire',
++      () async {
++    final Object lecteur = Object();
++    final Object resolution = Object();
++    final Completer<void> stopCommence = Completer<void>();
++    final Completer<void> stopTermine = Completer<void>();
++    slot.register(lecteur, teardown: () {
++      stopCommence.complete();
++      return stopTermine.future;
++    });
++    await slot.claim(lecteur);
++
++    final Future<void>? wait = slot.claimIfNeeded(resolution);
++    expect(wait, isNotNull);
++    await stopCommence.future;
++    expect(slot.owns(lecteur), isFalse);
++    expect(slot.owns(resolution), isFalse);
++    stopTermine.complete();
++    await wait;
++    expect(slot.owns(resolution), isFalse);
++  });
++
++  test('une inscription retirée avant son tour ne devient pas anonyme',
++      () async {
++    final Object actuel = Object();
++    final Object quitte = Object();
++    int stops = 0;
++    int revocations = 0;
++    slot.register(actuel,
++        onRevoked: () => revocations++, teardown: () async => stops++);
++    await slot.claim(actuel);
++    slot.register(quitte, teardown: () async {});
++    final Future<void> obsolete = slot.claim(quitte);
++    slot.unregister(quitte);
++    await obsolete;
++
++    expect(stops, 0);
++    expect(revocations, 0);
++    expect(slot.owns(actuel), isTrue);
++    expect(slot.owns(quitte), isFalse);
+   });
+ }
+diff --git a/test/features/player/exit_guards_wave2_test.dart b/test/features/player/exit_guards_wave2_test.dart
+index 158772d..c64aeb1 100644
+--- a/test/features/player/exit_guards_wave2_test.dart
++++ b/test/features/player/exit_guards_wave2_test.dart
+@@ -8,8 +8,9 @@
+ //   2.1 TV — en arrière-plan (Home), la cascade de secours ne doit plus
+ //       relancer la chaîne : `isAlive` tient compte de `_suspended`, et
+ //       le chien de garde de démarrage est annulé.
+-//   2.3 TV + mobile — la fermeture d'un écran note le rang de session
+-//       relais AVANT ses `await`, et ne ferme rien de plus récent.
++//   2.3 TV + mobile — la fermeture ne touche pas la lecture suivante :
++//       rang relais capturé sur TV ; fermeture lancée par le propriétaire
++//       mobile avant ses attentes, sans droit conservé après révocation.
+ //   2.6 mobile — le verrou des téléchargements ne se lève qu'à la FIN
+ //       de la fermeture réseau, et un recyclage de lecteur après
+ //       `dispose` ne crée pas d'instance orpheline.
+@@ -34,6 +35,21 @@ String _code(File f) => f
+     .where((String l) => !l.trimLeft().startsWith('//'))
+     .join('\n');
+ 
++/// Limite une recherche à la méthode concernée, au lieu de laisser une
++/// garde placée dans un autre chemin satisfaire le test. Le format Dart
++/// ferme les méthodes de cet écran avec deux espaces d'indentation.
++String _member(String code, String signature) {
++  final int start = code.indexOf(signature);
++  expect(start, greaterThan(-1), reason: 'méthode absente : $signature');
++  const String closing = '\n  }';
++  final int end = code.indexOf(closing, start);
++  expect(end, greaterThan(start), reason: 'méthode non terminée : $signature');
++  return code.substring(start, end + closing.length);
++}
++
++/// Les sauts de ligne du formateur ne font pas partie du contrat.
++String _compact(String code) => code.replaceAll(RegExp(r'\s+'), ' ').trim();
++
+ void main() {
+   final File tv = File('lib/features/tv/presentation/tv_player_screen.dart');
+   final File mobile =
+@@ -56,8 +72,7 @@ void main() {
+               'autre chose (« connexion déjà utilisée »).');
+     });
+ 
+-    test('le passage en arrière-plan suspend ET annule le chien de garde',
+-        () {
++    test('le passage en arrière-plan suspend ET annule le chien de garde', () {
+       final int paused = code.indexOf('case AppLifecycleState.paused:');
+       final int resumed = code.indexOf('case AppLifecycleState.resumed:');
+       expect(paused, greaterThan(-1));
+@@ -76,7 +91,7 @@ void main() {
+     });
+   });
+ 
+-  group('2.3 — la fermeture d\'un écran est bornée à son rang relais', () {
++  group('2.3 — la fermeture ne touche pas le relais de l’écran suivant', () {
+     /// Dans `dispose()`, entre son début et la fermeture bornée : le rang
+     /// doit être lu là, et AUCUNE fermeture non bornée ne doit s'y
+     /// trouver. (Les autres `closeOtherPlaybacks('')` du fichier — zap,
+@@ -92,7 +107,8 @@ void main() {
+       final String bloc = code.substring(dispose, close);
+       expect(
+         bloc,
+-        contains('final int relayGen = LocalStreamRelay.instance.sessionGeneration;'),
++        contains(
++            'final int relayGen = LocalStreamRelay.instance.sessionGeneration;'),
+         reason: 'le rang doit être lu DANS dispose(), avant les await',
+       );
+       expect(bloc, isNot(contains("closeOtherPlaybacks('')")),
+@@ -103,47 +119,123 @@ void main() {
+     test('TV : le rang est lu AVANT les await, puis passé à la fermeture',
+         () => verifie(tv));
+ 
+-    test('mobile : même garde', () => verifie(mobile));
++    test(
++        'mobile : seul le propriétaire capture la fermeture avant les attentes',
++        () {
++      final String code = _code(mobile);
++      final String dispose = _compact(_member(code, 'void dispose() {'));
++      final String network = _compact(
++        _member(code, 'Future<void> _stopPlaybackNetwork('),
++      );
++      final int owner = dispose.indexOf(
++        'final bool wasOwner = StreamSlot.instance.owns(this);',
++      );
++      expect(owner, greaterThan(-1));
++      expect(owner, lessThan(dispose.indexOf('_disposing = true;')),
++          reason: 'le droit de fermer doit être capturé avant de quitter');
++      expect(
++        dispose,
++        contains('final Future<void> networkClosed = wasOwner '
++            '? _stopPlaybackNetwork(closeRelay: true) '
++            ': _slotShutdown.then((_) => _stopPlaybackNetwork(closeRelay: false));'),
++        reason: 'un écran déjà révoqué attend sa fermeture capturée, puis '
++            'arrête seulement son moteur ; il ne ferme pas le relais suivant',
++      );
++      expect(dispose, isNot(contains('closeOtherPlaybacks(')),
++          reason: 'aucune fermeture globale tardive ne doit contourner '
++              'le droit capturé par networkClosed');
++      expect(
++        RegExp(
++          r"if \(wasOwner\) \{\s*StreamSlot\.instance\s*"
++          r"\.handOff\(this, shutdown, label: 'fermeture lecteur quitté'\);"
++          r"\s*\} else \{\s*StreamSlot\.instance\.unregister\(this\);\s*\}",
++        ).hasMatch(dispose),
++        isTrue,
++        reason: 'le propriétaire transmet la fermeture au prochain claim ; '
++            'un écran déjà révoqué retire seulement sa propre inscription',
++      );
++      expect(
++        network,
++        contains('final Future<void> relayClosed = closeRelay '
++            "? LocalStreamRelay.instance.closeOtherPlaybacks('') "
++            ': Future<void>.value();'),
++      );
++      final int capturedPlayer =
++          network.indexOf('final Player stoppedPlayer = _player;');
++      final int close = network.indexOf("closeOtherPlaybacks('')");
++      final int stop = network.indexOf('await stoppedPlayer.stop()');
++      expect(capturedPlayer, greaterThan(-1));
++      expect(close, greaterThan(capturedPlayer));
++      expect(stop, greaterThan(close),
++          reason: 'la fermeture du relais doit commencer avant le premier '
++              'await : un stop lent ne doit pas viser une nouvelle session');
++      expect(network, contains('return Future.wait<void>(<Future<void>>['));
++      expect(network, contains('relayClosed,'),
++          reason: 'la fin réseau doit attendre aussi la fermeture du relais');
++    });
+   });
+ 
+   group('2.6 — mobile : sortie propre', () {
+     late String code;
+     setUp(() => code = _code(mobile));
+ 
+-    test('le verrou des téléchargements se lève à la FIN de la fermeture',
+-        () {
+-      // Dans `dispose`, la seule levée autorisée est celle qui attend le
+-      // shutdown. On localise `dispose()` et on vérifie qu'entre son
+-      // début et le `handOff`, aucune levée immédiate ne subsiste.
+-      final int dispose = code.indexOf('void dispose() {');
+-      final int handOff =
+-          code.indexOf("handOff(this, shutdown, label: 'fermeture lecteur quitté')");
+-      expect(dispose, greaterThan(-1));
+-      expect(handOff, greaterThan(dispose));
+-      final String avant = code.substring(dispose, handOff);
+-      expect(avant, isNot(contains('setPlaybackHold(false)')),
+-          reason: 'levé AVANT le stop mpv, le verrou laissait la file '
+-              'Cinéma reprendre la ligne pendant le démontage → « déjà '
+-              'ouverte ailleurs » au film suivant');
++    test('le verrou des téléchargements se lève à la FIN de la fermeture', () {
++      final String dispose = _compact(_member(code, 'void dispose() {'));
++      final int captured = dispose.indexOf(
++        'final List<Object> holds = _downloadHolds.toList(growable: false);',
++      );
++      final int closing = dispose.indexOf('final Future<void> networkClosed =');
++      expect(captured, greaterThan(-1));
++      expect(closing, greaterThan(captured),
++          reason: 'les jetons à libérer doivent être capturés avant toute '
++              'attente, sans inclure ceux d’une lecture suivante');
++      final int networkDone = dispose.indexOf('await networkClosed;');
++      final int playerDone = dispose.indexOf('await player.dispose()');
++      expect(networkDone, greaterThan(closing));
++      expect(playerDone, greaterThan(networkDone));
+       expect(
+-        code,
+-        contains('shutdown.whenComplete(\n'
+-            '        () => VodDownloadService.instance.setPlaybackHold(false))'),
+-        reason: 'la levée doit attendre la fin réelle de la fermeture',
++        dispose,
++        contains('shutdown.whenComplete(() => _releaseDownloadHolds(holds))'),
++        reason: 'la fermeture terminée libère seulement les jetons capturés',
+       );
++      expect(
++          RegExp(r'_releaseDownloadHolds\(').allMatches(dispose), hasLength(1),
++          reason: 'aucune libération anticipée ne doit précéder whenComplete');
++      expect(dispose, isNot(contains('setPlaybackHold(false)')),
++          reason: 'une levée globale pourrait libérer les téléchargements '
++              'alors qu’un autre propriétaire lit encore');
++      final String release = _compact(
++        _member(code, 'void _releaseDownloadHolds('),
++      );
++      expect(release, contains('for (final Object hold in holds)'));
++      expect(release,
++          contains('VodDownloadService.instance.releasePlaybackHold(hold);'));
++      expect(release, contains('_downloadHolds.remove(hold);'),
++          reason: 'une fermeture tardive retire ses jetons, sans vider les '
++              'demandes ajoutées depuis');
++      expect(release, isNot(contains('_downloadHolds.clear()')));
+     });
+ 
+-    test('un recyclage de lecteur après la sortie ne crée pas d\'orphelin',
+-        () {
+-      final int recycle = code.indexOf('_recyclePlayer(');
+-      expect(recycle, greaterThan(-1));
+-      final int create = code.indexOf('_createPlayer();', recycle);
+-      expect(create, greaterThan(recycle));
+-      final String bloc = code.substring(recycle, create);
+-      expect(bloc, contains('if (!mounted) return;'),
+-          reason: 'deux await (jusqu\'à 10 s) précèdent la création : '
+-              'écran quitté entre-temps = instance mpv que personne ne '
+-              'ferme, et une connexion fournisseur que rien ne rend');
++    test('un recyclage de lecteur après la sortie ne crée pas d\'orphelin', () {
++      expect(
++        _compact(code),
++        contains(
++            'bool get _screenActive => mounted && !_disposing && !_slotRevoked;'),
++        reason: 'la garde doit couvrir la sortie et la perte de propriété, '
++            'même si le widget est encore monté',
++      );
++      final String recycle = _compact(
++        _member(code, 'Future<void> _recyclePlayer()'),
++      );
++      final int disposed = recycle.indexOf('await old.dispose()');
++      final int guard =
++          recycle.indexOf('if (!_screenActive) return;', disposed);
++      final int create = recycle.indexOf('_createPlayer();');
++      expect(disposed, greaterThan(-1));
++      expect(guard, greaterThan(disposed));
++      expect(create, greaterThan(guard),
++          reason: 'après le dernier await, un écran quitté ou révoqué ne '
++              'doit pas créer une instance mpv orpheline');
+     });
+   });
+ }
+diff --git a/test/features/player/playback_transition_integration_test.dart b/test/features/player/playback_transition_integration_test.dart
+new file mode 100644
+index 0000000..051ba61
+--- /dev/null
++++ b/test/features/player/playback_transition_integration_test.dart
+@@ -0,0 +1,436 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/player/data/local_stream_relay.dart';
++import 'package:tv_king/features/player/data/playback_transition.dart';
++import 'package:tv_king/features/player/data/stream_blocked_fallback.dart';
++import 'package:tv_king/features/player/data/stream_diagnostics.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++
++/// Fournisseur local à une connexion. Le compteur conserve la session
++/// après la fermeture de sa socket ; le test choisit quand ce délai finit.
++/// Toute demande média trop tôt reçoit une redirection HTTP 200 black.ts,
++/// comme le rapport terrain. Le contrôle utilise le vrai player_api.php.
++class _XtreamPanel {
++  _XtreamPanel(this.server) {
++    server.listen(_handle);
++  }
++
++  final HttpServer server;
++  final List<String> events = <String>[];
++  final List<int> mediaRequests = <int>[];
++  final List<int> accountValues = <int>[];
++  final Set<int> alwaysBlack = <int>{};
++  final List<Timer> _feeds = <Timer>[];
++  final Map<int, Completer<void>> _closed = <int, Completer<void>>{};
++  final Map<int, Completer<void>> _accountWaiters = <int, Completer<void>>{};
++  int _activeStreams = 0;
++  bool _coolingDown = false;
++  int simultaneousAttempts = 0;
++  int blackResponses = 0;
++
++  String get baseUrl => 'http://127.0.0.1:${server.port}';
++
++  Playlist get playlist => Playlist(
++        id: 971,
++        name: 'Source locale de test',
++        type: PlaylistType.xtream,
++        createdAt: 0,
++        xtreamServer: baseUrl,
++        xtreamUsername: 'test',
++        xtreamPassword: 'test',
++      );
++
++  Channel channel(int id) => Channel(
++        id: 'transition-$id',
++        playlistId: 971,
++        name: 'Chaîne $id',
++        category: 'Tests',
++        streamUrl: '$baseUrl/live/test/test/$id.ts',
++        isLive: true,
++      );
++
++  Future<void> closed(int id) => (_closed[id] ??= Completer<void>()).future;
++
++  Future<void> accountReads(int count) {
++    if (accountValues.length >= count) return Future<void>.value();
++    return (_accountWaiters[count] ??= Completer<void>()).future;
++  }
++
++  void finishCooldown() {
++    // Une attente lancée avant la fermeture ne peut pas réussir en
++    // libérant artificiellement une socket qui serait encore ouverte.
++    expect(_activeStreams, 0);
++    _coolingDown = false;
++    events.add('créneau libre');
++  }
++
++  Future<void> _handle(HttpRequest request) async {
++    final String path = request.uri.path;
++    if (path == '/player_api.php') {
++      final int active = _activeStreams > 0 || _coolingDown ? 1 : 0;
++      accountValues.add(active);
++      events.add('compte:$active');
++      request.response.headers.contentType = ContentType.json;
++      request.response.write(jsonEncode(<String, Object>{
++        'user_info': <String, Object>{
++          'auth': 1,
++          'status': 'Active',
++          'max_connections': '1',
++          'active_cons': active.toString(),
++        },
++      }));
++      await request.response.close();
++      for (final MapEntry<int, Completer<void>> waiter
++          in _accountWaiters.entries) {
++        if (accountValues.length >= waiter.key && !waiter.value.isCompleted) {
++          waiter.value.complete();
++        }
++      }
++      return;
++    }
++    if (path == '/video/black.ts') {
++      blackResponses++;
++      request.response.headers.contentType = ContentType('video', 'mp2t');
++      request.response.add(List<int>.filled(188, 0x47));
++      await request.response.close();
++      return;
++    }
++    final int? id = int.tryParse(
++      request.uri.pathSegments.last.replaceAll('.ts', ''),
++    );
++    if (id == null || !path.startsWith('/live/test/test/')) {
++      request.response.statusCode = HttpStatus.notFound;
++      await request.response.close();
++      return;
++    }
++    mediaRequests.add(id);
++    if (_activeStreams > 0 || _coolingDown || alwaysBlack.contains(id)) {
++      if (_activeStreams > 0) simultaneousAttempts++;
++      await request.response.redirect(Uri.parse('$baseUrl/video/black.ts'));
++      return;
++    }
++
++    _activeStreams++;
++    events.add('ouverture:$id');
++    request.response.headers.contentType = ContentType('video', 'mp2t');
++    request.response.bufferOutput = false;
++    bool finished = false;
++    late final Timer feed;
++    void onClosed() {
++      if (finished) return;
++      finished = true;
++      feed.cancel();
++      _activeStreams--;
++      _coolingDown = true;
++      events.add('fermeture:$id');
++      final Completer<void> done = _closed[id] ??= Completer<void>();
++      if (!done.isCompleted) done.complete();
++    }
++
++    feed = Timer.periodic(const Duration(milliseconds: 20), (_) {
++      try {
++        request.response.add(List<int>.filled(188 * 5, 0x47));
++      } catch (_) {
++        onClosed();
++      }
++    });
++    _feeds.add(feed);
++    unawaited(request.response.done.then(
++      (_) => onClosed(),
++      onError: (Object _, StackTrace __) => onClosed(),
++    ));
++  }
++
++  Future<void> close() async {
++    for (final Timer feed in _feeds) {
++      feed.cancel();
++    }
++    await server.close(force: true);
++  }
++}
++
++/// Consommateur HTTP du vrai relais, à la place du décodeur natif. Il ne
++/// possède aucune logique de transition : celle-ci vient du séquenceur
++/// de production et de awaitProviderSlot dans les tests ci-dessous.
++class _RelayReader {
++  _RelayReader(this.client, this.reading);
++
++  final HttpClient client;
++  final StreamSubscription<List<int>> reading;
++  bool _closed = false;
++
++  static Future<_RelayReader> open(
++    LocalStreamRelay relay,
++    Channel channel,
++  ) async {
++    final String localUrl = await relay.playUrlFor(channel.streamUrl);
++    final HttpClient client = HttpClient();
++    final HttpClientResponse response =
++        await (await client.getUrl(Uri.parse(localUrl))).close();
++    final Completer<void> firstBytes = Completer<void>();
++    final StreamSubscription<List<int>> reading = response.listen(
++      (List<int> bytes) {
++        if (bytes.isNotEmpty && !firstBytes.isCompleted) firstBytes.complete();
++      },
++      onDone: () {
++        if (!firstBytes.isCompleted) {
++          firstBytes.completeError(StateError('aucun octet média reçu'));
++        }
++      },
++      onError: (Object error, StackTrace stack) {
++        if (!firstBytes.isCompleted) firstBytes.completeError(error, stack);
++      },
++    );
++    final _RelayReader reader = _RelayReader(client, reading);
++    try {
++      await firstBytes.future.timeout(const Duration(seconds: 5));
++      return reader;
++    } catch (_) {
++      await reader.close();
++      rethrow;
++    }
++  }
++
++  Future<void> close() async {
++    if (_closed) return;
++    _closed = true;
++    client.close(force: true);
++    await reading.cancel().timeout(const Duration(seconds: 5));
++  }
++}
++
++void main() {
++  final LocalStreamRelay relay = LocalStreamRelay.instance;
++  late _XtreamPanel panel;
++  late Channel current;
++  late StreamBlockedFallback fallback;
++  late Completer<BlockedVerdict> blocked;
++  final List<BlockedVerdict> verdicts = <BlockedVerdict>[];
++  final List<String> reopens = <String>[];
++  final List<_RelayReader> readers = <_RelayReader>[];
++
++  Future<void> waitForSlot(Channel channel, {bool Function()? cancelled}) =>
++      StreamBlockedFallback.awaitProviderSlot(
++        channel,
++        budget: const Duration(seconds: 2),
++        pollEvery: const Duration(milliseconds: 20),
++        isCancelled: cancelled,
++      );
++
++  Future<_RelayReader> read(Channel channel) async {
++    StreamDiagnostics.instance.beginSession(
++      url: channel.streamUrl,
++      userAgent: 'Test local',
++      playlistId: channel.playlistId,
++    );
++    final _RelayReader reader = await _RelayReader.open(relay, channel);
++    readers.add(reader);
++    return reader;
++  }
++
++  setUp(() async {
++    await relay.closeOtherPlaybacks('');
++    panel = _XtreamPanel(
++      await HttpServer.bind(InternetAddress.loopbackIPv4, 0),
++    );
++    PlaylistRepository.instance.debugSeedPlaylists(<Playlist>[panel.playlist]);
++    StreamDiagnostics.instance.recordXtreamAccount();
++    current = panel.channel(1);
++    blocked = Completer<BlockedVerdict>();
++    verdicts.clear();
++    reopens.clear();
++    readers.clear();
++    fallback = StreamBlockedFallback(
++      getChannel: () => current,
++      getOverrideUrl: () => null,
++      getEffectiveUrl: () => current.streamUrl,
++      isAlive: () => true,
++      hasDecodedFrames: () => false,
++      getAdoptedAltUrl: () => null,
++      setAdoptedAltUrl: (_) {},
++      resetWatchdogBudget: () {},
++      reopen: reopens.add,
++      retryBackoff: const Duration(milliseconds: 100),
++      showBlocked: (BlockedVerdict verdict) {
++        verdicts.add(verdict);
++        if (!blocked.isCompleted) blocked.complete(verdict);
++      },
++    )..attach();
++  });
++
++  tearDown(() async {
++    fallback.detach();
++    for (final _RelayReader reader in readers) {
++      await reader.close();
++    }
++    await relay.closeOtherPlaybacks('');
++    await panel.close();
++    PlaylistRepository.instance.debugSeedPlaylists(const <Playlist>[]);
++    StreamDiagnostics.instance.recordXtreamAccount();
++  });
++
++  test(
++      'le zap attend le vrai compteur 0/1 après fermeture ; une ancienne '
++      'mesure multi-connexions ne permet pas de sauter ce contrôle', () async {
++    final Channel first = current;
++    expect(
++      await preparePlaybackTransition(
++        release: () => relay.closeOtherPlaybacks(''),
++        waitForSlot: () => waitForSlot(first),
++        isCancelled: () => false,
++      ),
++      isTrue,
++    );
++    final _RelayReader firstReader = await read(first);
++
++    // Mesure d'une autre source : elle ne doit pas dispenser la nouvelle
++    // chaîne du contrôle réel de son compte à une seule connexion.
++    StreamDiagnostics.instance.recordXtreamAccount(
++      status: 'Active',
++      maxConnections: 10,
++      activeCons: 0,
++      serverHost: 'autre-source.example',
++      username: 'autre-test',
++    );
++    current = panel.channel(2);
++    fallback.beginPlaybackAttempt(resetDiagnosis: true);
++    final Channel next = current;
++    final Future<_RelayReader?> opening = preparePlaybackTransition(
++      release: () async {
++        await firstReader.close();
++        await relay.closeSession(first.streamUrl);
++      },
++      waitForSlot: () => waitForSlot(next),
++      isCancelled: () => false,
++    ).then((bool ready) async => ready ? read(next) : null);
++
++    await panel.accountReads(2).timeout(const Duration(seconds: 5));
++    await panel.closed(1).timeout(const Duration(seconds: 5));
++    expect(panel.accountValues.last, 1);
++    expect(panel.mediaRequests, <int>[1],
++        reason: '1/1 après fermeture ne doit pas déclencher black.ts');
++    panel.finishCooldown();
++    expect(await opening.timeout(const Duration(seconds: 5)), isNotNull);
++    expect(panel.accountValues.last, 0);
++    expect(panel.mediaRequests, <int>[1, 2]);
++    expect(panel.events.indexOf('fermeture:1'),
++        lessThan(panel.events.indexOf('ouverture:2')));
++    expect(panel.simultaneousAttempts, 0);
++    expect(panel.blackResponses, 0);
++    expect(verdicts, isEmpty);
++    expect(reopens, isEmpty);
++  });
++
++  test(
++      'black.ts avec un compte déjà libre reste terminal, puis un autre '
++      'choix de chaîne peut démarrer', () async {
++    current = panel.channel(2);
++    panel.alwaysBlack.add(2);
++    expect(
++      await preparePlaybackTransition(
++        release: () => relay.closeOtherPlaybacks(''),
++        waitForSlot: () => waitForSlot(current),
++        isCancelled: () => false,
++      ),
++      isTrue,
++    );
++    expect(panel.accountValues, <int>[0]);
++    final String localUrl = await relay.playUrlFor(current.streamUrl);
++    final HttpClient client = HttpClient();
++    addTearDown(() => client.close(force: true));
++    final HttpClientResponse response =
++        await (await client.getUrl(Uri.parse(localUrl))).close();
++    final List<int> bytes = await response.fold<List<int>>(
++        <int>[],
++        (List<int> all, List<int> part) =>
++            all..addAll(part)).timeout(const Duration(seconds: 5));
++    expect(bytes, isEmpty);
++    final BlockedVerdict verdict =
++        await blocked.future.timeout(const Duration(seconds: 5));
++    expect(verdict.kind, BlockedKind.channelBlocked);
++    expect(panel.blackResponses, 1);
++
++    fallback.onPlaybackRefused('erreur native tardive de test');
++    expect(fallback.onContainerUnsupported(), isTrue);
++    await fallback.run();
++    await Future<void>.delayed(const Duration(milliseconds: 150));
++    final HttpClientResponse retry =
++        await (await client.getUrl(Uri.parse(localUrl))).close();
++    expect(retry.statusCode, HttpStatus.gone);
++    await retry.drain<void>();
++    expect(panel.mediaRequests, <int>[2]);
++    expect(panel.accountValues, <int>[0]);
++    expect(reopens, isEmpty);
++    expect(verdicts, hasLength(1));
++
++    current = panel.channel(3);
++    fallback.beginPlaybackAttempt(resetDiagnosis: true);
++    expect(
++      await preparePlaybackTransition(
++        release: () => relay.closeOtherPlaybacks(''),
++        waitForSlot: () => waitForSlot(current),
++        isCancelled: () => false,
++      ),
++      isTrue,
++    );
++    await read(current);
++    expect(panel.mediaRequests, <int>[2, 3]);
++    expect(panel.simultaneousAttempts, 0);
++  });
++
++  test(
++      'B annulée pendant le contrôle ne demande aucun média ; seule C '
++      'ouvre après libération de A', () async {
++    final Channel first = current;
++    await preparePlaybackTransition(
++      release: () => relay.closeOtherPlaybacks(''),
++      waitForSlot: () => waitForSlot(first),
++      isCancelled: () => false,
++    );
++    final _RelayReader firstReader = await read(first);
++    int generation = 1;
++    current = panel.channel(2);
++    final Channel abandoned = current;
++    final Future<bool> preparingB = preparePlaybackTransition(
++      release: () async {
++        await firstReader.close();
++        await relay.closeSession(first.streamUrl);
++      },
++      waitForSlot: () => waitForSlot(
++        abandoned,
++        cancelled: () => generation != 1,
++      ),
++      isCancelled: () => generation != 1,
++    );
++    await panel.accountReads(2).timeout(const Duration(seconds: 5));
++    await panel.closed(1).timeout(const Duration(seconds: 5));
++    generation = 2;
++    current = panel.channel(3);
++    expect(await preparingB.timeout(const Duration(seconds: 5)), isFalse);
++
++    final Channel selected = current;
++    final Future<bool> preparingC = preparePlaybackTransition(
++      release: () => relay.closeOtherPlaybacks(''),
++      waitForSlot: () => waitForSlot(
++        selected,
++        cancelled: () => generation != 2,
++      ),
++      isCancelled: () => generation != 2,
++    );
++    await panel.accountReads(3).timeout(const Duration(seconds: 5));
++    expect(panel.mediaRequests, <int>[1]);
++    panel.finishCooldown();
++    expect(await preparingC.timeout(const Duration(seconds: 5)), isTrue);
++    await read(selected);
++    expect(panel.mediaRequests, <int>[1, 3]);
++    expect(panel.simultaneousAttempts, 0);
++    expect(panel.blackResponses, 0);
++    expect(verdicts, isEmpty);
++    expect(reopens, isEmpty);
++  });
++}
+diff --git a/test/features/player/playback_transition_test.dart b/test/features/player/playback_transition_test.dart
+new file mode 100644
+index 0000000..0f64a81
+--- /dev/null
++++ b/test/features/player/playback_transition_test.dart
+@@ -0,0 +1,227 @@
++import 'dart:async';
++
++import 'package:fake_async/fake_async.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/player/data/playback_transition.dart';
++import 'package:tv_king/features/player/data/stream_blocked_fallback.dart';
++import 'package:tv_king/features/playlists/data/xtream_client.dart';
++
++void main() {
++  const Channel channel = Channel(
++    id: 'transition-test',
++    name: 'Chaîne de test',
++    category: 'Tests',
++    streamUrl: 'http://panel.example/live/test/test/1.ts',
++    isLive: true,
++  );
++
++  test(
++      'la fermeture doit finir avant le contrôle du compte, puis le '
++      'contrôle doit finir avant toute ouverture', () async {
++    final Completer<void> released = Completer<void>();
++    final Completer<void> slotFree = Completer<void>();
++    final List<String> events = <String>[];
++    final Future<bool> ready = preparePlaybackTransition(
++      release: () async {
++        events.add('fermeture');
++        await released.future;
++        events.add('fermé');
++      },
++      waitForSlot: () async {
++        events.add('compte');
++        await slotFree.future;
++        events.add('libre');
++      },
++      isCancelled: () => false,
++    );
++    final Future<void> opening = ready.then((bool value) {
++      if (value) events.add('ouverture');
++    });
++    await Future<void>.value();
++    expect(events, <String>['fermeture']);
++    released.complete();
++    await Future<void>.delayed(Duration.zero);
++    expect(events, <String>['fermeture', 'fermé', 'compte']);
++    slotFree.complete();
++    await opening;
++    expect(events, <String>[
++      'fermeture',
++      'fermé',
++      'compte',
++      'libre',
++      'ouverture',
++    ]);
++  });
++
++  test('une sélection déjà abandonnée ne ferme ni ne sonde', () async {
++    int releases = 0;
++    int probes = 0;
++    expect(
++      await preparePlaybackTransition(
++        release: () async => releases++,
++        waitForSlot: () async => probes++,
++        isCancelled: () => true,
++      ),
++      isFalse,
++    );
++    expect(releases, 0);
++    expect(probes, 0);
++  });
++
++  test('un zap pendant la fermeture empêche le sondage devenu obsolète',
++      () async {
++    final Completer<void> released = Completer<void>();
++    bool cancelled = false;
++    int probes = 0;
++    final Future<bool> ready = preparePlaybackTransition(
++      release: () => released.future,
++      waitForSlot: () async => probes++,
++      isCancelled: () => cancelled,
++    );
++    cancelled = true;
++    released.complete();
++    expect(await ready, isFalse);
++    expect(probes, 0);
++  });
++
++  test('un zap pendant la réponse du compte interdit encore l’ouverture',
++      () async {
++    final Completer<void> slotFree = Completer<void>();
++    final Completer<void> probing = Completer<void>();
++    bool cancelled = false;
++    final Future<bool> ready = preparePlaybackTransition(
++      release: () async {},
++      waitForSlot: () {
++        probing.complete();
++        return slotFree.future;
++      },
++      isCancelled: () => cancelled,
++    );
++    await probing.future;
++    cancelled = true;
++    slotFree.complete();
++    expect(await ready, isFalse);
++  });
++
++  test('une fermeture échouée remonte son erreur et ne sonde pas', () async {
++    final StateError failure = StateError('fermeture test');
++    int probes = 0;
++    await expectLater(
++      preparePlaybackTransition(
++        release: () async => throw failure,
++        waitForSlot: () async => probes++,
++        isCancelled: () => false,
++      ),
++      throwsA(same(failure)),
++    );
++    expect(probes, 0);
++  });
++
++  test('le contrôle annulé avant son entrée ne fait aucune requête de compte',
++      () async {
++    int probes = 0;
++    await StreamBlockedFallback.awaitProviderSlot(
++      channel,
++      isCancelled: () => true,
++      probeOverride: () async {
++        probes++;
++        return const XtreamAccountInfo(maxConnections: 1, activeCons: 0);
++      },
++    );
++    expect(probes, 0);
++  });
++
++  test(
++      'une réponse occupée arrivée après annulation ne programme plus '
++      'de délai ni de sondage', () {
++    fakeAsync((FakeAsync fake) {
++      final Completer<XtreamAccountInfo> response =
++          Completer<XtreamAccountInfo>();
++      bool cancelled = false;
++      bool done = false;
++      int probes = 0;
++      StreamBlockedFallback.awaitProviderSlot(
++        channel,
++        isCancelled: () => cancelled,
++        probeOverride: () {
++          probes++;
++          return response.future;
++        },
++      ).then((_) => done = true);
++      fake.flushMicrotasks();
++      expect(probes, 1);
++
++      cancelled = true;
++      response.complete(
++        const XtreamAccountInfo(maxConnections: 1, activeCons: 1),
++      );
++      fake.flushMicrotasks();
++      expect(done, isTrue,
++          reason: 'la réponse tardive doit rendre la main immédiatement');
++      expect(fake.pendingTimers, isEmpty);
++      expect(probes, 1);
++    });
++  });
++
++  test(
++      'une réponse de compte bloquée ne dépasse pas le budget de 10 s '
++      'et sa réponse tardive ne relance rien', () {
++    fakeAsync((FakeAsync fake) {
++      final Completer<XtreamAccountInfo> response =
++          Completer<XtreamAccountInfo>();
++      bool done = false;
++      int probes = 0;
++      StreamBlockedFallback.awaitProviderSlot(
++        channel,
++        probeOverride: () {
++          probes++;
++          return response.future;
++        },
++      ).then((_) => done = true);
++      fake.elapse(const Duration(milliseconds: 9999));
++      expect(done, isFalse);
++      expect(probes, 1);
++      fake.elapse(const Duration(milliseconds: 1));
++      expect(done, isTrue,
++          reason: 'le budget doit aussi borner une réponse HTTP en attente');
++
++      response.complete(
++        const XtreamAccountInfo(maxConnections: 1, activeCons: 1),
++      );
++      fake.flushMicrotasks();
++      fake.elapse(const Duration(seconds: 5));
++      expect(probes, 1);
++      expect(fake.pendingTimers, isEmpty,
++          reason: 'le résultat tardif ne doit plus armer de pause');
++    });
++  });
++
++  test('les réponses lentes et les pauses partagent le même budget réel', () {
++    fakeAsync((FakeAsync fake) {
++      bool done = false;
++      int probes = 0;
++      StreamBlockedFallback.awaitProviderSlot(
++        channel,
++        probeOverride: () {
++          probes++;
++          return Future<XtreamAccountInfo>.delayed(
++            const Duration(seconds: 4),
++            () => const XtreamAccountInfo(maxConnections: 1, activeCons: 1),
++          );
++        },
++      ).then((_) => done = true);
++      // Réponses à 4 s et 9,6 s, avec la pause de 1,6 s entre elles.
++      // Une borne par nombre de sondages dépasserait largement 10 s.
++      fake.elapse(const Duration(milliseconds: 9999));
++      expect(done, isFalse);
++      expect(probes, 2);
++      fake.elapse(const Duration(milliseconds: 1));
++      expect(done, isTrue);
++      fake.elapse(const Duration(seconds: 5));
++      expect(probes, 2,
++          reason: 'la pause déjà commencée ne doit pas lancer de 3e requête');
++      expect(fake.pendingTimers, isEmpty);
++    });
++  });
++}
+diff --git a/test/features/player/relay_handover_linger_test.dart b/test/features/player/relay_handover_linger_test.dart
+index 43976af..2b27bd4 100644
+--- a/test/features/player/relay_handover_linger_test.dart
++++ b/test/features/player/relay_handover_linger_test.dart
+@@ -107,4 +107,35 @@ void main() {
+         reason: 'quitter la lecture doit fermer l\'amont immédiatement '
+             '(garantie « 0/1 au repos » mesurée le 19/08)');
+   });
++
++  for (final bool hls in <bool>[false, true]) {
++    for (final bool cancelDuringBind in <bool>[false, true]) {
++      test(
++          'ouverture ${hls ? 'HLS' : 'TS'} annulée '
++          '${cancelDuringBind ? 'pendant le bind' : 'avant le bind'} '
++          'préserve la lecture et son intention courante', () async {
++        final LocalStreamRelay relay = LocalStreamRelay.instance;
++        final String localA = await relay.playUrlFor(fakeUrl);
++        await playBriefly(localA);
++        expect(relay.activeUpstreamCount, 1);
++
++        bool cancelled = !cancelDuringBind;
++        final String obsoleteUrl =
++            fakeUrl.replaceFirst('7.ts', hls ? '8.m3u8' : '8.ts');
++        final Future<String> obsolete = hls
++            ? relay.hlsPlaylistUrlFor(obsoleteUrl, isCancelled: () => cancelled)
++            : relay.playUrlFor(obsoleteUrl, isCancelled: () => cancelled);
++        // L'attente du serveur local est un vrai point asynchrone : un
++        // autre écran peut avoir révoqué cette ouverture entre-temps.
++        cancelled = true;
++        await expectLater(obsolete, throwsStateError);
++
++        // Réutiliser l'URL locale de A doit encore servir A, sans ouvrir
++        // une nouvelle socket ni rejeter sa requête comme obsolète.
++        await playBriefly(localA);
++        expect(upstreamHits, 1);
++        expect(relay.activeUpstreamCount, 1);
++      });
++    }
++  }
+ }
+diff --git a/test/features/player/stream_diagnostics_test.dart b/test/features/player/stream_diagnostics_test.dart
+index 8270a02..f2a660e 100644
+--- a/test/features/player/stream_diagnostics_test.dart
++++ b/test/features/player/stream_diagnostics_test.dart
+@@ -40,6 +40,50 @@ void main() {
+       expect(masked, contains('action=get'));
+     });
+ 
++    test('masque une redirection à jeton avec ou sans extension', () {
++      for (final String stream in <String>['9876', '9876.ts', '9876.m3u8']) {
++        final String masked = StreamDiagnostics.maskCredentials(
++            'https://edge.invalid/live/play/FAKE_URL_TOKEN/$stream');
++        expect(masked, isNot(contains('FAKE_URL_TOKEN')));
++        expect(Uri.parse(masked).pathSegments, <String>[
++          'live',
++          'play',
++          '•••',
++          stream,
++        ]);
++      }
++    });
++
++    test('masque le jeton encodé et le userinfo sans perdre la query utile',
++        () {
++      final String masked = StreamDiagnostics.maskCredentials(
++          'https://FAKE_AUTH_USER:FAKE_AUTH_PASS@edge.invalid/'
++          'live/play/FAKE%2FPATH_SECRET/42?token=FAKE_QUERY&format=ts');
++      expect(masked, isNot(contains('FAKE')));
++      expect(masked, isNot(contains('PATH_SECRET')));
++      expect(Uri.parse(masked).pathSegments,
++          <String>['live', 'play', '•••', '42']);
++      expect(Uri.parse(masked).queryParameters['format'], 'ts');
++    });
++
++    test('conserve le masquage des fichiers nommés et des paramètres encodés',
++        () {
++      final String masked = StreamDiagnostics.maskCredentials(
++          'https://panel.invalid/FAKE_NAMED_USER/FAKE_NAMED_PASS/channel.m3u8'
++          '?%75sername=FAKE_ENCODED_USER&format=hls');
++      expect(masked, isNot(contains('FAKE')));
++      expect(masked, endsWith('&format=hls'));
++      expect(Uri.parse(masked).pathSegments.last, 'channel.m3u8');
++    });
++
++    test('préserve le chemin distinctif du placeholder black.ts', () {
++      expect(
++        StreamDiagnostics.maskCredentials(
++            'https://edge.invalid/video/black.ts'),
++        'https://edge.invalid/video/black.ts',
++      );
++    });
++
+     test('URL sans schéma Xtream reconnaissable : inchangée', () {
+       expect(
+         StreamDiagnostics.maskCredentials('http://cdn.tv/stream.m3u8'),
+@@ -99,5 +143,88 @@ void main() {
+       expect(report, contains('403'));
+       expect(report, contains('Chaîne 7'));
+     });
++
++    test('URL finale et journal relay sont masqués dès leur enregistrement',
++        () {
++      final StreamDiagnostics d = StreamDiagnostics.instance;
++      const String initial = 'https://panel.invalid/live/FAKE_START_USER/'
++          'FAKE_START_PASS/9.ts';
++      const String finalUrl =
++          'https://edge.invalid/live/play/FAKE_FINAL_TOKEN/9';
++      d.beginSession(
++          url: initial, userAgent: 'UA-privacy', title: 'Chaîne test');
++      d.recordHttp(
++          status: 200, finalUrl: finalUrl, mime: 'video/mp2t', source: 'relay');
++
++      // L'URL initiale reste exploitable par la sonde interne. Les surfaces
++      // de diagnostic, elles, ne doivent conserver aucun identifiant.
++      expect(d.streamUrl, initial);
++      expect(d.httpFinalUrl, isNot(contains('FAKE_FINAL_TOKEN')));
++      expect(d.events.first.message, isNot(contains('FAKE_FINAL_TOKEN')));
++      expect(d.events.first.message, contains('/live/play/'));
++      final String report = d.buildReport();
++      for (final String secret in <String>[
++        'FAKE_START_USER',
++        'FAKE_START_PASS',
++        'FAKE_FINAL_TOKEN',
++      ]) {
++        expect(report, isNot(contains(secret)));
++      }
++      expect(report, contains('200'));
++      expect(report, contains('video/mp2t'));
++      expect(report, contains('Chaîne test'));
++    });
++
++    test('les événements libres masquent toutes les URLs sans changer le texte',
++        () {
++      final StreamDiagnostics d = StreamDiagnostics.instance;
++      d.recordEvent(
++          'relay',
++          'connexion upstream impossible : https://edge.invalid/live/play/'
++              'FAKE_EVENT_TOKEN/15 ; repli https://edge.invalid/video/black.ts');
++      expect(
++        d.events.first.message,
++        'connexion upstream impossible : https://edge.invalid/live/play/'
++        '•••/15 ; repli https://edge.invalid/video/black.ts',
++      );
++      expect(d.events.first.toString(), isNot(contains('FAKE_EVENT_TOKEN')));
++      expect(d.buildReport(), isNot(contains('FAKE_EVENT_TOKEN')));
++    });
++
++    test('les erreurs HTTP et player sont masquées avant affichage ou copie',
++        () {
++      final StreamDiagnostics d = StreamDiagnostics.instance;
++      d.beginSession(url: 'https://panel.invalid/17.ts', userAgent: 'UA');
++      d.recordHttp(
++          error: 'ClientException: https://edge.invalid/live/play/'
++              'FAKE_HTTP_ERROR/17');
++      expect(d.events.first.message, isNot(contains('FAKE_HTTP_ERROR')));
++
++      d.recordPlayerError('Failed to open https://edge.invalid/live/play/'
++          'FAKE_PLAYER_ERROR/17');
++      expect(d.lastPlayerError,
++          'Failed to open https://edge.invalid/live/play/•••/17');
++      expect(d.events.first.message, isNot(contains('FAKE_PLAYER_ERROR')));
++      d.recordPlayerError(
++          'warning https://edge.invalid/live/play/'
++          'FAKE_WARNING_TOKEN/17',
++          fatal: false);
++      expect(d.events.first.message, isNot(contains('FAKE_WARNING_TOKEN')));
++      expect(d.lastPlayerError, startsWith('Failed to open'));
++      final String report = d.buildReport();
++      expect(report, isNot(contains('FAKE_HTTP_ERROR')));
++      expect(report, isNot(contains('FAKE_PLAYER_ERROR')));
++      expect(report, isNot(contains('FAKE_WARNING_TOKEN')));
++    });
++
++    test('le rapport applique le même filet aux métadonnées libres', () {
++      final StreamDiagnostics d = StreamDiagnostics.instance;
++      d.beginSession(
++        url: 'https://panel.invalid/18.ts',
++        userAgent: 'UA',
++        title: 'Source https://edge.invalid/live/play/FAKE_TITLE_TOKEN/18',
++      );
++      expect(d.buildReport(), isNot(contains('FAKE_TITLE_TOKEN')));
++    });
+   });
+ }
+diff --git a/test/features/vod/vod_download_service_test.dart b/test/features/vod/vod_download_service_test.dart
+index 6fffb80..0e7095a 100644
+--- a/test/features/vod/vod_download_service_test.dart
++++ b/test/features/vod/vod_download_service_test.dart
+@@ -9,7 +9,9 @@
+ //      noSpace→queued) qui garantissent qu'un téléchargement interrompu
+ //      REPREND au lieu de rester figé.
+ // =========================================================
++import 'package:fake_async/fake_async.dart';
+ import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/playback/stream_slot.dart';
+ import 'package:tv_king/features/vod/data/vod_download_service.dart';
+ 
+ VodDownload _d(String id, VodDownloadStatus s, {bool episode = false}) =>
+@@ -22,7 +24,116 @@ VodDownload _d(String id, VodDownloadStatus s, {bool episode = false}) =>
+       status: s,
+     );
+ 
++// Le service est un singleton. Chaque scénario retire ses propres jetons
++// et fait passer le délai de reprise dans une horloge virtuelle, sans I/O.
++void _withPlaybackHolds(
++    void Function(VodDownloadService service, Object a, Object b) scenario) {
++  fakeAsync((FakeAsync clock) {
++    final VodDownloadService service = VodDownloadService.instance;
++    final Object a = Object();
++    final Object b = Object();
++    try {
++      service.setPlaybackHold(false);
++      scenario(service, a, b);
++    } finally {
++      service.releasePlaybackHold(a);
++      service.releasePlaybackHold(b);
++      service.setPlaybackHold(false);
++      clock.elapse(const Duration(seconds: 12));
++    }
++  });
++}
++
+ void main() {
++  group('suspension des téléchargements par détenteur', () {
++    testWidgets('le teardown du créneau ne pose pas un verrou legacy permanent',
++        (WidgetTester tester) async {
++      final StreamSlot slot = StreamSlot.instance;
++      slot.resetForTest();
++      // Premier accès au singleton : son inscription au créneau doit être
++      // celle de production, afin de tester le vrai callback de teardown.
++      final VodDownloadService service = VodDownloadService.instance;
++      final Object reader = Object();
++      slot.register(reader, label: 'lecteur test', teardown: () async {});
++      try {
++        await slot.claim(reader);
++        expect(service.playbackHold, isTrue);
++        service.claimPlaybackHold(reader, network: true);
++        service.releasePlaybackHold(reader);
++        expect(service.playbackHold, isFalse);
++      } finally {
++        service.releasePlaybackHold(reader);
++        service.setPlaybackHold(false);
++        slot.unregister(reader);
++        await tester.pump(const Duration(seconds: 12));
++      }
++    });
++
++    test('annuler B en attente ne libère pas A toujours actif', () {
++      _withPlaybackHolds((VodDownloadService service, Object a, Object b) {
++        service.claimPlaybackHold(a, network: true);
++        service.claimPlaybackHold(b, network: true);
++        service.releasePlaybackHold(b);
++        expect(service.playbackHold, isTrue);
++        service.releasePlaybackHold(a);
++        expect(service.playbackHold, isFalse);
++      });
++    });
++
++    test('la fermeture tardive de A laisse B protégé', () {
++      _withPlaybackHolds((VodDownloadService service, Object a, Object b) {
++        service.claimPlaybackHold(a, network: true);
++        service.claimPlaybackHold(b, network: true);
++        service.releasePlaybackHold(a);
++        expect(service.playbackHold, isTrue);
++        service.releasePlaybackHold(a);
++        expect(service.playbackHold, isTrue);
++        service.releasePlaybackHold(b);
++        expect(service.playbackHold, isFalse);
++      });
++    });
++
++    test('une lecture locale ne libère que sa propre demande réseau', () {
++      _withPlaybackHolds((VodDownloadService service, Object a, Object b) {
++        service.claimPlaybackHold(a, network: true);
++        service.claimPlaybackHold(b, network: false);
++        expect(service.playbackHold, isTrue);
++        service.claimPlaybackHold(b, network: true);
++        service.claimPlaybackHold(a, network: false);
++        service.releasePlaybackHold(a);
++        expect(service.playbackHold, isTrue);
++        service.claimPlaybackHold(b, network: false);
++        expect(service.playbackHold, isFalse);
++      });
++    });
++
++    test('les verrous legacy et ceux par détenteur restent indépendants', () {
++      _withPlaybackHolds((VodDownloadService service, Object a, Object b) {
++        service.setPlaybackHold(true);
++        service.claimPlaybackHold(a, network: true);
++        service.releasePlaybackHold(a);
++        expect(service.playbackHold, isTrue);
++        service.claimPlaybackHold(b, network: true);
++        service.setPlaybackHold(false);
++        expect(service.playbackHold, isTrue);
++        service.releasePlaybackHold(b);
++        expect(service.playbackHold, isFalse);
++      });
++    });
++
++    test('réclamer deux fois la même identité ne crée pas de fuite de verrou',
++        () {
++      _withPlaybackHolds((VodDownloadService service, Object a, Object b) {
++        service.claimPlaybackHold(a, network: true);
++        service.claimPlaybackHold(a, network: true);
++        service.releasePlaybackHold(b);
++        expect(service.playbackHold, isTrue);
++        service.releasePlaybackHold(a);
++        expect(service.playbackHold, isFalse);
++      });
++    });
++  });
++
+   group('pickNext (file sérielle)', () {
+     test('prend le premier queued, dans l\'ordre d\'insertion', () {
+       final List<VodDownload> items = <VodDownload>[
+@@ -53,13 +164,11 @@ void main() {
+       const String out = 'Filesystem     1K-blocks    Used Available Use% '
+           'Mounted on\n/dev/block/dm-5  57541632 3126016  54415616   6% '
+           '/storage/emulated';
+-      expect(VodDownloadService.parseDfAvailableBytes(out),
+-          54415616 * 1024);
++      expect(VodDownloadService.parseDfAvailableBytes(out), 54415616 * 1024);
+     });
+ 
+     test('nom de volume avec espace : la colonne % fait foi', () {
+-      const String out =
+-          'Filesystem 1K-blocks Used Available Use% Mounted on\n'
++      const String out = 'Filesystem 1K-blocks Used Available Use% Mounted on\n'
+           'My Disk 1000 500 400 50% /mnt/disk';
+       expect(VodDownloadService.parseDfAvailableBytes(out), 400 * 1024);
+     });
+@@ -73,8 +182,8 @@ void main() {
+     });
+ 
+     test('sortie inattendue → null, jamais d\'exception', () {
+-      expect(VodDownloadService.parseDfAvailableBytes('n/a\nrien à voir'),
+-          isNull);
++      expect(
++          VodDownloadService.parseDfAvailableBytes('n/a\nrien à voir'), isNull);
+     });
+   });
+ 
+@@ -92,8 +201,8 @@ void main() {
+         downloadedBytes: 1000,
+         status: VodDownloadStatus.done,
+       );
+-      final VodDownload back = VodDownload.fromJson(
+-          Map<String, dynamic>.from(d.toJson()));
++      final VodDownload back =
++          VodDownload.fromJson(Map<String, dynamic>.from(d.toJson()));
+       expect(back.id, 'ep-42');
+       expect(back.isEpisode, isTrue);
+       expect(back.groupName, 'Ma Série');
+@@ -101,8 +210,7 @@ void main() {
+       expect(back.progress, 1.0);
+     });
+ 
+-    test('redémarrage : downloading → paused (reprise manuelle possible)',
+-        () {
++    test('redémarrage : downloading → paused (reprise manuelle possible)', () {
+       final VodDownload d = _d('x', VodDownloadStatus.downloading);
+       expect(VodDownload.fromJson(Map<String, dynamic>.from(d.toJson())).status,
+           VodDownloadStatus.paused);

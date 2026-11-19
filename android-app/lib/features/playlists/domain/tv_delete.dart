@@ -10,13 +10,11 @@
 //  Règle (pure, testée) :
 //    • liste ajoutée par le client (origin 'self', avec un id serveur)
 //      → supprimée AUSSI sur le serveur (DELETE /api/self-source) ;
-//    • liste envoyée par le panel → retirée de la télé et REFUSÉE : la box
-//      ne la réimporte plus tant que le panel ne la renvoie pas (un ordre
-//      « liste » du panel, plus récent que la suppression, la fait revenir :
-//      le panel reste le maître) ou ne la retire pas ;
-//    • liste que le serveur ne connaît pas → effacée de la télé, c'est tout.
-//  Repli `zuno.source.tv_delete_legacy` : ancien comportement (copie
-//  locale seulement, la liste revient).
+//    • liste envoyée par le panel → retirée de la télé et REFUSÉE
+//      durablement, même après synchronisation, renvoi ou redémarrage ;
+//    • liste que le serveur ne connaît pas → même refus local durable.
+//  Seul un nouvel ajout volontaire dans l'app rétablit une source.
+//  Un réseau indisponible n'empêche pas la suppression locale.
 // =========================================================
 
 import 'source_fingerprint.dart';
@@ -58,20 +56,14 @@ TvDeleteDecision decideTvDelete({
 }
 
 /// Listes refusées sur la télé : empreinte → instant de la suppression (ms).
-/// On oublie un refus quand le panel ne sert plus la liste (plus rien à
-/// refuser) ou quand le panel a renvoyé des listes APRÈS la suppression.
+/// Un retrait reste un retrait même après absence temporaire ou renvoi
+/// global du panel. Seul un nouvel ajout volontaire peut rétablir la liste.
 Map<String, int> pruneRefused(
   Map<String, int> refused, {
   required Set<String> servedFingerprints,
   int? panelResendAtMs,
 }) {
-  final Map<String, int> out = <String, int>{};
-  refused.forEach((String fp, int at) {
-    if (!servedFingerprints.contains(fp)) return;
-    if (panelResendAtMs != null && panelResendAtMs > at) return;
-    out[fp] = at;
-  });
-  return out;
+  return Map<String, int>.of(refused);
 }
 
 /// Vrai si une liste servie a été refusée sur la télé.

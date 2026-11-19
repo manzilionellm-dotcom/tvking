@@ -1,0 +1,168 @@
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index 6fac579..263af9d 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -30,6 +30,7 @@ import '../../../core/playback/stream_slot.dart';
+ import '../../../core/privacy/privacy_shield.dart';
+ import '../../../core/playback/vod_pause_release_policy.dart';
+ import 'package:media_kit_video/media_kit_video.dart';
++import 'package:novatube_video/novatube_video.dart';
+ import 'package:wakelock_plus/wakelock_plus.dart';
+ 
+ import '../../../core/crash/crash_reporting.dart';
+@@ -146,6 +147,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   // nouvelle ouverture — cf. _recyclePlayer(). Non-final pour ça.
+   late Player _player;
+   late VideoController _videoController;
++  PhoneVideoPlayer? _phoneVideo;
+ 
+   /// Epoch d'instance : change à chaque recréation du player, sert de
+   /// clé au widget `Video` pour forcer son remontage sur le NOUVEAU
+@@ -552,21 +554,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Crée une instance mpv NEUVE (+ controller, options, abonnements,
+   /// vitesse persistée). Appelée par initState puis par _recyclePlayer
+   /// avant chaque nouvelle ouverture.
++  bool get _useNativeVideo {
++    final settings = PlayerSettings.instance;
++    final scheme = Uri.tryParse(_effectiveUrl)?.scheme;
++    // Une configuration MPV personnalisée reste opérationnelle sur le téléphone.
++    return Platform.isAndroid && (scheme == 'http' || scheme == 'https') &&
++        settings.imageEngine == ImageEngine.hardware && settings.dolbyPassthrough &&
++        settings.antiFreeze && settings.bufferSeconds == 20 && settings.audioDelayMs == 0;
++  }
++
+   void _createPlayer() {
+     _playerEpoch++;
+     _playerOpenedOnce = false;
+     // Configure le Player avec un buffer généreux (pour 4K/8K)
+-    _player = Player(
+-      configuration: PlayerConfiguration(
+-        bufferSize: PlayerSettings.instance.bufferBytes,
+-        // Logs visibles seulement en debug, pas en release
+-        logLevel: MPVLogLevel.warn,
+-      ),
+-    );
+-    _videoController = VideoController(_player);
+-
+-    // Applique les options libmpv pour hardware decoding + cache
+-    _playerOptionsReady = _applyMpvOptions();
++    final settings = PlayerSettings.instance;
++    if (_useNativeVideo) {
++      final native = PhoneVideoPlayer(
++        vod: widget.overrideUrl != null || !_currentChannel.isLive,
++        userAgent: () => settings.userAgent,
++      );
++      _phoneVideo = native;
++      _player = Player(platformPlayer: native);
++      _playerOptionsReady = Future<void>.value();
++    } else {
++      _phoneVideo = null;
++      _player = Player(configuration: PlayerConfiguration(
++        bufferSize: settings.bufferBytes, logLevel: MPVLogLevel.warn,
++      ));
++      _videoController = VideoController(_player);
++      _playerOptionsReady = _applyMpvOptions();
++    }
+ 
+     _attachPlayerListeners();
+ 
+@@ -2164,6 +2181,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   }
+ 
+   Future<bool> _setMpvProperty(String name, String value) async {
++    final phone = _phoneVideo;
++    if (phone != null) {
++      if (name == 'demuxer-lavf-format' && value == 'hls') {
++        phone.forceHls();
++        return true;
++      }
++      return false;
++    }
+     try {
+       // ignore: invalid_use_of_protected_member
+       final dynamic native = (_player.platform as dynamic);
+@@ -2198,6 +2223,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   }
+ 
+   Future<void> _applyMpvOptions() async {
++    if (_phoneVideo != null) return;
+     final PlayerSettings s = PlayerSettings.instance;
+ 
+     // Décodage hardware si activé.
+@@ -2347,6 +2373,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+ 
+   void _onSettingsChanged() {
+     if (!_screenActive) return;
++    if ((_phoneVideo != null) != _useNativeVideo && _playerOpenedOnce &&
++        _ownsPlayback && !_playbackTerminated && !_userPaused &&
++        !CastManager.instance.hasTarget) {
++      if (widget.overrideUrl != null || !_currentChannel.isLive) {
++        _pauseResumeTarget = _player.state.position;
++        _pauseResumeChannelId = _currentChannel.id;
++      }
++      unawaited(_openMedia(_effectiveUrl));
++      return;
++    }
+     // Quand l'utilisateur change un réglage en cours de lecture
+     // → applique en live ce qui peut l'être à chaud.
+     _applyMpvOptions();
+@@ -2785,6 +2821,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// directe) vs « jamais lu » (sonde + cascade de variantes).
+   void _markPlaybackStarted(Player source) {
+     if (!_ownsPlayback || !_playbackEvidence.accepts(source)) return;
++    final native = _phoneVideo;
++    if (native != null && !native.firstFrame && !_audioOnly &&
++        !native.audioWithoutVideo) return;
+     _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
+     _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
+     // REPRISE APRÈS PAUSE LONGUE : le flux vient d'être ré-ouvert après que
+@@ -2866,6 +2905,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   Future<void> _logPlaybackMetrics(String moment) async {
+     if (!_ownsPlayback) return;
+     final int generation = _openGeneration;
++    final native = _phoneVideo;
++    if (native != null) {
++      StreamDiagnostics.instance.recordEvent('player',
++          '[$moment] Media3 : ${native.state.width ?? 0} × ${native.state.height ?? 0}');
++      return;
++    }
+     final Player source = _player;
+     Future<String?> prop(String name) async {
+       try {
+@@ -3062,6 +3107,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // tick (aucun réveil de plus). Avant les sorties anticipées : elle
+     // concerne justement les contenus seekables que le watchdog ignore.
+     _vodPauseReleaseTick();
++    if (_phoneVideo?.recovering == true) return;
+     // Live uniquement (relais TS OU HLS direct) : la VOD/catch-up est
+     // seekable, sa position s'arrête légitimement (pause, fin) → ce ne
+     // serait pas un gel.
+@@ -3697,9 +3743,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+                 //  En mode audio seul on ne pose PAS le widget `Video` :
+                 //  l'image disparaît mais `_player` continue de jouer le son
+                 //  (façon YouTube). On affiche un fond noir + icône casque.
++                if (_phoneVideo != null)
++                  PhoneVideoSurface(key: ValueKey<int>(_playerEpoch),
++                    player: _phoneVideo!, fit: _fitFromMode(mode), aspect: _forcedAspect(mode),
++                    subtitleStyle: _kSubtitleConfig.style, subtitlePadding: _kSubtitleConfig.padding),
+                 if (_audioOnly)
+                   _buildAudioOnlyView()
+-                else
++                else if (_phoneVideo == null)
+                   Center(
+                     child: _forcedAspect(mode) == null
+                         ? Video(
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 268a529..d34deb9 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -223,6 +223,9 @@ dependencies:
+   # chemin vidéo). C'est le moteur du lecteur TV (tv_player_screen). Le mobile
+   # garde media_kit. Plugin sous packages/ car le CI régénère android/ à chaque
+   # build (du natif dans android/app serait écrasé).
++  # Surface vidéo et décodeur Android du build NovaTube de référence.
++  novatube_video:
++    path: packages/novatube_video
+   native_video_player:
+     path: packages/native_video_player
+ 

@@ -1,0 +1,1644 @@
+diff --git a/lib/core/app/repair_flags.dart b/lib/core/app/repair_flags.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..6ff9b32031b31b21520d35ac28297d71e1679ac5
+--- /dev/null
++++ b/lib/core/app/repair_flags.dart
+@@ -0,0 +1,23 @@
++// Replis du téléphone : éteints par défaut, conservés entre deux lancements.
++// Le repli Sport remet les routes du Worker historiques, y compris leur panne.
++import 'package:shared_preferences/shared_preferences.dart';
++
++class RepairFlags {
++  static const String mobileSportsLegacyKey = 'zuno.mobile.sports_legacy';
++  static bool mobileSportsLegacy = false;
++  // L'ancien canal peut garder un son invalide après une mise à jour.
++  static const String mobileNotificationsLegacyKey = 'zuno.mobile.notifications_legacy';
++  static bool mobileNotificationsLegacy = false;
++  // Le repli restitue le classement paresseux sur le fil de l'écran.
++  static const String mobileChannelMetadataLegacyKey =
++      'zuno.mobile.channel_metadata_legacy';
++  static bool mobileChannelMetadataLegacy = false;
++
++  static Future<void> load() async {
++    final SharedPreferences prefs = await SharedPreferences.getInstance();
++    mobileSportsLegacy = prefs.getBool(mobileSportsLegacyKey) ?? false;
++    mobileNotificationsLegacy = prefs.getBool(mobileNotificationsLegacyKey) ?? false;
++    mobileChannelMetadataLegacy =
++        prefs.getBool(mobileChannelMetadataLegacyKey) ?? false;
++  }
++}
+diff --git a/lib/core/notifications/notification_service.dart b/lib/core/notifications/notification_service.dart
+index f3381008c60a2aeea28e808cab2ea261f6674830..3aeaee462befec3a3455931a80c29cb78199316c 100644
+--- a/lib/core/notifications/notification_service.dart
++++ b/lib/core/notifications/notification_service.dart
+@@ -32,6 +32,7 @@ import 'package:timezone/timezone.dart' as tz;
+
+ import '../../features/subscription/data/subscription_backend.dart';
+ import '../../features/subscription/data/subscription_state.dart';
++import '../app/repair_flags.dart';
+ import '../i18n/l10n_now.dart';
+ import '../observability/structured_logger.dart';
+
+@@ -70,7 +71,13 @@ class NotificationService {
+   //  Et c'est le client qui reste maître : ce canal apparaît seul dans
+   //  les réglages Android, il peut le couper sans perdre les autres
+   //  notifications.
+-  static const String _goalChannelId = 'goal_roar_v1';
++  // Un canal Android déjà créé conserve son URI sonore, même si elle
++  // désignait la ressource manquante /0. Le canal v2 corrige les installations
++  // existantes ; le repli reprend exactement l'ancien identifiant.
++  static String get _goalChannelId => RepairFlags.mobileNotificationsLegacy
++      ? 'goal_roar_v1' : 'goal_roar_v2';
++  @visibleForTesting
++  static String get goalChannelId => _goalChannelId;
+   static String get _goalChannelName => l10nNow.notifChannelGoalName;
+   static String get _goalChannelDesc => l10nNow.notifChannelGoalDesc;
+
+@@ -183,6 +190,8 @@ class NotificationService {
+       _ready = true;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Notif] init: $e');
++      StructuredLogger.instance.warn(domain: 'notif', event: 'init.failed',
++        ctx: <String, Object?>{'reason': 'Notifications : initialisation impossible'});
+     }
+   }
+
+@@ -307,6 +316,8 @@ class NotificationService {
+       );
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Notif] show: $e');
++      StructuredLogger.instance.warn(domain: 'notif', event: 'show.failed',
++        ctx: <String, Object?>{'reason': 'Notifications : affichage impossible'});
+     }
+   }
+
+@@ -350,7 +361,9 @@ class NotificationService {
+         ),
+       );
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Notif] goal: $e');
++      StructuredLogger.instance.warn(domain: 'notif', event: 'goal.failed',
++        ctx: <String, Object?>{'reason': 'Notifications : alerte de but impossible'});
++      if (kDebugMode) debugPrint('[Notif] alerte de but impossible');
+     }
+   }
+
+diff --git a/lib/features/channels/domain/channel.dart b/lib/features/channels/domain/channel.dart
+index 45ee24acdddc91acd1c4314afc740666ecf05405..020c8d64040cc40d9ec0d5ecef16db3c060f9d53 100644
+--- a/lib/features/channels/domain/channel.dart
++++ b/lib/features/channels/domain/channel.dart
+@@ -15,6 +15,7 @@
+ //  rebuilds Flutter.
+ // =========================================================
+
++import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+
+ import '../../../core/curation/title_curator.dart';
+@@ -190,6 +191,60 @@ class Channel {
+   /// grossirait à chaque remplacement de playlist. Le vidage complet est
+   /// sans danger : tout se recalcule paresseusement au prochain accès.
+   static void clearComputedCaches() => _ChannelComputedCache.clear();
++
++  /// Prépare les valeurs coûteuses avant de livrer la liste aux écrans.
++  /// Seuls les identifiants et textes utiles quittent le fil UI : aucun flux.
++  static Future<ChannelComputedSnapshot> prepareComputedSnapshot(
++    List<Channel> channels,
++  ) =>
++      compute(
++        _computeChannelSnapshot,
++        <(String, String, String)>[
++          for (final Channel channel in channels)
++            (channel.id, channel.name, channel.category),
++        ],
++        debugLabel: 'mobile.channel_metadata',
++      );
++
++  /// Remplacement atomique, sans pause entre l'installation et l'émission.
++  /// Une liste supprimée ne laisse plus ses identifiants dans ces caches.
++  static void installComputedSnapshot(ChannelComputedSnapshot snapshot) {
++    _ChannelComputedCache.genres = snapshot.genres;
++    _ChannelComputedCache.countries = snapshot.countries;
++    _ChannelComputedCache.qualities = snapshot.qualities;
++    _ChannelComputedCache.cleanNames = snapshot.cleanNames;
++  }
++
++  /// Vérifie le contrat de livraison sans déclencher les getters paresseux.
++  @visibleForTesting
++  static bool debugHasComputedValues(Channel channel) =>
++      _ChannelComputedCache.genres.containsKey(channel.id) &&
++      _ChannelComputedCache.countries.containsKey(channel.id) &&
++      _ChannelComputedCache.qualities.containsKey(channel.id) &&
++      _ChannelComputedCache.cleanNames.containsKey(channel.id);
++}
++
++/// Résultat isolé du calcul réel : les écrans ne reclassent pas les chaînes.
++class ChannelComputedSnapshot {
++  ChannelComputedSnapshot();
++
++  final Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
++  final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
++  final Map<String, ChannelQuality> qualities = <String, ChannelQuality>{};
++  final Map<String, String> cleanNames = <String, String>{};
++}
++
++ChannelComputedSnapshot _computeChannelSnapshot(
++  List<(String, String, String)> rows,
++) {
++  final ChannelComputedSnapshot result = ChannelComputedSnapshot();
++  for (final (String id, String name, String category) in rows) {
++    result.genres[id] = ChannelClassifier.classifyGenre(name, category);
++    result.countries[id] = ChannelClassifier.detectCountry(name, category);
++    result.qualities[id] = ChannelClassifier.detectQuality(name);
++    result.cleanNames[id] = TitleCurator.curate(name);
++  }
++  return result;
+ }
+
+ /// Cache statique pour les valeurs calculées (genre / pays / qualité).
+@@ -202,12 +257,12 @@ class Channel {
+ /// Limite : la Map vit pendant toute la session — ~50 octets par
+ /// chaîne soit ~1 Mo pour 20 000 entrées, négligeable.
+ abstract final class _ChannelComputedCache {
+-  static final Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
+-  static final Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
+-  static final Map<String, ChannelQuality> qualities =
++  static Map<String, ChannelGenre> genres = <String, ChannelGenre>{};
++  static Map<String, CountryInfo?> countries = <String, CountryInfo?>{};
++  static Map<String, ChannelQuality> qualities =
+       <String, ChannelQuality>{};
+   // Nom curé (présentable) caché par id — voir Channel.cleanName.
+-  static final Map<String, String> cleanNames = <String, String>{};
++  static Map<String, String> cleanNames = <String, String>{};
+
+   /// À appeler quand on supprime une playlist : on vide les caches
+   /// pour ne pas faire de fuite mémoire. Vider TOUT est correct et
+diff --git a/lib/features/playlists/data/playlist_database.dart b/lib/features/playlists/data/playlist_database.dart
+index b26a52f6f894dfa3103f416957442d76dd90850c..1c164d3570b32c5337dd50670d020c39868f348a 100644
+--- a/lib/features/playlists/data/playlist_database.dart
++++ b/lib/features/playlists/data/playlist_database.dart
+@@ -35,6 +35,16 @@ class PlaylistDatabase {
+
+   Database? _db;
+
++  /// Branche un vrai SQLite de test ; le schéma et les requêtes restent réels.
++  @visibleForTesting
++  void debugUseDatabase(Database? database) => _db = database;
++
++  @visibleForTesting
++  Future<void> debugCreate(Database db) async {
++    await _onConfigure(db);
++    await _onCreate(db, _kDbVersion);
++  }
++
+   Future<Database> get database async {
+     if (_db != null) return _db!;
+     _db = await _open();
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index 8d8a3cefc3a6bc5c43420c77fa29577426a2fd61..d51cb67e19416d31134f77754ffeb03a82c851f2 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -30,6 +30,7 @@ import 'package:sqflite/sqflite.dart';
+
+
+ import '../../../core/app/device_memory.dart';
++import '../../../core/app/repair_flags.dart';
+ import '../../../core/crash/crash_reporting.dart';
+ import '../../../core/observability/structured_logger.dart';
+ import '../../../core/i18n/l10n_now.dart';
+@@ -88,6 +89,16 @@ class PlaylistRepository {
+   List<Channel> _channelsCache = const <Channel>[];
+   List<Playlist> _playlistsCache = const <Playlist>[];
+
++  // Toute nouvelle lecture ou suppression invalide le calcul précédent.
++  int _emitRevision = 0;
++
++  /// Observation du vrai départ en isolate ; aucun calcul remplacé en test.
++  @visibleForTesting
++  void Function()? debugMetadataPreparationStarted;
++
++  @visibleForTesting
++  Future<void> debugEmitCurrentState() => _emitCurrentState();
++
+   // FILTRE FLAVOR (POINT UNIQUE) : sur un flavor `adultOnly` (ex. « Privé »),
+   // on ne laisse passer QUE les chaînes du genre Adulte. Comme tout l'UI
+   // (accueil, recherche, favoris, EPG, reco) lit les chaînes par ICI, la
+@@ -499,6 +510,8 @@ class PlaylistRepository {
+   }
+
+   Future<void> _warmCacheOnce() async {
++    final int revision = _emitRevision;
++    final bool legacy = RepairFlags.mobileChannelMetadataLegacy;
+     debugColdLoadCalls++;
+     debugPrint('[Playlist] searchLiveChannels : cache froid, '
+         'lecture bornée UNE fois (rangée pour les frappes suivantes)');
+@@ -508,6 +521,13 @@ class PlaylistRepository {
+     // Course : [_emitCurrentState] a pu remplir le cache entre-temps.
+     // On n'écrase pas un snapshot plus frais (playlist qui vient
+     // de changer) par une lecture commencée à froid.
++    if (!legacy) {
++      if (revision != _emitRevision) return;
++      final ChannelComputedSnapshot snapshot =
++          await Channel.prepareComputedSnapshot(all);
++      if (revision != _emitRevision || _channelsCache.isNotEmpty) return;
++      Channel.installComputedSnapshot(snapshot);
++    }
+     if (_channelsCache.isEmpty) {
+       _channelsCache = List<Channel>.unmodifiable(all);
+     }
+@@ -1366,6 +1386,7 @@ class PlaylistRepository {
+   // ============================================================
+
+   Future<void> deletePlaylist(int playlistId) async {
++    ++_emitRevision;
+     // Vidage SYNCHRONE du cache mémoire + émission immédiate d'une
+     // liste vide AVANT le DELETE SQL. Sur grosses playlists (20k+
+     // chaînes), le delete cascade prend 10-30s — sans ce vidage,
+@@ -1401,6 +1422,7 @@ class PlaylistRepository {
+   /// utilisable très tôt au démarrage, avant `initialize()`). Sert au bouton
+   /// « Supprimer ma source / Réinitialiser » de l'écran de récupération.
+   Future<void> deleteAllPlaylists() async {
++    ++_emitRevision;
+     final Database db = await PlaylistDatabase.instance.database;
+     await db.delete('channels');
+     await db.delete('playlists');
+@@ -1660,6 +1682,7 @@ class PlaylistRepository {
+   }
+
+   Future<void> _deletePlaylist(int id) async {
++    ++_emitRevision;
+     final Database db = await PlaylistDatabase.instance.database;
+     // Phase 1+/Multi-serveurs : si on delete l'active, on promeut la
+     // plus ancienne playlist restante comme nouvelle active. Comme ca
+@@ -1683,7 +1706,11 @@ class PlaylistRepository {
+     // Anti-fuite mémoire : les caches calculés (genre/pays/qualité/nom)
+     // gardaient les entrées des ids supprimés pour toujours. Vidage
+     // complet, recalcul paresseux au prochain accès — coût nul.
+-    Channel.clearComputedCaches();
++    // En mode réparé, les chaînes restantes gardent leurs valeurs chaudes
++    // jusqu'au remplacement atomique. Le repli conserve le vidage ancien.
++    if (RepairFlags.mobileChannelMetadataLegacy) {
++      Channel.clearComputedCaches();
++    }
+     if (wasActive.isNotEmpty) {
+       final List<Map<String, Object?>> next = await db.query(
+         'playlists',
+@@ -1753,8 +1780,39 @@ class PlaylistRepository {
+   }
+
+   Future<void> _emitCurrentState() async {
++    final int revision = ++_emitRevision;
++    final bool legacy = RepairFlags.mobileChannelMetadataLegacy;
+     final List<Channel> channels = await getAllChannels();
+     final List<Playlist> playlists = await getAllPlaylists();
++    if (!legacy) {
++      if (revision != _emitRevision) return;
++      final Stopwatch timer = Stopwatch()..start();
++      late final ChannelComputedSnapshot snapshot;
++      try {
++        final Future<ChannelComputedSnapshot> preparation =
++            Channel.prepareComputedSnapshot(channels);
++        debugMetadataPreparationStarted?.call();
++        snapshot = await preparation;
++      } catch (_) {
++        // Pas de texte fournisseur ni de reprise silencieuse sur le fil UI.
++        StructuredLogger.instance.warn(
++          domain: 'playlist',
++          event: 'metadata.prepare_failed',
++          ctx: <String, Object?>{'count': channels.length},
++        );
++        rethrow;
++      }
++      if (revision != _emitRevision) return;
++      Channel.installComputedSnapshot(snapshot);
++      StructuredLogger.instance.info(
++        domain: 'playlist',
++        event: 'metadata.prepared',
++        ctx: <String, Object?>{
++          'count': channels.length,
++          'ms': timer.elapsedMilliseconds,
++        },
++      );
++    }
+     // Met à jour les caches synchrones avant d'émettre
+     // (`currentChannels` est ainsi cohérent avec le dernier event).
+     _channelsCache = channels;
+diff --git a/lib/features/sports/data/live_scores_service.dart b/lib/features/sports/data/live_scores_service.dart
+index 37a8727fd57055374f9d623b078f8dcd43698524..34a598a1898ae963f07f3c866014a74b3ce5869e 100644
+--- a/lib/features/sports/data/live_scores_service.dart
++++ b/lib/features/sports/data/live_scores_service.dart
+@@ -8,10 +8,9 @@
+ //  qu'on rouvre une appli de sport dix fois dans une soirée, c'est le
+ //  score qui change pendant qu'on regarde.
+ //
+-//  L'offre gratuite de TheSportsDB ne pouvait PAS le faire, à aucun
+-//  prix : les scores en direct sont réservés aux comptes payants. La
+-//  clé achetée le 23/08 débloque une source rafraîchie toutes les
+-//  2 minutes — c'est la seule vraie nouveauté qu'elle apporte.
++//  La source gratuite actuelle est OpenLigaDB : résultats saisis par
++//  la communauté, sans clé et sans garantie de délai. Le repli explicite
++//  garde les anciennes routes Worker de TheSportsDB.
+ //
+ //  CE QUE CE SERVICE GARANTIT :
+ //
+@@ -25,14 +24,13 @@
+ //      l'écran. Remplacer « Manchester City 2-1 » par une liste vide
+ //      parce qu'un paquet s'est perdu serait pire que ne rien faire.
+ //
+-//   3. IL DIT QUAND IL NE PEUT PAS. Sans clé côté serveur, la route
+-//      répond `available:false` — l'écran écrit alors « indisponible »
+-//      au lieu d'un vide muet. C'est la leçon de la panne du 22/08 :
+-//      une liste vide et une panne se ressemblaient trop.
++//   3. IL DIT QUAND IL NE PEUT PAS. Le dépôt commun conserve une raison
++//      de panne visible sur Sport ; une réponse vide réussie reste
++//      distincte d'une source indisponible.
+ //
+-//   4. UNE SEULE REQUÊTE POUR TOUT LE MONDE. Le serveur garde la
+-//      réponse 45 s en cache : dix clients qui rafraîchissent en même
+-//      temps ne font pas dix appels chez le fournisseur.
++//   4. UN TÉLÉCHARGEMENT PARTAGÉ DANS L'APP. Affiches, rappels et buts
++//      utilisent le même dépôt, avec cache 60 s et appels simultanés
++//      regroupés. Ce cache ne garantit pas la fraîcheur du fournisseur.
+ //
+ //  LA SENTINELLE (06/09/2026) — demande du propriétaire : « configure
+ //  les alertes buts pour que je sois prévenu en direct ».
+@@ -59,36 +57,29 @@
+ //  « app fermée depuis deux heures » demanderait des notifications
+ //  poussées depuis le serveur — ce n'est pas ce fichier.
+ import 'dart:async';
+-import 'dart:convert';
+
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/widgets.dart';
+-import 'package:http/http.dart' as http;
+
+ import '../../../core/i18n/l10n_now.dart';
+ import '../../../core/notifications/notification_service.dart';
+ import '../../../core/realtime/realtime_sync_service.dart'
+     show AdminMessage, RealtimeSyncService;
+-import '../../subscription/data/subscription_backend.dart'
+-    show kSubscriptionBaseUrl;
+ import '../domain/live_alert_plan.dart';
+ import '../domain/sport_models.dart';
+ import 'followed_matches_service.dart';
+ import 'sports_repository.dart';
++import 'public_football_repository.dart';
+
+ class LiveScoresService with WidgetsBindingObserver {
+   LiveScoresService._();
+   static final LiveScoresService instance = LiveScoresService._();
+
+-  //  45 s — la source amont bouge toutes les 2 min et le serveur garde
+-  //  sa réponse 45 s. Descendre plus bas ne montrerait RIEN de plus au
+-  //  client : on ne ferait que réveiller le téléphone pour rien.
++  //  La cadence historique reste 45 s. Le cache commun de 60 s peut
++  //  espacer les téléchargements à environ 90 s ; ce n'est pas une
++  //  promesse de notification instantanée.
+   static const Duration _period = Duration(seconds: 45);
+
+-  //  Court exprès. Les scores en direct sont un CONFORT : s'ils tardent,
+-  //  le reste de l'écran ne doit pas attendre avec eux.
+-  static const Duration _timeout = Duration(seconds: 7);
+-
+   Timer? _timer;
+   int _watchers = 0;
+   bool _inFlight = false;
+@@ -100,12 +91,12 @@ class LiveScoresService with WidgetsBindingObserver {
+   final StreamController<void> _changes = StreamController<void>.broadcast();
+   Stream<void> get changes => _changes.stream;
+
+-  /// Les matchs en cours, du plus important au moins important (l'ordre
+-  /// vient du serveur : c'est lui qui décide, l'app ne reclasse pas).
++  /// Les derniers matchs reçus. Le fournisseur public inclut aussi des
++  /// rencontres à venir ; l'écran n'en déduit jamais un statut LIVE.
+   List<SportEvent> get live => List<SportEvent>.unmodifiable(_live);
+
+-  /// `false` quand le serveur n'a pas de clé payante. L'écran doit alors
+-  /// le DIRE, et surtout ne pas laisser croire qu'aucun match ne se joue.
++  /// `false` si une source est indisponible. Les scores déjà reçus
++  /// restent accessibles avec le diagnostic du dépôt commun.
+   bool get available => _available;
+
+   DateTime? get updatedAt => _updatedAt;
+@@ -361,30 +352,19 @@ class LiveScoresService with WidgetsBindingObserver {
+     if (_inFlight) return;
+     _inFlight = true;
+     try {
+-      final http.Response r = await http
+-          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/live'),
+-              headers: const <String, String>{'Accept': 'application/json'})
+-          .timeout(_timeout);
+-      if (r.statusCode != 200) return; // on garde ce qu'on avait
+-      final Object? decoded = jsonDecode(utf8.decode(r.bodyBytes));
+-      if (decoded is! Map<String, dynamic>) return;
+-
+-      final List<SportEvent> parsed = <SportEvent>[];
+-      final Object? list = decoded['live'];
+-      if (list is List) {
+-        for (final Object? raw in list) {
+-          if (raw is! Map<String, dynamic>) continue;
+-          final SportEvent ev = SportEvent.fromJson(raw);
+-          if (ev.id.isNotEmpty) parsed.add(ev);
+-        }
++      final FootballLoad result = await PublicFootballRepository.instance.load(
++        scores: true, followed: FollowedMatchesService.instance.all);
++      if (!result.available) {
++        _available = false;
++        if (!_changes.isClosed) _changes.add(null);
++        return; // les derniers scores restent présents
+       }
+-      _detectGoals(parsed);
+-      _live = List<SportEvent>.unmodifiable(parsed);
+-      // `available` n'est PAS déduit de la liste : une liste vide un
+-      // mardi matin est parfaitement normale. Seul le serveur sait s'il
+-      // a pu interroger la source.
+-      _available = decoded['available'] != false;
+-      _updatedAt = DateTime.now();
++      _detectGoals(result.matches);
++      _live = List<SportEvent>.unmodifiable(result.matches);
++      // Une liste vide réussie n'est pas une panne. Une panne partielle
++      // garde les scores reçus tout en signalant la source indisponible.
++      _available = result.diagnostic == null;
++      _updatedAt = result.receivedAt;
+       if (!_changes.isClosed) _changes.add(null);
+     } catch (e) {
+       // Panne réseau : on ne touche à RIEN. Les derniers scores connus
+diff --git a/lib/features/sports/data/match_alerts_service.dart b/lib/features/sports/data/match_alerts_service.dart
+index 2ccfaf9ecd7c05f2716158e6bea096c64f0175de..af30a02297159c9d6769edf8590459cf8a9aa6ba 100644
+--- a/lib/features/sports/data/match_alerts_service.dart
++++ b/lib/features/sports/data/match_alerts_service.dart
+@@ -31,19 +31,17 @@
+ // =========================================================
+
+ import 'dart:async';
+-import 'dart:convert';
+
+ import 'package:flutter/foundation.dart';
+-import 'package:http/http.dart' as http;
+ import 'package:shared_preferences/shared_preferences.dart';
+
+ import '../../../core/i18n/l10n_now.dart';
+ import '../../../core/notifications/notification_service.dart';
+-import '../../subscription/data/subscription_backend.dart'
+-    show kSubscriptionBaseUrl;
+ import '../domain/sport_models.dart';
+ import 'followed_matches_service.dart';
+ import 'sports_repository.dart';
++import 'public_football_repository.dart';
++import 'live_scores_service.dart';
+
+ class MatchAlertsService {
+   MatchAlertsService._();
+@@ -112,23 +110,23 @@ class MatchAlertsService {
+
+   Future<List<SportEvent>> _collect() async {
+     final Map<String, SportEvent> byId = <String, SportEvent>{};
+-    // 1) Grandes affiches — UNE requête, tout le travail est côté serveur.
++    // 1) Même source que l'écran et les buts. Une panne est tracée par
++    // le dépôt commun ; les favoris et suivis en mémoire restent lisibles.
+     try {
+-      final http.Response r = await http
+-          .get(Uri.parse('$kSubscriptionBaseUrl/api/sports/big'))
+-          .timeout(const Duration(seconds: 10));
+-      if (r.statusCode == 200) {
+-        final Object? decoded = jsonDecode(utf8.decode(r.bodyBytes));
+-        if (decoded is Map<String, dynamic>) {
+-          final Object? list = decoded['matches'];
+-          if (list is List) {
+-            for (final Object? raw in list) {
+-              if (raw is! Map<String, dynamic>) continue;
+-              final SportEvent ev = SportEvent.fromJson(raw);
+-              if (ev.id.isNotEmpty) byId[ev.id] = ev;
+-            }
+-          }
+-        }
++      await FollowedMatchesService.instance.ensureLoaded();
++      final FootballLoad result = await PublicFootballRepository.instance.load(
++        followed: FollowedMatchesService.instance.all);
++      final Set<String> followedIds = FollowedMatchesService.instance.all
++          .map((SportEvent e) => e.id).toSet();
++      final Set<String> favoriteNames = SportsRepository.instance.favorites
++          .map((SportTeam t) => t.name.trim().toLowerCase()).toSet();
++      for (final SportEvent ev in result.matches) {
++        // Le nouveau fournisseur n'est pas une sélection éditoriale de
++        // grandes affiches : seules les rencontres choisies alertent.
++        if (ev.id.startsWith('oldb:') && !LiveScoresService.alertWorthy(ev,
++            followedIds: followedIds, favoriteEventIds: const <String>{},
++            favoriteNames: favoriteNames)) continue;
++        if (ev.id.isNotEmpty) byId[ev.id] = ev;
+       }
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Matchs] grandes affiches KO: $e');
+@@ -215,6 +213,7 @@ class MatchAlertsService {
+     for (final SportEvent ev in events) {
+       if (done.contains(ev.id)) continue;
+       if (!ev.hasScore) continue;
++      if (!PublicFootballRepository.canAnnounceFinal(ev)) continue;
+       final DateTime? kickoff = ev.startsAt;
+       // On n'annonce que les matchs RÉCENTS : au boot, l'API renvoie aussi
+       // des rencontres vieilles de plusieurs semaines — les annoncer serait
+diff --git a/lib/features/sports/data/match_detail_service.dart b/lib/features/sports/data/match_detail_service.dart
+index 06f5e1d1c87311cf232426829e4842eeb69491b5..947f435e3773526f60ebbf6d7cb25a01713c112f 100644
+--- a/lib/features/sports/data/match_detail_service.dart
++++ b/lib/features/sports/data/match_detail_service.dart
+@@ -11,6 +11,8 @@ import 'dart:convert';
+
+ import 'package:flutter/foundation.dart';
+ import 'package:http/http.dart' as http;
++import '../../../core/app/repair_flags.dart';
++import 'public_football_repository.dart';
+
+ import '../../subscription/data/subscription_backend.dart'
+     show kSubscriptionBaseUrl;
+@@ -38,6 +40,14 @@ class MatchDetailService {
+       return c.detail;
+     }
+     try {
++      // Un identifiant OpenLigaDB n'est jamais envoyé au Worker TheSportsDB.
++      // Les statistiques et compositions absentes restent indisponibles.
++      if (!RepairFlags.mobileSportsLegacy && id.startsWith('oldb:')) {
++        final MatchDetail? d = await PublicFootballRepository.instance.detail(id);
++        if (d == null) return c?.detail;
++        _cache[id] = (at: DateTime.now(), detail: d);
++        return d;
++      }
+       final Map<String, dynamic>? j = await _fetch(id);
+       if (j == null) return c?.detail;
+       final MatchDetail d = MatchDetail.fromJson(j);
+diff --git a/lib/features/sports/data/public_football_repository.dart b/lib/features/sports/data/public_football_repository.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..a56afc50fdfdf78558e55e67b039e48f23e4d6a4
+--- /dev/null
++++ b/lib/features/sports/data/public_football_repository.dart
+@@ -0,0 +1,268 @@
++// OpenLigaDB est un service communautaire public, sans clé ni abonnement.
++// Documentation : https://github.com/OpenLigaDB/OpenLigaDB-Samples
++// Données ODbL : https://www.openligadb.de/lizenz
++// Une relecture toutes les 60 s ne garantit pas le délai de saisie des scores.
++import 'dart:async';
++import 'dart:convert';
++
++import 'package:flutter/foundation.dart';
++import 'package:http/http.dart' as http;
++
++import '../../../core/app/repair_flags.dart';
++import '../../../core/observability/structured_logger.dart';
++import '../../subscription/data/subscription_backend.dart' show kSubscriptionBaseUrl;
++import '../domain/sport_models.dart';
++import '../domain/match_detail.dart';
++
++class FootballLoad {
++  const FootballLoad({this.matches = const <SportEvent>[], this.diagnostic,
++    this.receivedAt, this.available = false});
++  final List<SportEvent> matches;
++  final String? diagnostic;
++  final DateTime? receivedAt;
++  final bool available;
++}
++
++class _FootballFailure implements Exception {
++  const _FootballFailure(this.reason);
++  final String reason;
++}
++
++class PublicFootballRepository {
++  PublicFootballRepository._()
++      : _publicBase = Uri.parse('https://api.openligadb.de/'),
++        _legacyBase = null,
++        _competitions = const <String>['bl1', 'bl2', 'la1', 'pl', 'ucl'];
++  static final PublicFootballRepository instance = PublicFootballRepository._();
++
++  // Le banc ne remplace pas HTTP : seule l'adresse devient 127.0.0.1.
++  @visibleForTesting
++  PublicFootballRepository.forTesting({required Uri publicBase,
++    required Uri legacyBase, List<String> competitions = const <String>['bl1']})
++      : _publicBase = publicBase, _legacyBase = legacyBase,
++        _competitions = competitions;
++  final Uri _publicBase;
++  final Uri? _legacyBase;
++  final List<String> _competitions;
++  static const int maxResponseBytes = 1024 * 1024;
++  static const Duration _cacheAge = Duration(seconds: 60);
++  FootballLoad? _cache;
++  Future<FootballLoad>? _inFlight;
++  bool _paused = false;
++  String? get diagnostic => _cache?.diagnostic;
++
++  Future<FootballLoad> load({bool scores = false, bool manual = false,
++      Iterable<SportEvent> followed = const <SportEvent>[]}) async {
++    if (RepairFlags.mobileSportsLegacy) return _legacy(scores);
++    // Affiches, sentinelle et rappels partagent le même téléchargement.
++    if (_inFlight != null) return _inFlight!;
++    if (!manual && _cache != null && (_paused ||
++        DateTime.now().difference(_cache!.receivedAt!) < _cacheAge)) return _cache!;
++    if (manual) _paused = false;
++    final Future<FootballLoad> pending = _fresh(followed);
++    _inFlight = pending;
++    try { return await pending; } finally { _inFlight = null; }
++  }
++
++  Future<FootballLoad> _fresh(Iterable<SportEvent> followed) async {
++    final Map<String, SportEvent> found = <String, SportEvent>{};
++    final List<String> failures = <String>[];
++    int successes = 0;
++    // Cinq petites réponses en parallèle, pas un fichier annuel ni une
++    // compétition choisie à partir d'un nom ambigu ou d'une clé récupérée.
++    await Future.wait(_competitions.map((String code) async {
++      try {
++        final String body = await _get(_publicBase.resolve('getmatchdata/$code'));
++        final List<SportEvent> matches = await compute(decodePublicFootball, body);
++        for (final SportEvent e in matches) { found[e.id] = e; }
++        successes++;
++      } catch (error) { failures.add(_reason(error)); }
++    }));
++    // Une journée peut changer pendant un match reporté. On relit aussi
++    // les IDs publics suivis proches du coup d'envoi, par petits lots.
++    final DateTime now = DateTime.now();
++    final Set<String> missing = <String>{};
++    for (final SportEvent e in followed) {
++      final DateTime? k = e.startsAt;
++      if (!RegExp(r'^oldb:[0-9]+$').hasMatch(e.id) || found.containsKey(e.id) ||
++          k == null || now.isBefore(k.subtract(const Duration(minutes: 5))) ||
++          now.isAfter(k.add(const Duration(hours: 3)))) continue;
++      missing.add(e.id.substring(5));
++    }
++    final List<String> ids = missing.toList();
++    for (int i = 0; i < ids.length; i += 4) {
++      await Future.wait(ids.skip(i).take(4).map((String id) async {
++        try {
++          final String body = await _get(_publicBase.resolve('getmatchdata/$id'));
++          final List<SportEvent> matches = await compute(decodePublicFootball, body);
++          for (final SportEvent e in matches) { found[e.id] = e; }
++          successes++;
++        } catch (error) { failures.add(_reason(error)); }
++      }));
++    }
++    // Garder les scores reçus des sources en panne ; ne pas prétendre
++    // qu'ils ont été actualisés. Réessayer est un geste explicite.
++    if (failures.isNotEmpty) {
++      for (final SportEvent e in _cache?.matches ?? const <SportEvent>[]) {
++        found.putIfAbsent(e.id, () => e);
++      }
++      _paused = true;
++    }
++    final List<SportEvent> matches = found.values.toList()
++      ..sort((SportEvent a, SportEvent b) => a.timestamp.compareTo(b.timestamp));
++    final String? diagnostic = failures.isEmpty ? null : failures.first;
++    final FootballLoad result = FootballLoad(matches: List<SportEvent>.unmodifiable(matches),
++        available: successes > 0, diagnostic: diagnostic,
++        receivedAt: successes > 0 ? DateTime.now() : _cache?.receivedAt ?? DateTime.now());
++    _cache = result;
++    _log(result, failures.length);
++    return result;
++  }
++
++  Future<FootballLoad> _legacy(bool scores) async {
++    final Uri base = _legacyBase ?? Uri.parse('$kSubscriptionBaseUrl/');
++    try {
++      final String body = await _get(base.resolve('api/sports/${scores ? 'live' : 'big'}'),
++          timeout: Duration(seconds: scores ? 7 : 12));
++      final Object? decoded = jsonDecode(body);
++      if (decoded is! Map<String, dynamic> || decoded[scores ? 'live' : 'matches'] is! List) {
++        throw const FormatException('Sport invalide');
++      }
++      final List<SportEvent> matches = <SportEvent>[];
++      for (final Object? item in decoded[scores ? 'live' : 'matches'] as List) {
++        if (item is! Map<String, dynamic>) throw const FormatException('Match invalide');
++        matches.add(SportEvent.fromJson(item));
++      }
++      return FootballLoad(matches: matches,
++          available: scores ? decoded['available'] != false : decoded['upstream_ok'] != 0,
++          receivedAt: DateTime.now());
++    } catch (error) {
++      final FootballLoad result = FootballLoad(diagnostic: _reason(error));
++      _log(result, 1);
++      return result;
++    }
++  }
++
++  Future<String> _get(Uri uri, {Duration timeout = const Duration(seconds: 20)}) async {
++    final http.Client client = http.Client();
++    try { return await _download(client, uri).timeout(timeout); }
++    finally { client.close(); }
++  }
++
++  Future<String> _download(http.Client client, Uri uri) async {
++    final http.StreamedResponse response = await client.send(http.Request('GET', uri)
++      ..headers['Accept'] = 'application/json');
++    if (response.statusCode != 200) {
++      throw _FootballFailure('Sport : HTTP ${response.statusCode}');
++    }
++    if ((response.contentLength ?? 0) > maxResponseBytes) {
++      throw const _FootballFailure('Sport : réponse trop volumineuse');
++    }
++    final List<int> bytes = <int>[];
++    await for (final List<int> chunk in response.stream) {
++      if (bytes.length + chunk.length > maxResponseBytes) {
++        throw const _FootballFailure('Sport : réponse trop volumineuse');
++      }
++      bytes.addAll(chunk);
++    }
++    return utf8.decode(bytes);
++  }
++
++  static String _reason(Object error) {
++    if (error is _FootballFailure) return error.reason;
++    if (error is TimeoutException) return 'Sport : délai dépassé';
++    if (error is FormatException || error is TypeError) return 'Sport : réponse illisible';
++    if (error is http.ClientException) return 'Sport : connexion impossible';
++    return 'Sport : service indisponible';
++  }
++
++  static void _log(FootballLoad r, int failures) {
++    StructuredLogger.instance.info(domain: 'sport', event: 'public.loaded',
++      ctx: <String, Object?>{'matches': r.matches.length, 'failed_sources': failures,
++        'reason': r.diagnostic ?? 'scores reçus', 'legacy': RepairFlags.mobileSportsLegacy});
++  }
++
++  // Un score partiel n'est pas un résultat final. Le fournisseur gratuit
++  // donne explicitement matchIsFinished, sans minute ni statut EN DIRECT.
++  static bool canAnnounceFinal(SportEvent e) =>
++      !e.id.startsWith('oldb:') || e.status == 'FT';
++
++  Future<MatchDetail?> detail(String id) async {
++    if (!RegExp(r'^oldb:[0-9]+$').hasMatch(id)) return null;
++    try {
++      final String body = await _get(_publicBase.resolve('getmatchdata/${id.substring(5)}'));
++      return await compute(decodePublicFootballDetail, body);
++    } catch (error) {
++      StructuredLogger.instance.warn(domain: 'sport', event: 'public.detail_failed',
++        ctx: <String, Object?>{'reason': _reason(error)});
++      return null;
++    }
++  }
++}
++
++// Le décodage travaille hors du fil UI. On choisit resultTypeID=2 et
++// jamais le premier élément (qui est souvent le score de la mi-temps).
++List<SportEvent> decodePublicFootball(String body) {
++  final Object? json = jsonDecode(body);
++  final List<dynamic> rows;
++  if (json is List) { rows = json; }
++  else if (json is Map<String, dynamic>) { rows = <dynamic>[json]; }
++  else { throw const FormatException('Sport invalide'); }
++  final List<SportEvent> out = <SportEvent>[];
++  for (final Object? item in rows) {
++    if (item is! Map<String, dynamic> || item['team1'] is! Map || item['team2'] is! Map ||
++        item['matchResults'] is! List || item['matchIsFinished'] is! bool) {
++      throw const FormatException('Match invalide');
++    }
++    final int? id = int.tryParse('${item['matchID']}');
++    final String utc = '${item['matchDateTimeUTC'] ?? ''}';
++    final DateTime? kickoff = DateTime.tryParse(utc);
++    final String home = '${(item['team1'] as Map)['teamName'] ?? ''}';
++    final String away = '${(item['team2'] as Map)['teamName'] ?? ''}';
++    if (id == null || id <= 0 || kickoff == null ||
++        !RegExp(r'(Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(utc) || home.isEmpty || away.isEmpty) {
++      throw const FormatException('Match incomplet');
++    }
++    String? h;
++    String? a;
++    for (final Object? score in item['matchResults'] as List) {
++      if (score is! Map) throw const FormatException('Score invalide');
++      if (int.tryParse('${score['resultTypeID']}') != 2) continue;
++      final int? ph = int.tryParse('${score['pointsTeam1']}');
++      final int? pa = int.tryParse('${score['pointsTeam2']}');
++      if (ph == null || pa == null || ph < 0 || pa < 0) {
++        throw const FormatException('Score invalide');
++      }
++      h = '$ph'; a = '$pa';
++    }
++    final String local = kickoff.toLocal().toIso8601String();
++    out.add(SportEvent(id: 'oldb:$id', home: home, away: away, homeScore: h, awayScore: a,
++      timestamp: kickoff.toUtc().toIso8601String(), date: local.substring(0, 10),
++      time: local.substring(11, 19), status: item['matchIsFinished'] == true ? 'FT' : '',
++      league: '${item['leagueName'] ?? ''}', sport: 'Soccer', tier: 2));
++  }
++  return out;
++}
++
++MatchDetail decodePublicFootballDetail(String body) {
++  final List<SportEvent> events = decodePublicFootball(body);
++  if (events.length != 1) throw const FormatException('Fiche invalide');
++  final Object? decoded = jsonDecode(body);
++  final Map<String, dynamic> row = (decoded is List ? decoded.single : decoded) as Map<String, dynamic>;
++  final SportEvent e = events.single;
++  final Object? goals = row['goals'];
++  final List<MatchIncident> timeline = <MatchIncident>[];
++  if (goals is List) {
++    for (final Object? item in goals) {
++      if (item is! Map) throw const FormatException('But invalide');
++      timeline.add(MatchIncident(type: 'Goal',
++        minute: int.tryParse('${item['matchMinute']}'),
++        player: '${item['goalGetterName'] ?? ''}',
++        detail: item['isPenalty'] == true ? 'Penalty' : '',
++        comment: item['isOwnGoal'] == true ? 'Own goal' : ''));
++    }
++  }
++  return MatchDetail(id: e.id, home: e.home, away: e.away, homeScore: e.homeScore,
++    awayScore: e.awayScore, status: e.status, league: e.league,
++    timeline: timeline, timelineAvailable: goals is List);
++}
+diff --git a/lib/features/sports/presentation/match_detail_screen.dart b/lib/features/sports/presentation/match_detail_screen.dart
+index a7e8521a2c50f491198ebbe0ad178046883c022b..e57dd68b7636b8b0def03c26cafbb322c53c537f 100644
+--- a/lib/features/sports/presentation/match_detail_screen.dart
++++ b/lib/features/sports/presentation/match_detail_screen.dart
+@@ -375,6 +375,20 @@ class _MatchDetailScreenState extends State<MatchDetailScreen>
+   }
+
+   Widget _incidentRow(MatchIncident i) {
++    // La source publique donne le buteur, mais pas son équipe de manière
++    // explicite : une ligne neutre évite de le placer chez l'adversaire.
++    if (widget.event.id.startsWith('oldb:')) {
++      return Padding(
++        padding: const EdgeInsets.symmetric(vertical: 6),
++        child: Row(children: <Widget>[
++          const Icon(Icons.sports_soccer_rounded, size: 16, color: AppColors.textSecondary),
++          const SizedBox(width: 8),
++          Text(i.minute == null ? '' : "${i.minute}'", style: AppTextStyles.labelSmall),
++          const SizedBox(width: 8),
++          Expanded(child: Text(i.player, style: AppTextStyles.bodySmall)),
++        ]),
++      );
++    }
+     final IconData icon = i.isGoal
+         ? Icons.sports_soccer_rounded
+         : (i.isCard ? Icons.square_rounded : Icons.circle_outlined);
+diff --git a/lib/features/sports/presentation/prediction_bar.dart b/lib/features/sports/presentation/prediction_bar.dart
+index 24f9c823f730c976c963a1ca3c6b4ab2ae881d17..135717b92b073ecdd9575c42d52acca1645c368f 100644
+--- a/lib/features/sports/presentation/prediction_bar.dart
++++ b/lib/features/sports/presentation/prediction_bar.dart
+@@ -15,6 +15,7 @@ import 'dart:async';
+ import 'package:flutter/material.dart';
+
+ import '../../../core/i18n/l10n_extension.dart';
++import '../../../core/app/repair_flags.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_text_styles.dart';
+ import '../data/predictions_service.dart';
+@@ -40,7 +41,8 @@ class _PredictionBarState extends State<PredictionBar> {
+     });
+     // Les pourcentages viennent du serveur ; on ne les demande que pour un
+     // duel (une course n'a pas de « 1 N 2 »).
+-    if (widget.event.isDuel) {
++    if (widget.event.isDuel &&
++        (RepairFlags.mobileSportsLegacy || !widget.event.id.startsWith('oldb:'))) {
+       unawaited(PredictionsService.instance.load(widget.event.id));
+     }
+   }
+@@ -66,6 +68,10 @@ class _PredictionBarState extends State<PredictionBar> {
+   @override
+   Widget build(BuildContext context) {
+     final SportEvent e = widget.event;
++    if (!RepairFlags.mobileSportsLegacy && e.id.startsWith('oldb:')) {
++      return Text(context.l10n.freeFootballVotesUnavailable,
++        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textTertiary));
++    }
+     if (!e.isDuel) return const SizedBox.shrink();
+     final PredictionsService svc = PredictionsService.instance;
+     final bool open = PredictionsService.isOpen(e, DateTime.now());
+diff --git a/lib/features/sports/presentation/sport_screen.dart b/lib/features/sports/presentation/sport_screen.dart
+index 3da0395f1be0b37f12cf2e60e4e600ff8b91e724..bb8803d4aeedc0298fefdfe5cea61a6747c3c95d 100644
+--- a/lib/features/sports/presentation/sport_screen.dart
++++ b/lib/features/sports/presentation/sport_screen.dart
+@@ -26,26 +26,24 @@
+ // =========================================================
+
+ import 'dart:async';
+-import 'dart:convert';
+
+ import 'package:flutter/foundation.dart';
+ import 'package:flutter/material.dart';
+-import 'package:http/http.dart' as http;
+
+ import '../../../core/i18n/l10n_extension.dart';
++import '../../../core/app/repair_flags.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_text_styles.dart';
+ import '../../channels/domain/channel.dart';
+ import '../../channels/domain/channel_genre.dart';
+ import '../../player/presentation/play_channel.dart';
+ import '../../playlists/data/playlist_repository.dart';
+-import '../../subscription/data/subscription_backend.dart'
+-    show kSubscriptionBaseUrl;
+ import '../data/followed_matches_service.dart';
+ import '../data/live_scores_service.dart';
+ import '../data/match_channel_finder.dart';
+ import '../data/sport_country_prefs.dart';
+ import '../data/sports_repository.dart';
++import '../data/public_football_repository.dart';
+ import '../domain/sport_models.dart';
+ import '../domain/sport_ordering.dart';
+ import 'match_detail_screen.dart';
+@@ -91,6 +89,7 @@ class _SportScreenState extends State<SportScreen>
+   /// football est sélectionné par défaut à chaque chargement (demande du
+   /// 07/09) ; dès qu'il a choisi, on respecte son choix.
+   bool _filterChosen = false;
++  String? _diagnostic;
+
+   StreamSubscription<void>? _followSub;
+   StreamSubscription<List<SportTeam>>? _favSub;
+@@ -115,7 +114,11 @@ class _SportScreenState extends State<SportScreen>
+     //  la batterie pour des données que personne ne regarde.
+     LiveScoresService.instance.start();
+     _liveSub = LiveScoresService.instance.changes.listen((_) {
+-      if (mounted) setState(() {});
++      if (mounted) setState(() {
++        if (!RepairFlags.mobileSportsLegacy) {
++          _diagnostic = PublicFootballRepository.instance.diagnostic;
++        }
++      });
+     });
+   }
+
+@@ -134,38 +137,12 @@ class _SportScreenState extends State<SportScreen>
+     _BigLoad result = const _BigLoad();
+     bool failed = false;
+     try {
+-      final http.Response r = await http.get(
+-          Uri.parse('$kSubscriptionBaseUrl/api/sports/big'),
+-          headers: const <String, String>{
+-            'Accept': 'application/json'
+-          }).timeout(const Duration(seconds: 12));
+-      if (r.statusCode != 200) {
+-        failed = true;
+-      } else {
+-        final Object? decoded = jsonDecode(utf8.decode(r.bodyBytes));
+-        if (decoded is! Map<String, dynamic>) {
+-          failed = true;
+-        } else {
+-          final List<SportEvent> evs = <SportEvent>[];
+-          final Object? list = decoded['matches'];
+-          if (list is List) {
+-            for (final Object? raw in list) {
+-              if (raw is! Map<String, dynamic>) continue;
+-              final SportEvent ev = SportEvent.fromJson(raw);
+-              if (ev.id.isNotEmpty) evs.add(ev);
+-            }
+-          }
+-          // La source est « muette » quand le serveur n'a joint AUCUN de
+-          // ses fournisseurs. C'est ce qui permet d'écrire « le service
+-          // ne répond pas » au lieu d'un écran vide trompeur.
+-          final int ok = (decoded['upstream_ok'] as num?)?.toInt() ?? -1;
+-          final int ko = (decoded['upstream_ko'] as num?)?.toInt() ?? 0;
+-          // Les disciplines proposées en filtre se déduisent des matchs
+-          // reçus, pas du champ `sports` du serveur : elles restent ainsi
+-          // toujours cohérentes avec ce qui est réellement affiché.
+-          result = _BigLoad(matches: evs, sourceDown: ok == 0 && ko > 0);
+-        }
+-      }
++      await FollowedMatchesService.instance.ensureLoaded();
++      final FootballLoad loaded = await PublicFootballRepository.instance.load(
++        manual: true, followed: FollowedMatchesService.instance.all);
++      _diagnostic = loaded.diagnostic;
++      failed = !loaded.available && loaded.matches.isEmpty;
++      result = _BigLoad(matches: loaded.matches);
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Sport] chargement KO: $e');
+       failed = true;
+@@ -240,12 +217,24 @@ class _SportScreenState extends State<SportScreen>
+           ],
+         ),
+       ),
+-      body: TabBarView(
+-        controller: _tabs,
++      body: Column(
+         children: <Widget>[
+-          _highlightsTab(),
+-          _followedTab(),
+-          _teamsTab(),
++          if (!RepairFlags.mobileSportsLegacy)
++            Padding(
++              padding: const EdgeInsets.all(12),
++              child: Text(context.l10n.freeFootballSourceNote,
++                style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
++            ),
++          if (_diagnostic != null)
++            Padding(
++              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
++              child: Text(_diagnostic!, style: AppTextStyles.labelSmall
++                .copyWith(color: AppColors.textSecondary)),
++            ),
++          Expanded(child: TabBarView(
++            controller: _tabs,
++            children: <Widget>[_highlightsTab(), _followedTab(), _teamsTab()],
++          )),
+         ],
+       ),
+     );
+@@ -265,7 +254,7 @@ class _SportScreenState extends State<SportScreen>
+       return _empty(
+         icon: Icons.wifi_off_rounded,
+         title: context.l10n.sportOfflineTitle,
+-        body: context.l10n.sportOfflineBody,
++        body: _diagnostic ?? context.l10n.sportOfflineBody,
+         onRetry: () => unawaited(_fetch()),
+       );
+     }
+@@ -332,7 +321,12 @@ class _SportScreenState extends State<SportScreen>
+   //  intitulé « en direct » est pire que pas de bandeau du tout : il
+   //  occupe la place et n'apprend rien.
+   Widget _liveBand() {
+-    final List<SportEvent> live = LiveScoresService.instance.live;
++    // OpenLigaDB n'a pas de minute/statut de direct : ni une heure
++    // passée ni un score partiel ne suffisent à inventer le badge LIVE.
++    final List<SportEvent> received = LiveScoresService.instance.live;
++    final List<SportEvent> live = RepairFlags.mobileSportsLegacy
++        ? received
++        : received.where((SportEvent e) => e.isLive).toList(growable: false);
+     if (live.isEmpty) return const SizedBox.shrink();
+     // On respecte le filtre de discipline : si le client regarde le
+     // tennis, on ne lui impose pas le baseball en bandeau.
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index 031b0ec57752011ded743809647f31bc4e719b99..27ebf47d1153686a57036e984a57d5f3712e1adb 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -2387,5 +2387,7 @@
+   "tvSearchPhoneKeyboardOn": "⌨ Type on your phone. Press Back to return to the on-screen keyboard.",
+   "@tvSearchPhoneKeyboardOn": {
+     "description": "Indication affichee quand la saisie au clavier du telephone est active"
+-  }
++  },
++  "freeFootballSourceNote": "OpenLigaDB · community scores; delays can vary. Goal alerts require the app to remain active.",
++  "freeFootballVotesUnavailable": "Fan predictions are unavailable for this source."
+ }
+diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
+index 53dd1781cf06d36cab1e2530a39357d4de7070ba..91aa7a1f9cd269437667e4f5d148a18ad26595a4 100644
+--- a/lib/l10n/app_fr.arb
++++ b/lib/l10n/app_fr.arb
+@@ -5279,5 +5279,7 @@
+   "tvSearchPhoneKeyboardOn": "⌨ Tape sur ton téléphone. Appuie sur Retour pour revenir au clavier de l'écran.",
+   "@tvSearchPhoneKeyboardOn": {
+     "description": "Indication affichee quand la saisie au clavier du telephone est active"
+-  }
++  },
++  "freeFootballSourceNote": "OpenLigaDB · scores communautaires, délai non garanti. Alertes de buts seulement tant que l’app reste active.",
++  "freeFootballVotesUnavailable": "Pronostics indisponibles pour cette source."
+ }
+diff --git a/lib/main.dart b/lib/main.dart
+index 8dfd51f51d415d9b311cb6853b34f6475d82d52f..e356fc2eb3f8e5990d0073cbeb5ac375757f6736 100644
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -16,6 +16,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
+ import 'package:media_kit/media_kit.dart';
+
+ import 'core/app/boot_guard.dart';
++import 'core/app/repair_flags.dart';
+ import 'core/app/panel_live_wait.dart';
+ import 'core/assistance/assistance_overlay.dart';
+ import 'core/app/guarded_main.dart';
+@@ -134,6 +135,7 @@ Future<void> bootApp() async {
+   // mémoire en ré-important une grosse source), on saute le ré-import
+   // distant plus bas pour casser la boucle.
+   await BootGuard.instance.beginBoot();
++  await RepairFlags.load();
+
+   // Posture (débogage, émulateur, su) : une note dans la boîte noire.
+   // Jamais un motif pour refuser la lecture.
+diff --git a/test/core/notifications/notification_channel_migration_test.dart b/test/core/notifications/notification_channel_migration_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..818354b3e0bfbd6d2bbd174ace267e68bf457be9
+--- /dev/null
++++ b/test/core/notifications/notification_channel_migration_test.dart
+@@ -0,0 +1,42 @@
++// Android ne corrige pas le son d'un canal existant. La migration doit
++// utiliser un autre identifiant et le repli doit conserver celui déjà créé.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/core/notifications/notification_service.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  tearDown(() {
++    RepairFlags.mobileNotificationsLegacy = false;
++    RepairFlags.mobileSportsLegacy = false;
++  });
++  test('installation et préférences vides quittent le canal Android cassé', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    await RepairFlags.load();
++    expect(RepairFlags.mobileNotificationsLegacy, isFalse);
++    expect(NotificationService.goalChannelId, isNot('goal_roar_v1'),
++      reason: 'Android conserverait sinon son ancienne URI sonore /0');
++  });
++  test('le repli persistant reprend le canal historique sans changer Sport', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      RepairFlags.mobileNotificationsLegacyKey: true,
++      RepairFlags.mobileSportsLegacyKey: false,
++    });
++    await RepairFlags.load();
++    expect(NotificationService.goalChannelId, 'goal_roar_v1');
++    expect(RepairFlags.mobileSportsLegacy, isFalse);
++  });
++  test('couper le repli migre vers un canal nouveau après relecture', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      RepairFlags.mobileNotificationsLegacyKey: true,
++    });
++    await RepairFlags.load();
++    final String before = NotificationService.goalChannelId;
++    await (await SharedPreferences.getInstance())
++      .setBool(RepairFlags.mobileNotificationsLegacyKey, false);
++    await RepairFlags.load();
++    expect(NotificationService.goalChannelId, isNot(before));
++    expect(NotificationService.goalChannelId, 'goal_roar_v2');
++  });
++}
+diff --git a/test/features/channels/channel_metadata_isolate_test.dart b/test/features/channels/channel_metadata_isolate_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..e8b062fcd3a135a3b4432085586d9dc7a8b2ec37
+--- /dev/null
++++ b/test/features/channels/channel_metadata_isolate_test.dart
+@@ -0,0 +1,85 @@
++// Les vraies regex tournent dans un vrai isolate, sans classifier simulé.
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/core/curation/title_curator.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++
++Channel _channel(String id, String name, String category) => Channel(
++      id: id,
++      name: name,
++      category: category,
++      streamUrl: 'https://channels.invalid/$id',
++      isLive: true,
++    );
++
++void main() {
++  tearDown(Channel.clearComputedCaches);
++
++  test('le calcul isolé conserve les quatre résultats du classifier réel',
++      () async {
++    final List<Channel> channels = <Channel>[
++      _channel('sport', 'FR | Sport HD', 'Sports'),
++      _channel('cinema', 'UK | Cinema FHD', 'Movies'),
++      _channel('inconnu', 'Chaîne inconnue', 'Divers'),
++    ];
++    final ChannelComputedSnapshot snapshot =
++        await Channel.prepareComputedSnapshot(channels);
++    Channel.installComputedSnapshot(snapshot);
++    for (final Channel channel in channels) {
++      expect(Channel.debugHasComputedValues(channel), isTrue);
++      expect(channel.genre,
++          ChannelClassifier.classifyGenre(channel.name, channel.category));
++      expect(channel.country?.code,
++          ChannelClassifier.detectCountry(channel.name, channel.category)?.code);
++      expect(channel.quality, ChannelClassifier.detectQuality(channel.name));
++      expect(channel.cleanName, TitleCurator.curate(channel.name));
++    }
++  });
++
++  test('50 000 chaînes laissent passer un événement UI pendant le calcul',
++      () async {
++    final List<Channel> channels = List<Channel>.generate(
++      50000,
++      (int index) =>
++          _channel('large-$index', 'FR | Sport $index HD', 'Sports'),
++      growable: false,
++    );
++    bool prepared = false;
++    final Completer<bool> heartbeat = Completer<bool>();
++    final Future<ChannelComputedSnapshot> work =
++        Channel.prepareComputedSnapshot(channels).then((snapshot) {
++      prepared = true;
++      return snapshot;
++    });
++    // Un calcul bloquant termine avant cet événement, même sans seuil de temps.
++    Timer.run(() => heartbeat.complete(!prepared));
++    expect(await heartbeat.future, isTrue,
++        reason: 'Le calcul ne doit pas monopoliser le fil de l’écran.');
++    Channel.installComputedSnapshot(await work);
++    expect(channels.every(Channel.debugHasComputedValues), isTrue);
++  }, timeout: const Timeout(Duration(minutes: 2)));
++
++  test('un identifiant réutilisé reprend le nouveau nom et le nouveau genre',
++      () async {
++    final Channel old = _channel('reused', 'FR | Sport HD', 'Sports');
++    final Channel next = _channel('reused', 'UK | Cinema FHD', 'Movies');
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(<Channel>[old]));
++    final ChannelGenre previousGenre = old.genre;
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(<Channel>[next]));
++    expect(next.genre, isNot(previousGenre));
++    expect(next.genre, ChannelClassifier.classifyGenre(next.name, next.category));
++    expect(next.cleanName, TitleCurator.curate(next.name));
++  });
++
++  test('le remplacement retire les métadonnées de la liste supprimée', () async {
++    final Channel removed = _channel('removed', 'Sport HD', 'Sports');
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(<Channel>[removed]));
++    Channel.installComputedSnapshot(
++        await Channel.prepareComputedSnapshot(const <Channel>[]));
++    expect(Channel.debugHasComputedValues(removed), isFalse);
++  });
++}
+diff --git a/test/features/playlists/mobile_metadata_delivery_test.dart b/test/features/playlists/mobile_metadata_delivery_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..321965f226199e7da899526ccf269894f47b3241
+--- /dev/null
++++ b/test/features/playlists/mobile_metadata_delivery_test.dart
+@@ -0,0 +1,143 @@
++// SQLite, schéma, requêtes et pré-calcul réels : aucun chemin difficile simulé.
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  final PlaylistRepository repo = PlaylistRepository.instance;
++  late Database database;
++
++  Future<int> seed(int count, {bool active = true}) async {
++    final int id = await database.insert('playlists', <String, Object?>{
++      'name': 'Liste de test',
++      'type': 'm3u',
++      'm3u_url': 'https://playlist.invalid/list.m3u',
++      'created_at': DateTime.now().millisecondsSinceEpoch,
++      'is_active': active ? 1 : 0,
++    });
++    final Batch batch = database.batch();
++    for (int index = 0; index < count; index++) {
++      batch.insert('channels', <String, Object?>{
++        'playlist_id': id,
++        'external_id': '$id-$index',
++        'name': 'FR | Sport $index HD',
++        'category': 'Sports',
++        'stream_url': 'https://channels.invalid/$id/$index',
++      });
++    }
++    await batch.commit(noResult: true);
++    return id;
++  }
++
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    await RepairFlags.load();
++    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++    Channel.clearComputedCaches();
++    repo.debugSeedChannels(const <Channel>[]);
++    repo.debugSeedPlaylists(const []);
++    database = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
++    await PlaylistDatabase.instance.debugCreate(database);
++    PlaylistDatabase.instance.debugUseDatabase(database);
++  });
++
++  tearDown(() async {
++    repo.debugMetadataPreparationStarted = null;
++    repo.debugSeedChannels(const <Channel>[]);
++    repo.debugSeedPlaylists(const []);
++    PlaylistDatabase.instance.debugUseDatabase(null);
++    await database.close();
++    RepairFlags.mobileChannelMetadataLegacy = false;
++    Channel.clearComputedCaches();
++    FlavorConfig.resetForTesting();
++  });
++
++  test('livraison : chaque chaîne émise arrive déjà classée', () async {
++    await seed(40);
++    expect(RepairFlags.mobileChannelMetadataLegacy, isFalse);
++    // La CI rejoue cette même assertion avec le vrai repli pour la preuve rouge.
++    if (const bool.fromEnvironment('METADATA_LEGACY_PROOF')) {
++      RepairFlags.mobileChannelMetadataLegacy = true;
++    }
++    final Future<List<Channel>> delivered = repo.channelsStream.first;
++    await repo.debugEmitCurrentState();
++    final List<Channel> channels = await delivered;
++    expect(channels, hasLength(40));
++    expect(channels.every(Channel.debugHasComputedValues), isTrue,
++        reason: 'Les écrans ne doivent plus classer la liste à froid.');
++  });
++
++  test('le repli persistant restitue la livraison ancienne à froid', () async {
++    await seed(5);
++    await (await SharedPreferences.getInstance())
++        .setBool(RepairFlags.mobileChannelMetadataLegacyKey, true);
++    await RepairFlags.load();
++    expect(RepairFlags.mobileChannelMetadataLegacy, isTrue);
++    await repo.debugEmitCurrentState();
++    final Channel channel = repo.currentChannels.first;
++    expect(Channel.debugHasComputedValues(channel), isFalse);
++    expect(channel.genre, ChannelGenre.sports);
++    expect(Channel.debugHasComputedValues(channel), isFalse,
++        reason: 'Le repli ne prépare pas les trois autres valeurs.');
++    await (await SharedPreferences.getInstance())
++        .setBool(RepairFlags.mobileChannelMetadataLegacyKey, false);
++    await RepairFlags.load();
++    await repo.debugEmitCurrentState();
++    expect(repo.currentChannels.every(Channel.debugHasComputedValues), isTrue);
++  });
++
++  test('supprimer pendant le vrai calcul ne ressuscite jamais la liste',
++      () async {
++    final int id = await seed(8000);
++    final Completer<void> started = Completer<void>();
++    repo.debugMetadataPreparationStarted = () {
++      repo.debugMetadataPreparationStarted = null;
++      started.complete();
++    };
++    final List<int> emittedCounts = <int>[];
++    final StreamSubscription<List<Channel>> sub =
++        repo.channelsStream.listen((channels) => emittedCounts.add(channels.length));
++    final Future<void> oldRead = repo.debugEmitCurrentState();
++    await started.future;
++    final Future<void> deletion = repo.deletePlaylist(id);
++    expect(repo.currentChannels, isEmpty);
++    await Future.wait(<Future<void>>[oldRead, deletion]);
++    await Future<void>.delayed(Duration.zero);
++    await sub.cancel();
++    expect(emittedCounts, isNotEmpty);
++    expect(emittedCounts.every((count) => count == 0), isTrue);
++    expect(repo.currentChannels, isEmpty);
++    expect(await database.query('channels'), isEmpty);
++    expect(await database.query('playlists'), isEmpty);
++  });
++
++  test('une lecture plus récente conserve sa liste malgré le calcul précédent',
++      () async {
++    await seed(8000);
++    final int next = await seed(1, active: false);
++    final Completer<void> started = Completer<void>();
++    repo.debugMetadataPreparationStarted = () {
++      repo.debugMetadataPreparationStarted = null;
++      started.complete();
++    };
++    final Future<void> oldRead = repo.debugEmitCurrentState();
++    await started.future;
++    await database.update('playlists', <String, Object?>{'is_active': 0});
++    await database.update('playlists', <String, Object?>{'is_active': 1},
++        where: 'id = ?', whereArgs: <Object>[next]);
++    await repo.debugEmitCurrentState();
++    await oldRead;
++    expect(repo.currentChannels, hasLength(1));
++    expect(repo.currentChannels.single.playlistId, next);
++    expect(Channel.debugHasComputedValues(repo.currentChannels.single), isTrue);
++  });
++}
+diff --git a/test/features/sports/public_football_http_test.dart b/test/features/sports/public_football_http_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec9cbaaa5104bd4e072b208525c8620f709ecf9a
+--- /dev/null
++++ b/test/features/sports/public_football_http_test.dart
+@@ -0,0 +1,253 @@
++// Vrai serveur, vraies sockets et vrai décodeur : aucun mock HTTP.
++// Les mêmes objets traversent ensuite la décision d'alerte de but.
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/repair_flags.dart';
++import 'package:tv_king/features/sports/data/live_scores_service.dart';
++import 'package:tv_king/features/sports/data/public_football_repository.dart';
++import 'package:tv_king/features/sports/domain/sport_models.dart';
++
++Map<String, Object?> fixture({int id = 42, int home = 1, int away = 0,
++    bool finished = false, bool score = true, DateTime? kickoff}) => <String, Object?>{
++  'matchID': id,
++  'matchDateTimeUTC': (kickoff ?? DateTime.utc(2026, 10, 8, 16)).toIso8601String(),
++  'matchIsFinished': finished,
++  'leagueName': 'Championnat de test',
++  'team1': <String, Object?>{'teamName': 'Équipe A'},
++  'team2': <String, Object?>{'teamName': 'Équipe B'},
++  'matchResults': <Object?>[
++    if (score) <String, Object?>{'resultTypeID': 2, 'pointsTeam1': home, 'pointsTeam2': away},
++    <String, Object?>{'resultTypeID': 1, 'pointsTeam1': 0, 'pointsTeam2': 0},
++  ],
++  'goals': <Object?>[<String, Object?>{'matchMinute': 21, 'goalGetterName': 'Joueur de test'}],
++};
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  HttpServer? server;
++  HttpOverrides? oldOverrides;
++  late Uri publicBase;
++  late Uri legacyBase;
++  late List<String> paths;
++  late List<Map<String, List<String>>> headers;
++  late Future<void> Function(HttpRequest) respond;
++
++  setUp(() async {
++    oldOverrides = HttpOverrides.current;
++    HttpOverrides.global = null;
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    await RepairFlags.load();
++    LiveScoresService.instance.debugResetGoals();
++    paths = <String>[];
++    headers = <Map<String, List<String>>>[];
++    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    publicBase = Uri.parse('http://127.0.0.1:${server!.port}/public/');
++    legacyBase = Uri.parse('http://127.0.0.1:${server!.port}/legacy/');
++    respond = (HttpRequest r) async {
++      if (r.uri.path.startsWith('/legacy/')) {
++        r.response.statusCode = HttpStatus.notFound;
++      } else {
++        r.response.headers.contentType = ContentType.json;
++        r.response.write(jsonEncode(<Object?>[fixture()]));
++      }
++      await r.response.close();
++    };
++    server!.listen((HttpRequest r) async {
++      paths.add(r.uri.path);
++      final Map<String, List<String>> h = <String, List<String>>{};
++      r.headers.forEach((String name, List<String> values) { h[name] = values; });
++      headers.add(h);
++      await respond(r);
++    });
++  });
++
++  tearDown(() async {
++    await server?.close(force: true);
++    HttpOverrides.global = oldOverrides;
++    RepairFlags.mobileSportsLegacy = false;
++    LiveScoresService.instance.debugResetGoals();
++  });
++
++  PublicFootballRepository repo({List<String> competitions = const <String>['bl1']}) =>
++      PublicFootballRepository.forTesting(publicBase: publicBase,
++        legacyBase: legacyBase, competitions: competitions);
++
++  test('routes historiques 404 ; source publique reçue sans clé', () async {
++    expect(RepairFlags.mobileSportsLegacy, isFalse);
++    final FootballLoad r = await repo().load();
++    expect(r.available, isTrue);
++    expect(r.diagnostic, isNull);
++    expect(r.matches.single.id, 'oldb:42');
++    expect(r.matches.single.homeScore, '1');
++    expect(r.matches.single.awayScore, '0');
++    // Le score 0-0 de mi-temps vient APRÈS le score du match dans la réponse.
++    expect(r.matches.single.startsAt!.toUtc(), DateTime.utc(2026, 10, 8, 16));
++    expect(r.matches.single.isLive, isFalse); // pas de statut inventé à l'horloge
++    expect(paths, <String>['/public/getmatchdata/bl1']);
++    for (final Map<String, List<String>> h in headers) {
++      expect(h.containsKey('authorization'), isFalse);
++      expect(h.containsKey('x-api-key'), isFalse);
++    }
++  });
++
++  test('repli chargé des préférences : ancien Worker 404, zéro appel public', () async {
++    final SharedPreferences p = await SharedPreferences.getInstance();
++    await p.setBool(RepairFlags.mobileSportsLegacyKey, true);
++    await RepairFlags.load();
++    final FootballLoad big = await repo().load();
++    final FootballLoad live = await repo().load(scores: true);
++    expect(big.available, isFalse);
++    expect(big.matches, isEmpty);
++    expect(big.diagnostic, 'Sport : HTTP 404');
++    expect(live.diagnostic, 'Sport : HTTP 404');
++    expect(paths, <String>['/legacy/api/sports/big', '/legacy/api/sports/live']);
++  });
++
++  test('repli : le format de l’ancien service reste lisible', () async {
++    RepairFlags.mobileSportsLegacy = true;
++    respond = (HttpRequest r) async {
++      r.response.write(jsonEncode(<String, Object?>{
++        'available': true, 'live': <Object?>[const SportEvent(id: 'ancien', home: 'A', away: 'B').toJson()],
++      }));
++      await r.response.close();
++    };
++    final FootballLoad r = await repo().load(scores: true);
++    expect(r.matches.single.id, 'ancien');
++    expect(r.available, isTrue);
++    expect(paths, <String>['/legacy/api/sports/live']);
++  });
++
++  test('écran, sentinelle et rappels simultanés : une seule requête', () async {
++    final PublicFootballRepository source = repo();
++    final List<FootballLoad> r = await Future.wait(<Future<FootballLoad>>[
++      source.load(), source.load(scores: true), source.load(), source.load(scores: true),
++    ]);
++    expect(r.every((FootballLoad x) => x.matches.length == 1), isTrue);
++    expect(paths.length, 1);
++    await source.load();
++    expect(paths.length, 1); // cache commun de 60 s
++  });
++
++  test('503 : scores conservés, panne visible, aucun réessai automatique', () async {
++    final PublicFootballRepository source = repo();
++    await source.load();
++    respond = (HttpRequest r) async {
++      r.response.statusCode = 503;
++      await r.response.close();
++    };
++    final FootballLoad bad = await source.load(manual: true);
++    expect(bad.diagnostic, 'Sport : HTTP 503');
++    expect(bad.matches.single.homeScore, '1');
++    expect(bad.available, isFalse);
++    await source.load(scores: true);
++    expect(paths.length, 2);
++    respond = (HttpRequest r) async {
++      r.response.write(jsonEncode(<Object?>[fixture(home: 2)]));
++      await r.response.close();
++    };
++    final FootballLoad recovered = await source.load(manual: true);
++    expect(recovered.diagnostic, isNull);
++    expect(recovered.matches.single.homeScore, '2');
++    expect(paths.length, 3);
++  });
++
++  test('une compétition en panne ne jette pas les autres scores', () async {
++    respond = (HttpRequest r) async {
++      if (r.uri.path.endsWith('bl2')) { r.response.statusCode = 503; }
++      else { r.response.write(jsonEncode(<Object?>[fixture()])); }
++      await r.response.close();
++    };
++    final FootballLoad r = await repo(competitions: <String>['bl1', 'bl2']).load();
++    expect(r.available, isTrue);
++    expect(r.matches.single.id, 'oldb:42');
++    expect(r.diagnostic, 'Sport : HTTP 503');
++    expect(paths.length, 2);
++  });
++
++  test('JSON illisible, schéma erroné et réponse trop grosse ont une raison', () async {
++    for (final String body in <String>['{', '{"other":[]}', 'x' * (PublicFootballRepository.maxResponseBytes + 1)]) {
++      respond = (HttpRequest r) async {
++        r.response.write(body);
++        await r.response.close();
++      };
++      final FootballLoad r = await repo().load();
++      expect(r.available, isFalse);
++      expect(r.diagnostic, body.length > PublicFootballRepository.maxResponseBytes
++        ? 'Sport : réponse trop volumineuse' : 'Sport : réponse illisible');
++    }
++  });
++
++  test('réponse publique après 9 s : acceptée une fois, aucun ancien 404', () async {
++    respond = (HttpRequest r) async {
++      await Future<void>.delayed(const Duration(seconds: 9));
++      r.response.write(jsonEncode(<Object?>[fixture()]));
++      await r.response.close();
++    };
++    final FootballLoad r = await repo().load(scores: true);
++    expect(r.available, isTrue);
++    expect(r.matches.length, 1);
++    expect(paths.length, 1);
++  }, timeout: const Timeout(Duration(seconds: 30)));
++
++  test('score partiel : aucune annonce de résultat final ; terminé : oui', () async {
++    final FootballLoad partial = await repo().load();
++    expect(PublicFootballRepository.canAnnounceFinal(partial.matches.single), isFalse);
++    respond = (HttpRequest r) async {
++      r.response.write(jsonEncode(<Object?>[fixture(finished: true)]));
++      await r.response.close();
++    };
++    final FootballLoad finished = await repo().load();
++    expect(PublicFootballRepository.canAnnounceFinal(finished.matches.single), isTrue);
++    expect(finished.matches.single.status, 'FT');
++    expect(finished.matches.single.isLive, isFalse);
++  });
++
++  test('suivi ancien : ID public relu, aucune confusion avec un ID TheSportsDB', () async {
++    final DateTime k = DateTime.now().toUtc();
++    respond = (HttpRequest r) async {
++      final int id = r.uri.path.endsWith('/99') ? 99 : 42;
++      r.response.write(jsonEncode(fixture(id: id, kickoff: k)));
++      await r.response.close();
++    };
++    final FootballLoad r = await repo().load(followed: <SportEvent>[
++      SportEvent(id: 'oldb:99', timestamp: k.toIso8601String()),
++      SportEvent(id: '99', timestamp: k.toIso8601String()),
++    ]);
++    expect(r.matches.map((SportEvent e) => e.id).toSet(), <String>{'oldb:42', 'oldb:99'});
++    expect(paths, <String>['/public/getmatchdata/bl1', '/public/getmatchdata/99']);
++  });
++
++  test('vraies photos HTTP : premier score silencieux, but unique, baisse silencieuse', () async {
++    final PublicFootballRepository source = repo();
++    final LiveScoresService s = LiveScoresService.instance;
++    FootballLoad r = await source.load();
++    expect(s.debugGoals(r.matches), isEmpty);
++    respond = (HttpRequest req) async {
++      req.response.write(jsonEncode(<Object?>[fixture(home: 2)]));
++      await req.response.close();
++    };
++    r = await source.load(manual: true);
++    expect(s.debugGoals(r.matches), <String>['oldb:42']);
++    expect(s.debugGoals(r.matches), isEmpty);
++    respond = (HttpRequest req) async {
++      req.response.write(jsonEncode(<Object?>[fixture(home: 1)]));
++      await req.response.close();
++    };
++    expect(s.debugGoals((await source.load(manual: true)).matches), isEmpty);
++  });
++
++  test('fiche publique : buteur et minute réels, pas de statistiques fabriquées', () async {
++    final detail = await repo().detail('oldb:42');
++    expect(detail!.goals.single.player, 'Joueur de test');
++    expect(detail.goals.single.minute, 21);
++    expect(detail.homeScore, '1');
++    expect(detail.timelineAvailable, isTrue);
++    expect(detail.statsAvailable, isFalse);
++    expect(detail.lineupAvailable, isFalse);
++    expect(paths, <String>['/public/getmatchdata/42']);
++  });
++}

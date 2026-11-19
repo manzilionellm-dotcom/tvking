@@ -74,6 +74,21 @@ class _FixedClient extends http.BaseClient {
       );
 }
 
+/// Coupe le réseau après qu'au moins un lot a pu atteindre SQLite.
+class _BrokenAfterBodyClient extends http.BaseClient {
+  _BrokenAfterBodyClient(this.body);
+  final String body;
+
+  Stream<List<int>> _bytes() async* {
+    yield utf8.encode(body);
+    throw const HttpException('coupure après le premier lot');
+  }
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async =>
+      http.StreamedResponse(_bytes(), 200);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory dir;
@@ -97,6 +112,43 @@ void main() {
         await db.rawQuery('SELECT COUNT(*) AS n FROM epg_programs');
     return (rows.first['n'] as int?) ?? 0;
   }
+
+  test('coupure après 600 programmes : le dernier guide complet reste intact',
+      () async {
+    final EpgRepository repo = EpgRepository.instance;
+    await repo.clearAll();
+    final DateTime now = DateTime.now();
+    await repo.downloadAndImport(
+      url: 'http://epg.example.invalid/guide.xml',
+      httpClient: _FixedClient(_guide(now, 2)),
+    );
+    final Database db = await PlaylistDatabase.instance.database;
+    final List<Map<String, Object?>> before = await db.query('epg_programs');
+    final String rows = List<String>.generate(600, (int i) =>
+        '<programme start="${_stamp(now)}" '
+        'stop="${_stamp(now.add(const Duration(hours: 1)))}" channel="tf1">'
+        '<title>Nouveau $i</title></programme>').join();
+    await expectLater(
+      repo.downloadAndImport(
+        url: 'http://epg.example.invalid/guide.xml',
+        httpClient: _BrokenAfterBodyClient('<tv>$rows'),
+      ),
+      throwsA(isA<Exception>()),
+    );
+    expect(await db.query('epg_programs'), before,
+        reason: 'aucune ligne du guide publié ne doit être remplacée en partie');
+    expect(repo.isSyncing, isFalse);
+    expect(await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE name = 'epg_import_stage'"),
+        isEmpty);
+
+    expect(await repo.downloadAndImport(
+      url: 'http://epg.example.invalid/guide.xml',
+      httpClient: _FixedClient('<tv>$rows</tv>'),
+    ), 600);
+    expect(await count(), 604,
+        reason: 'TF1 est remplacée, les deux autres chaînes sont conservées');
+  });
 
   test('un serveur muet ne garde pas le verrou : l\'import suivant part', () async {
     final EpgRepository repo = EpgRepository.instance;
