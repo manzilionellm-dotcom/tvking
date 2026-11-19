@@ -153,6 +153,17 @@ class NativeVideoController extends ChangeNotifier {
   /// + HDR10+ » a retiré. Une ligne par appel. Null = ignoré.
   static void Function(String line)? onVideoDiagnostic;
 
+  /// Pauses du lecteur envoyées par le lecteur natif : à chaque coupure
+  /// terminée, sa durée, ce que le serveur a livré pendant qu'elle durait
+  /// (octets, plus long silence), les images perdues et le réseau. Une ligne
+  /// par appel. Null = ignoré.
+  static void Function(String line)? onPlaybackDiagnostic;
+
+  /// Réglage « Coussin anti-coupure » : vrai = après une coupure du direct,
+  /// le lecteur attend 5 s de réserve avant de repartir (au lieu de 2 s).
+  /// Faux par défaut. Lu à chaque décision de reprise.
+  static bool stallCushion = false;
+
   /// Repli du correctif « film Dolby Vision + HDR10+ » (clés Amazon
   /// MT8696 : écran d'une seule couleur, le son continue). Vrai = ancien
   /// comportement, le flux part tel quel au décodeur. Faux par défaut.
@@ -241,6 +252,7 @@ class NativeVideoController extends ChangeNotifier {
       ch.invokeMethod<void>('setOutput48k', output48k);
       ch.invokeMethod<void>('setHybridHdrOff', hybridHdrOff);
       ch.invokeMethod<void>('setHdrCompat', hdrCompat);
+      ch.invokeMethod<void>('setStallCushion', stallCushion);
     }
   }
 
@@ -411,6 +423,7 @@ class NativeVideoController extends ChangeNotifier {
     // Avant l'URL : le décodeur du premier film lit déjà le bon réglage.
     ch.invokeMethod<void>('setHybridHdrOff', hybridHdrOff);
     ch.invokeMethod<void>('setHdrCompat', hdrCompat);
+    ch.invokeMethod<void>('setStallCushion', stallCushion);
     final String? url = _pendingUrl ?? initialUrl;
     if (url != null) {
       audible = true;
@@ -609,6 +622,12 @@ class NativeVideoController extends ChangeNotifier {
         // Diagnostic de l'image : même principe, rien ne change à l'écran.
         final Object? raw = call.arguments;
         if (raw is String && raw.isNotEmpty) onVideoDiagnostic?.call(raw);
+        return;
+      case 'playDiag':
+        // Une pause du lecteur mesurée : même principe, rien ne change
+        // à l'écran, la ligne part dans la boîte noire.
+        final Object? stall = call.arguments;
+        if (stall is String && stall.isNotEmpty) onPlaybackDiagnostic?.call(stall);
         return;
     }
     if (!_disposed) notifyListeners();
