@@ -24,7 +24,6 @@ class PhoneVideoPlayer extends PlatformPlayer {
   String? _mime;
   int _epoch = 0;
   int _ack = -1;
-  String? _decoder;
   int _width = 0;
   int _height = 0;
 
@@ -52,6 +51,7 @@ class PhoneVideoPlayer extends PlatformPlayer {
     _pending = null;
     final epoch = _epoch;
     await channel.invokeMethod<void>('setUrl', <String, Object?>{
+      'play': !_paused,
       'epoch': epoch,
       'url': media.uri,
       'vod': vod,
@@ -64,8 +64,9 @@ class PhoneVideoPlayer extends PlatformPlayer {
   @override
   Future<void> open(Playable playable, {bool play = true}) async {
     if (_closed) return;
-    if (playable is! Media)
+    if (playable is! Media) {
       throw UnsupportedError('Un seul média par ouverture');
+    }
     _epoch++;
     _ack = -1;
     firstFrame = false;
@@ -135,8 +136,6 @@ class PhoneVideoPlayer extends PlatformPlayer {
         final cues = <String>[value is String ? value : '', ''];
         state = state.copyWith(subtitle: cues);
         subtitleController.add(cues);
-      case 'engine':
-        if (value is Map) _decoder = value['engine']?.toString();
       case 'ended':
         recovering = false;
         state = state.copyWith(completed: true, playing: false);
@@ -273,7 +272,6 @@ class PhoneVideoPlayer extends PlatformPlayer {
     _mime = 'application/x-mpegURL';
   }
 
-  String? get decoder => _decoder;
 
   @override
   Future<void> stop() async {
@@ -310,10 +308,14 @@ class PhoneVideoSurface extends StatelessWidget {
     super.key,
     required this.player,
     required this.fit,
+    required this.subtitleStyle,
+    required this.subtitlePadding,
     this.aspect,
   });
   final PhoneVideoPlayer player;
   final BoxFit fit;
+  final TextStyle subtitleStyle;
+  final EdgeInsetsGeometry subtitlePadding;
   final double? aspect;
 
   @override
@@ -374,14 +376,11 @@ class PhoneVideoSurface extends StatelessWidget {
                     return cue.isEmpty
                         ? const SizedBox.shrink()
                         : Padding(
-                            padding: const EdgeInsets.all(12),
+                            padding: subtitlePadding,
                             child: Text(
                               cue,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                backgroundColor: Colors.black87,
-                              ),
+                              style: subtitleStyle,
                             ),
                           );
                   },

@@ -1,5 +1,5 @@
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
-index 6fac579..acbf84a 100644
+index 6fac579..263af9d 100644
 --- a/lib/features/player/presentation/video_player_screen.dart
 +++ b/lib/features/player/presentation/video_player_screen.dart
 @@ -30,6 +30,7 @@ import '../../../core/playback/stream_slot.dart';
@@ -18,7 +18,20 @@ index 6fac579..acbf84a 100644
  
    /// Epoch d'instance : change à chaque recréation du player, sert de
    /// clé au widget `Video` pour forcer son remontage sur le NOUVEAU
-@@ -556,17 +558,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -552,21 +554,36 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Crée une instance mpv NEUVE (+ controller, options, abonnements,
+   /// vitesse persistée). Appelée par initState puis par _recyclePlayer
+   /// avant chaque nouvelle ouverture.
++  bool get _useNativeVideo {
++    final settings = PlayerSettings.instance;
++    final scheme = Uri.tryParse(_effectiveUrl)?.scheme;
++    // Une configuration MPV personnalisée reste opérationnelle sur le téléphone.
++    return Platform.isAndroid && (scheme == 'http' || scheme == 'https') &&
++        settings.imageEngine == ImageEngine.hardware && settings.dolbyPassthrough &&
++        settings.antiFreeze && settings.bufferSeconds == 20 && settings.audioDelayMs == 0;
++  }
++
+   void _createPlayer() {
      _playerEpoch++;
      _playerOpenedOnce = false;
      // Configure le Player avec un buffer généreux (pour 4K/8K)
@@ -34,11 +47,7 @@ index 6fac579..acbf84a 100644
 -    // Applique les options libmpv pour hardware decoding + cache
 -    _playerOptionsReady = _applyMpvOptions();
 +    final settings = PlayerSettings.instance;
-+    final scheme = Uri.tryParse(_effectiveUrl)?.scheme;
-+    final useNative = Platform.isAndroid &&
-+        (scheme == 'http' || scheme == 'https') &&
-+        settings.imageEngine == ImageEngine.hardware;
-+    if (useNative) {
++    if (_useNativeVideo) {
 +      final native = PhoneVideoPlayer(
 +        vod: widget.overrideUrl != null || !_currentChannel.isLive,
 +        userAgent: () => settings.userAgent,
@@ -57,7 +66,7 @@ index 6fac579..acbf84a 100644
  
      _attachPlayerListeners();
  
-@@ -2164,6 +2176,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2164,6 +2181,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
    }
  
    Future<bool> _setMpvProperty(String name, String value) async {
@@ -72,7 +81,7 @@ index 6fac579..acbf84a 100644
      try {
        // ignore: invalid_use_of_protected_member
        final dynamic native = (_player.platform as dynamic);
-@@ -2198,6 +2218,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2198,6 +2223,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
    }
  
    Future<void> _applyMpvOptions() async {
@@ -80,7 +89,24 @@ index 6fac579..acbf84a 100644
      final PlayerSettings s = PlayerSettings.instance;
  
      // Décodage hardware si activé.
-@@ -2785,6 +2806,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2347,6 +2373,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+ 
+   void _onSettingsChanged() {
+     if (!_screenActive) return;
++    if ((_phoneVideo != null) != _useNativeVideo && _playerOpenedOnce &&
++        _ownsPlayback && !_playbackTerminated && !_userPaused &&
++        !CastManager.instance.hasTarget) {
++      if (widget.overrideUrl != null || !_currentChannel.isLive) {
++        _pauseResumeTarget = _player.state.position;
++        _pauseResumeChannelId = _currentChannel.id;
++      }
++      unawaited(_openMedia(_effectiveUrl));
++      return;
++    }
+     // Quand l'utilisateur change un réglage en cours de lecture
+     // → applique en live ce qui peut l'être à chaud.
+     _applyMpvOptions();
+@@ -2785,6 +2821,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
    /// directe) vs « jamais lu » (sonde + cascade de variantes).
    void _markPlaybackStarted(Player source) {
      if (!_ownsPlayback || !_playbackEvidence.accepts(source)) return;
@@ -90,7 +116,7 @@ index 6fac579..acbf84a 100644
      _startupTimer?.cancel(); // le démarrage a VRAIMENT eu lieu → borne levée
      _vodRelayFallbackTimer?.cancel(); // 1re image OK → pas de repli relais
      // REPRISE APRÈS PAUSE LONGUE : le flux vient d'être ré-ouvert après que
-@@ -2866,6 +2890,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -2866,6 +2905,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
    Future<void> _logPlaybackMetrics(String moment) async {
      if (!_ownsPlayback) return;
      final int generation = _openGeneration;
@@ -103,7 +129,7 @@ index 6fac579..acbf84a 100644
      final Player source = _player;
      Future<String?> prop(String name) async {
        try {
-@@ -3062,6 +3092,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -3062,6 +3107,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
      // tick (aucun réveil de plus). Avant les sorties anticipées : elle
      // concerne justement les contenus seekables que le watchdog ignore.
      _vodPauseReleaseTick();
@@ -111,13 +137,14 @@ index 6fac579..acbf84a 100644
      // Live uniquement (relais TS OU HLS direct) : la VOD/catch-up est
      // seekable, sa position s'arrête légitimement (pause, fin) → ce ne
      // serait pas un gel.
-@@ -3697,9 +3728,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+@@ -3697,9 +3743,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                  //  En mode audio seul on ne pose PAS le widget `Video` :
                  //  l'image disparaît mais `_player` continue de jouer le son
                  //  (façon YouTube). On affiche un fond noir + icône casque.
 +                if (_phoneVideo != null)
 +                  PhoneVideoSurface(key: ValueKey<int>(_playerEpoch),
-+                    player: _phoneVideo!, fit: _fitFromMode(mode), aspect: _forcedAspect(mode)),
++                    player: _phoneVideo!, fit: _fitFromMode(mode), aspect: _forcedAspect(mode),
++                    subtitleStyle: _kSubtitleConfig.style, subtitlePadding: _kSubtitleConfig.padding),
                  if (_audioOnly)
                    _buildAudioOnlyView()
 -                else

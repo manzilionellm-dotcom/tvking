@@ -24,7 +24,9 @@ for source in destination.rglob("*"):
         source.write_text(source.read_text().replace("native_video_player", "novatube_video"))
 subprocess.run(["git", "apply", "--directory=packages/novatube_video",
                 str(assets / "phone-controls.patch")], check=True)
+kotlin = destination / "android/src/main/kotlin/com/manzilionellm"
+(kotlin / "native_video_player").rename(kotlin / "novatube_video")
 (destination / "lib").mkdir()
-shutil.copyfile(assets / "novatube_video.dart", destination / "lib/novatube_video.dart")
+shutil.copyfile(assets / "novatube_video.dart.fixture", destination / "lib/novatube_video.dart")
 subprocess.run(["git", "apply", str(assets / "phone-player.patch")], check=True)
-shutil.copyfile(assets / "phone_video_test.dart", phone / "test/features/player/phone_video_test.dart")
+shutil.copyfile(assets / "phone_video_test.dart.fixture", phone / "test/features/player/phone_video_test.dart")
