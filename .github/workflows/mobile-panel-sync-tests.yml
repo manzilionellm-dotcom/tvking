@@ -62,6 +62,7 @@ jobs:
         working-directory: phone
         run: |
           bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+          python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
           flutter pub get
           flutter gen-l10n
       - name: Vérifier la numérotation des APK publiés

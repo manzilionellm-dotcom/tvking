@@ -1,0 +1,396 @@
+// Relie les commandes du téléphone à la SurfaceView du build NovaTube 1794878682.
+// Une instance appartient à une seule vue et ne doit jamais ouvrir deux flux.
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
+
+class PhoneVideoPlayer extends PlatformPlayer {
+  PhoneVideoPlayer({required this.vod, required this.userAgent})
+    : super(configuration: const PlayerConfiguration());
+
+  final bool vod;
+  final String Function() userAgent;
+  MethodChannel? _channel;
+  Media? _pending;
+  bool _closed = false;
+  bool _paused = false;
+  bool firstFrame = false;
+  bool recovering = false;
+  bool audioWithoutVideo = false;
+  String? _mime;
+  int _epoch = 0;
+  int _ack = -1;
+  String? _decoder;
+  int _width = 0;
+  int _height = 0;
+
+  Future<void> attach(int id) async {
+    if (_closed) return;
+    final channel = MethodChannel('novatube_video/$id');
+    _channel = channel;
+    channel.setMethodCallHandler(_receive);
+    try {
+      await channel.invokeMethod<void>('phoneVolume', state.volume / 100);
+      if (_closed || !identical(channel, _channel)) return;
+      await channel.invokeMethod<void>('phoneRate', state.rate);
+      if (_closed || !identical(channel, _channel)) return;
+      await _flush();
+    } on PlatformException {
+      if (!_closed)
+        errorController.add('Android video surface initialization failed');
+    }
+  }
+
+  Future<void> _flush() async {
+    final media = _pending;
+    final channel = _channel;
+    if (media == null || channel == null || _closed) return;
+    _pending = null;
+    final epoch = _epoch;
+    await channel.invokeMethod<void>('setUrl', <String, Object?>{
+      'epoch': epoch,
+      'url': media.uri,
+      'vod': vod,
+      'mime': _mime,
+      'headers': {'User-Agent': userAgent(), ...?media.httpHeaders},
+    });
+    if (!_closed && _paused && epoch == _epoch) await pause();
+  }
+
+  @override
+  Future<void> open(Playable playable, {bool play = true}) async {
+    if (_closed) return;
+    if (playable is! Media)
+      throw UnsupportedError('Un seul média par ouverture');
+    _epoch++;
+    _ack = -1;
+    firstFrame = false;
+    recovering = false;
+    _width = _height = 0;
+    audioWithoutVideo = false;
+    _paused = !play;
+    state = PlayerState(
+      volume: state.volume,
+      rate: state.rate,
+      buffering: true,
+    );
+    _pending = playable;
+    bufferingController.add(true);
+    try {
+      await _flush();
+    } on PlatformException {
+      if (!_closed) errorController.add('Android video open failed');
+    }
+  }
+
+  // Les événements en vol avant la prise de possession du nouveau flux sont ignorés.
+  Future<void> _receive(MethodCall call) async {
+    if (_closed) return;
+    final value = call.arguments;
+    if (call.method == 'ack') {
+      if (value == _epoch) _ack = _epoch;
+      return;
+    }
+    if (_ack != _epoch) return;
+    switch (call.method) {
+      case 'position':
+        final time = Duration(milliseconds: value as int);
+        state = state.copyWith(position: time);
+        positionController.add(time);
+      case 'duration':
+        final time = Duration(milliseconds: value as int);
+        state = state.copyWith(duration: time);
+        durationController.add(time);
+      case 'playing':
+        final playing = value == true;
+        state = state.copyWith(playing: playing);
+        playingController.add(playing);
+      case 'buffering':
+        final buffering = value == true;
+        state = state.copyWith(buffering: buffering);
+        bufferingController.add(buffering);
+      case 'firstFrame':
+        firstFrame = true;
+        recovering = false;
+        _publishSize();
+      case 'reconnecting':
+        recovering = value == true;
+      case 'engineExhausted':
+        recovering = false;
+        errorController.add('Video decoder exhausted');
+      case 'videoSize':
+      case 'videoFormat':
+        if (value is Map) {
+          _width = (value['width'] as num?)?.toInt() ?? 0;
+          _height = (value['height'] as num?)?.toInt() ?? 0;
+          if (firstFrame) _publishSize();
+        }
+      case 'tracks':
+        if (value is List) _tracks(value);
+      case 'cues':
+        final cues = <String>[value is String ? value : '', ''];
+        state = state.copyWith(subtitle: cues);
+        subtitleController.add(cues);
+      case 'engine':
+        if (value is Map) _decoder = value['engine']?.toString();
+      case 'ended':
+        recovering = false;
+        state = state.copyWith(completed: true, playing: false);
+        playingController.add(false);
+        completedController.add(true);
+      case 'error':
+        recovering = false;
+        errorController.add(
+          value is String ? value : 'Android playback failed',
+        );
+    }
+  }
+
+  void _publishSize() {
+    if (_width <= 0 || _height <= 0) return;
+    state = state.copyWith(width: _width, height: _height);
+    widthController.add(_width);
+    heightController.add(_height);
+  }
+
+  void _tracks(List<dynamic> rows) {
+    final audio = <AudioTrack>[AudioTrack.auto(), AudioTrack.no()];
+    final video = <VideoTrack>[VideoTrack.auto(), VideoTrack.no()];
+    final subtitles = <SubtitleTrack>[SubtitleTrack.auto(), SubtitleTrack.no()];
+    var selected = Track(subtitle: SubtitleTrack.no());
+    for (final row in rows.whereType<Map>()) {
+      final id = '${row['group']}:${row['index']}';
+      final label = row['label'] as String?;
+      final lang = row['language'] as String?;
+      final codec = row['codec'] as String?;
+      switch (row['type']) {
+        case 'video':
+          final v = VideoTrack(
+            id,
+            label,
+            lang,
+            codec: codec,
+            w: row['width'] as int?,
+            h: row['height'] as int?,
+            bitrate: row['bitrate'] as int?,
+          );
+          video.add(v);
+          if (row['selected'] == true) selected = selected.copyWith(video: v);
+        case 'audio':
+          final a = AudioTrack(
+            id,
+            label,
+            lang,
+            codec: codec,
+            channelscount: row['channels'] as int?,
+          );
+          audio.add(a);
+          if (row['selected'] == true) selected = selected.copyWith(audio: a);
+        case 'text':
+          final s = SubtitleTrack(id, label, lang, codec: codec);
+          subtitles.add(s);
+          if (row['selected'] == true)
+            selected = selected.copyWith(subtitle: s);
+      }
+    }
+    audioWithoutVideo = video.length == 2 && audio.length > 2;
+    final tracks = Tracks(audio: audio, video: video, subtitle: subtitles);
+    state = state.copyWith(tracks: tracks, track: selected);
+    tracksController.add(tracks);
+    trackController.add(selected);
+  }
+
+  Future<void> _choose(String type, String id) async {
+    if (id == 'auto' || id == 'no') {
+      await _channel?.invokeMethod<void>('phoneTrackMode', {
+        'type': type,
+        'disable': id == 'no',
+      });
+      return;
+    }
+    final parts = id.split(':');
+    if (parts.length != 2) return;
+    await _channel?.invokeMethod<void>('selectTrack', {
+      'group': int.parse(parts.first),
+      'index': int.parse(parts.last),
+    });
+  }
+
+  @override
+  Future<void> setAudioTrack(AudioTrack track) => _choose('audio', track.id);
+  @override
+  Future<void> setVideoTrack(VideoTrack track) => _choose('video', track.id);
+  @override
+  Future<void> setSubtitleTrack(SubtitleTrack track) =>
+      _choose('text', track.id);
+
+  @override
+  Future<void> setRate(double rate) async {
+    state = state.copyWith(rate: rate);
+    rateController.add(rate);
+    await _channel?.invokeMethod<void>('phoneRate', rate);
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    final v = volume.clamp(0, 100).toDouble();
+    state = state.copyWith(volume: v);
+    volumeController.add(v);
+    await _channel?.invokeMethod<void>('phoneVolume', v / 100);
+  }
+
+  @override
+  Future<void> seek(Duration duration) async {
+    await _channel?.invokeMethod<void>('seekTo', {
+      'ms': duration.inMilliseconds,
+    });
+  }
+
+  @override
+  Future<void> play() async {
+    _paused = false;
+    await _channel?.invokeMethod<void>('play');
+  }
+
+  @override
+  Future<void> pause() async {
+    _paused = true;
+    await _channel?.invokeMethod<void>('pause');
+  }
+
+  @override
+  Future<void> playOrPause() => state.playing ? pause() : play();
+  @override
+  Future<void> setAudioDevice(AudioDevice audioDevice) async {
+    // Media3 suit la sortie Android (Bluetooth, casque, haut-parleur).
+  }
+
+  void forceHls() {
+    _mime = 'application/x-mpegURL';
+  }
+
+  String? get decoder => _decoder;
+
+  @override
+  Future<void> stop() async {
+    _epoch++;
+    _pending = null;
+    recovering = false;
+    _paused = true;
+    await _channel?.invokeMethod<void>('silence');
+    if (_closed) return;
+    state = state.copyWith(playing: false);
+    playingController.add(false);
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_closed) return;
+    _closed = true;
+    _pending = null;
+    final channel = _channel;
+    _channel = null;
+    channel?.setMethodCallHandler(null);
+    try {
+      await channel?.invokeMethod<void>('dispose');
+    } on MissingPluginException {
+      // La destruction par Flutter a déjà libéré cette vue Android.
+    } finally {
+      await super.dispose();
+    }
+  }
+}
+
+class PhoneVideoSurface extends StatelessWidget {
+  const PhoneVideoSurface({
+    super.key,
+    required this.player,
+    required this.fit,
+    this.aspect,
+  });
+  final PhoneVideoPlayer player;
+  final BoxFit fit;
+  final double? aspect;
+
+  @override
+  Widget build(BuildContext context) {
+    const type = 'novatube_video/view';
+    final surface = PlatformViewLink(
+      viewType: type,
+      surfaceFactory: (_, controller) => AndroidViewSurface(
+        controller: controller as AndroidViewController,
+        gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{},
+        hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+      ),
+      onCreatePlatformView: (params) {
+        final controller = PlatformViewsService.initExpensiveAndroidView(
+          id: params.id,
+          viewType: type,
+          layoutDirection: TextDirection.ltr,
+          onFocus: () => params.onFocusChanged(true),
+        );
+        controller.addOnPlatformViewCreatedListener(
+          params.onPlatformViewCreated,
+        );
+        controller.addOnPlatformViewCreatedListener(player.attach);
+        unawaited(controller.create());
+        return controller;
+      },
+    );
+    return StreamBuilder<int?>(
+      stream: player.stream.height,
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, box) {
+          final width = player.state.width ?? 0;
+          final height = player.state.height ?? 0;
+          final ratio =
+              aspect ??
+              (width > 0 && height > 0
+                  ? width / height
+                  : box.maxWidth / box.maxHeight);
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              FittedBox(
+                fit: fit,
+                clipBehavior: Clip.hardEdge,
+                child: SizedBox(
+                  width: box.maxHeight * ratio,
+                  height: box.maxHeight,
+                  child: surface,
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: StreamBuilder<List<String>>(
+                  stream: player.stream.subtitle,
+                  initialData: player.state.subtitle,
+                  builder: (context, snap) {
+                    final cue = (snap.data ?? const []).join('\n').trim();
+                    return cue.isEmpty
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Text(
+                              cue,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                backgroundColor: Colors.black87,
+                              ),
+                            ),
+                          );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
