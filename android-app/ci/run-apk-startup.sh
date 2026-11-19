@@ -90,9 +90,23 @@ adb -s "$startup_serial" shell input keyevent 82
 # le réseau 101 revenait après le premier relevé « none »). Le mode avion
 # coupe les transports ; un pare-feu IPv4 ET IPv6 rend l'absence d'accès
 # indépendante de cette course. ADB utilise le transport de l'émulateur.
-adb -s "$startup_serial" root > "$startup_out/adb-root.txt" 2>&1
-adb -s "$startup_serial" wait-for-device
-test "$(adb -s "$startup_serial" shell id -u | tr -d '\r')" = 0
+# On API 35, `adb root` can restart adbd and close its own connection.
+# Wait for the transport to return and require UID 0 before continuing.
+# Retries only the transport handoff; none of the offline/startup checks are skipped.
+startup_root_ready=false
+for ((startup_root_attempt=1; startup_root_attempt<=3; startup_root_attempt++)); do
+  printf 'Root attempt %s\n' "$startup_root_attempt" >> "$startup_out/adb-root.txt"
+  adb -s "$startup_serial" root >> "$startup_out/adb-root.txt" 2>&1 || true
+  if timeout 45 adb -s "$startup_serial" wait-for-device >/dev/null 2>&1; then
+    startup_uid="$(adb -s "$startup_serial" shell id -u 2>/dev/null | tr -d '\r' || true)"
+    if [[ "$startup_uid" == 0 ]]; then
+      startup_root_ready=true
+      break
+    fi
+  fi
+  sleep 3
+done
+test "$startup_root_ready" = true
 adb -s "$startup_serial" shell settings put global airplane_mode_on 1
 adb -s "$startup_serial" shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true
 adb -s "$startup_serial" shell svc wifi disable
