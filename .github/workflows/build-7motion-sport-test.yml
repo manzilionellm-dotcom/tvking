@@ -247,7 +247,13 @@ jobs:
         fi
         grep -A2 'supportsPictureInPicture' "$MANIFEST" || true
     - name: Get dependencies
-      run: flutter pub get
+      run: |
+        if [[ "${{ inputs.play_aab }}" == "true" ]]; then
+          cp ../mission/android-app/ci/mobile/novatube_video/production-pubspec.lock.fixture pubspec.lock
+          flutter pub get --enforce-lockfile
+        else
+          flutter pub get
+        fi
     - name: Patch screen_brightness_android build.gradle
       run: |
         set -e
@@ -617,7 +623,10 @@ jobs:
             "base/lib/x86_64/libffmpegJNI.so": "f14cf078d1e054b4700416ddb7f69d593b515f5f7e22d2f6f114f38d3b5d6989",
         }
         logos={}
+        existing_native=json.loads(Path("../mission/android-app/ci/mobile/novatube_video/production-native-sha256.json").read_text())
         with zipfile.ZipFile(bundle) as archive:
+            for member,digest in existing_native.items():
+                assert hashlib.sha256(archive.read(member)).hexdigest() == digest, "Bibliothèque de production modifiée : "+member
             for member,digest in reference_decoder.items():
                 assert hashlib.sha256(archive.read(member)).hexdigest() == digest, "Décodeur différent du build NovaTube : "+member
             for name in ("7motion_launcher_red.png", "7motion_signature_red.png"):
@@ -629,6 +638,7 @@ jobs:
         proof={
             "sourceSha": source,
             "mobileSourceSha": subprocess.check_output(["git", "-C", "../mobile-reviewed", "rev-parse", "HEAD"], text=True).strip(),
+            "existingNativeVerified": len(existing_native),
             "videoDecoderSha256": reference_decoder,
             "videoReferenceSha": "40906981373998a861c14cffaa7f7d88eb063e42",
             "sourceTree": subprocess.check_output(["git", "-C", "../mission", "rev-parse", "HEAD^{tree}"], text=True).strip(),
