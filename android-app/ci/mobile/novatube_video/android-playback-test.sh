@@ -5,6 +5,7 @@ set -euo pipefail
 fixture="$(cd "$(dirname "$0")" && pwd)"
 phone="$(pwd)"
 trial="$(mktemp -d)"
+export GRADLE_USER_HOME="$trial/gradle"
 cd "$trial"
 flutter create --no-pub --platforms=android --org com.sevenmotion.test video_probe >/dev/null
 cd video_probe
@@ -20,6 +21,10 @@ p.write_text(p.read_text().replace("</manifest>",'<application android:usesClear
 PY
 flutter pub get
 flutter build apk --debug --target-platform android-x64
+cp build/app/outputs/flutter-apk/app-debug.apk "$trial/probe.apk"
+flutter clean >/dev/null
+# Un émulateur refuse de démarrer si Gradle occupe son espace de stockage.
+rm -rf "$trial/gradle"
 mkdir -p "$trial/media"
 for width in 320 640; do
   ffmpeg -loglevel error -f lavfi -i "testsrc2=size=${width}x$((width*9/16)):rate=25" \
@@ -31,18 +36,25 @@ server_pid=$!
 image="system-images;android-30;google_apis;x86_64"
 sdkmanager 'emulator' "$image" >/dev/null
 printf 'no\n' | avdmanager create avd -n seven_video -k "$image" --device pixel_2 >/dev/null
+avd="${ANDROID_AVD_HOME:-${ANDROID_USER_HOME:-$HOME/.android}/avd}/seven_video.avd"
+sed -i '/^disk.dataPartition.size=/d' "$avd/config.ini"
+echo 'disk.dataPartition.size=1024M' >> "$avd/config.ini"
+df -h "$avd"
 "$ANDROID_HOME/emulator/emulator" -avd seven_video -port 5554 -no-window -no-audio \
-  -no-boot-anim -no-snapshot -gpu swiftshader -memory 2048 >"$trial/emulator.log" 2>&1 &
+  -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect -memory 2048 -partition-size 1024 >"$trial/emulator.log" 2>&1 &
 emulator_pid=$!
 trap 'adb -s emulator-5554 emu kill >/dev/null 2>&1 || true; kill "$server_pid" 2>/dev/null || true' EXIT
 for ((i=0;i<120;i++)); do
-  kill -0 "$emulator_pid"
+  if ! kill -0 "$emulator_pid" 2>/dev/null; then cat "$trial/emulator.log"; exit 1; fi
   [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" != 1 ]] || break
   sleep 3
 done
+if [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" != 1 ]]; then
+  cat "$trial/emulator.log"; exit 1
+fi
 adb -s emulator-5554 shell input keyevent 82
 adb -s emulator-5554 reverse tcp:18910 tcp:18910
-adb -s emulator-5554 install build/app/outputs/flutter-apk/app-debug.apk
+adb -s emulator-5554 install "$trial/probe.apk"
 adb -s emulator-5554 logcat -c
 adb -s emulator-5554 shell am start -n com.sevenmotion.test.video_probe/.MainActivity
 for ((i=0;i<75;i++)); do

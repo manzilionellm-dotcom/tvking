@@ -34,12 +34,14 @@ void main() {
   test(
     'deux zaps avant la surface ouvrent seulement la dernière chaîne',
     () async {
+      player.forceHls();
       await player.open(media('a'));
       await player.open(media('b'));
       await player.attach(4);
       final opens = commands.where((c) => c.method == 'setUrl');
       expect(opens.length, 1);
       expect(opens.single.arguments['url'], endsWith('/b'));
+      expect(opens.single.arguments['mime'], isNull);
       expect(opens.single.arguments['headers']['User-Agent'], 'Mobile');
       await event('ack', 1);
       await event('firstFrame', null);

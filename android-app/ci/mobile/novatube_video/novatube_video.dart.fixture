@@ -22,7 +22,8 @@ class PhoneVideoPlayer extends PlatformPlayer {
   bool firstFrame = false;
   bool recovering = false;
   bool audioWithoutVideo = false;
-  String? _mime;
+  String? _nextMime;
+  String? _pendingMime;
   int _epoch = 0;
   int _ack = -1;
   int _width = 0;
@@ -40,8 +41,9 @@ class PhoneVideoPlayer extends PlatformPlayer {
       if (_closed || !identical(channel, _channel)) return;
       await _flush();
     } on PlatformException {
-      if (!_closed)
+      if (!_closed) {
         errorController.add('Android video surface initialization failed');
+      }
     }
   }
 
@@ -56,7 +58,7 @@ class PhoneVideoPlayer extends PlatformPlayer {
       'epoch': epoch,
       'url': media.uri,
       'vod': vod,
-      'mime': _mime,
+      'mime': _pendingMime,
       'headers': {'User-Agent': userAgent(), ...?media.httpHeaders},
     });
     if (!_closed && _paused && epoch == _epoch) await pause();
@@ -80,6 +82,8 @@ class PhoneVideoPlayer extends PlatformPlayer {
       rate: state.rate,
       buffering: true,
     );
+    _pendingMime = _nextMime;
+    _nextMime = null;
     _pending = playable;
     bufferingController.add(true);
     try {
@@ -162,7 +166,7 @@ class PhoneVideoPlayer extends PlatformPlayer {
     final video = <VideoTrack>[VideoTrack.auto(), VideoTrack.no()];
     final subtitles = <SubtitleTrack>[SubtitleTrack.auto(), SubtitleTrack.no()];
     var selected = Track(subtitle: SubtitleTrack.no());
-    for (final row in rows.whereType<Map>()) {
+    for (final row in rows.whereType<Map<Object?, Object?>>()) {
       final id = '${row['group']}:${row['index']}';
       final label = row['label'] as String?;
       final lang = row['language'] as String?;
@@ -193,8 +197,9 @@ class PhoneVideoPlayer extends PlatformPlayer {
         case 'text':
           final s = SubtitleTrack(id, label, lang, codec: codec);
           subtitles.add(s);
-          if (row['selected'] == true)
+          if (row['selected'] == true) {
             selected = selected.copyWith(subtitle: s);
+          }
       }
     }
     audioWithoutVideo = video.length == 2 && audio.length > 2;
@@ -270,14 +275,14 @@ class PhoneVideoPlayer extends PlatformPlayer {
   }
 
   void forceHls() {
-    _mime = 'application/x-mpegURL';
+    _nextMime = 'application/x-mpegURL';
   }
-
 
   @override
   Future<void> stop() async {
     _epoch++;
     _pending = null;
+    _nextMime = null;
     recovering = false;
     _paused = true;
     await _channel?.invokeMethod<void>('silence');

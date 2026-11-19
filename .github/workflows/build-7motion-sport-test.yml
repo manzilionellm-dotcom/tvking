@@ -611,8 +611,15 @@ jobs:
         assert actual == source, "Commit reconstruit différent du lancement"
         bundle=Path("build/play-review/7motion.aab")
         # Vérifier les deux logos réellement embarqués, pas seulement leur source.
+        reference_decoder={
+            "base/lib/arm64-v8a/libffmpegJNI.so": "47247da50df2a92976cf792421c1ed63507e4197cb29c9c36d5981c1c79f2525",
+            "base/lib/armeabi-v7a/libffmpegJNI.so": "6410d251c8f599c8c9723fad693a88430add6539b098799a90e593af9c6b7160",
+            "base/lib/x86_64/libffmpegJNI.so": "f14cf078d1e054b4700416ddb7f69d593b515f5f7e22d2f6f114f38d3b5d6989",
+        }
         logos={}
         with zipfile.ZipFile(bundle) as archive:
+            for member,digest in reference_decoder.items():
+                assert hashlib.sha256(archive.read(member)).hexdigest() == digest, "Décodeur différent du build NovaTube : "+member
             for name in ("7motion_launcher_red.png", "7motion_signature_red.png"):
                 asset="assets/branding/"+name
                 expected=hashlib.sha256(Path(asset).read_bytes()).hexdigest()
@@ -622,6 +629,7 @@ jobs:
         proof={
             "sourceSha": source,
             "mobileSourceSha": subprocess.check_output(["git", "-C", "../mobile-reviewed", "rev-parse", "HEAD"], text=True).strip(),
+            "videoDecoderSha256": reference_decoder,
             "videoReferenceSha": "40906981373998a861c14cffaa7f7d88eb063e42",
             "sourceTree": subprocess.check_output(["git", "-C", "../mission", "rev-parse", "HEAD^{tree}"], text=True).strip(),
             "mobileBaseSha": "37fdf3305c5de9d35e20fd6567df38008fc7a7ee",
