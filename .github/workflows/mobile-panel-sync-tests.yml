@@ -90,3 +90,41 @@ jobs:
           path: phone/build/premium-captures/*.png
           if-no-files-found: ignore
           retention-days: 14
+
+  android-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 8ea5a55075d8b5ad334643b780067c486a917f61
+          path: production
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Vérifier le rendu sur le téléphone Android avec deux mires locales
+        working-directory: phone
+        run: |
+          bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../production
+          python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libpulse0
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          bash ../mission/android-app/ci/mobile/novatube_video/android-playback-test.sh
