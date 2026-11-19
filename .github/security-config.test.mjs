@@ -14,11 +14,18 @@ test('7 MOTION : le bundle et ses tests utilisent la même recette mobile revue'
   assert.match(source.sourceSha, /^[a-f0-9]{40}$/);
   assert.equal(source.package, 'com.manzilionellm.tvking');
   assert.equal(source.backendUrl, 'https://api.zuno8k.com');
+  const production = '8ea5a55075d8b5ad334643b780067c486a917f61';
+  const productionRecipe = read('../android-app/ci/mobile/prepare-production-video.sh');
+  assert.ok(productionRecipe.includes(production));
+  assert.ok(productionRecipe.includes(source.mobileBaseSha));
   for (const workflow of [phone, read('workflows/mobile-panel-sync-tests.yml')]) {
-    assert.ok(workflow.includes(`ref: ${source.sourceSha}`));
+    assert.ok(workflow.includes(`&& '${production}' || '${source.sourceSha}'`));
+    assert.ok(workflow.includes('prepare-production-video.sh ../mobile-reviewed'));
+    assert.ok(workflow.includes('prepare_novatube_video.py'));
     assert.ok(workflow.includes('prepare-reviewed-source.sh ../mobile-reviewed'));
   }
-  assert.ok(phone.includes(`--build-name=${source.versionName}`));
+  assert.ok(phone.includes('--build-name=0.3.9'));
+  assert.ok(phone.includes('"videoReferenceSha": "40906981373998a861c14cffaa7f7d88eb063e42"'));
   assert.match(phone, /"mobileSourceSha": subprocess.check_output/);
   const prepare = read('../android-app/ci/mobile/prepare-reviewed-source.sh');
   assert.match(prepare, /assert actual == expected\['sourceSha'\]/);

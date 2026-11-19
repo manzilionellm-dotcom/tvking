@@ -36,6 +36,10 @@ concurrency:
 
 jobs:
   regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [reviewed, play]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -51,7 +55,7 @@ jobs:
       - name: Récupérer le candidat mobile déjà testé sur Android
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 69eee01d24f50d5e516935b94a189f791de0837c
+          ref: ${{ matrix.edition == 'play' && '8ea5a55075d8b5ad334643b780067c486a917f61' || '69eee01d24f50d5e516935b94a189f791de0837c' }}
           path: mobile-reviewed
           persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -61,7 +65,11 @@ jobs:
       - name: Préparer le code mobile sans fusionner la lignée TV
         working-directory: phone
         run: |
-          bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+          if [[ "${{ matrix.edition }}" == "play" ]]; then
+            bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../mobile-reviewed
+          else
+            bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+          fi
           python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
           flutter pub get
           flutter gen-l10n
@@ -86,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: 7motion-premium-preview
+          name: 7motion-premium-preview-${{ matrix.edition }}
           path: phone/build/premium-captures/*.png
           if-no-files-found: ignore
           retention-days: 14
