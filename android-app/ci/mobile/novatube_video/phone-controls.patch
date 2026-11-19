@@ -1,0 +1,143 @@
+diff --git a/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt b/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt
+index 3ebcd6c..6190938 100644
+--- a/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt
++++ b/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt
+@@ -251,6 +251,11 @@ class NativeVideoView(
+         )
+     }
+     private val channel = MethodChannel(messenger, "novatube_video/$id")
++    private var phoneVolume = 1f
++    private var phoneRate = 1f
++    private var phoneHeaders: Map<String, String> = emptyMap()
++    private var phoneMime: String? = null
++    private lateinit var phoneHttp: DefaultHttpDataSource.Factory
+     private lateinit var player: ExoPlayer
+     private val handler = Handler(Looper.getMainLooper())
+ 
+@@ -874,7 +879,7 @@ class NativeVideoView(
+                 // Jamais 0,2 : le volume de lecture est 1, le silence de
+                 // passage (holdMute) reste 0 jusqu'à la nouvelle image.
+                 if (!reconnect.holdMute) {
+-                    player.volume = AudioHandoff.outputVolume(handoffMute = false, duckRequested = false)
++                    player.volume = phoneVolume * AudioHandoff.outputVolume(handoffMute = false, duckRequested = false)
+                 }
+                 player.play()
+             } catch (_: RuntimeException) {}
+@@ -1281,6 +1286,8 @@ class NativeVideoView(
+         // lecteur externe (open_filex) qui, sur cette box, tombait sur la Galerie
+         // → FATAL EXCEPTION (gallery3d) qui tuait l'app. Le direct reste 100 %
+         // inchangé (http passe toujours par le même httpFactory).
++        phoneHttp = httpFactory
++        phoneHttp.setDefaultRequestProperties(phoneHeaders)
+         val dataSourceFactory = DefaultDataSource.Factory(appContext, httpFactory)
+ 
+         // Politique de ré-essai réseau AGRESSIVE : on retente beaucoup avant
+@@ -1417,6 +1424,9 @@ class NativeVideoView(
+                 // chaîne) arrivent avant l'ack : Dart les ignore. Un
+                 // événement né après le silence porte un horodatage neuf.
+                 val epoch = call.argument<Number>("epoch")?.toInt()
++                phoneHeaders = call.argument<Map<String, String>>("headers") ?: emptyMap()
++                phoneHttp.setDefaultRequestProperties(phoneHeaders)
++                phoneMime = call.argument<String>("mime")
+                 dartEpoch = epoch
+                 val url = call.argument<String>("url")
+                 if (url.isNullOrEmpty()) {
+@@ -1529,7 +1539,8 @@ class NativeVideoView(
+                 // Langue audio / sous-titres préférée (langue de l'app) : si le
+                 // film propose la piste, ExoPlayer la choisit d'office.
+                 applyPreferredTracks()
+-                openCurrent(if (vodMode && startMs > 0L) startMs else null)
++                openCurrent(if (vodMode && startMs > 0L) startMs else null,
++                    preservePlayRequested = call.argument<Boolean>("play"))
+                 // 8 s pour que FFmpeg prouve qu'il sait lire CE flux. Sinon on
+                 // revient à la box (voir [armFfmpegReadyWatchdog]).
+                 armFfmpegReadyWatchdog()
+@@ -1755,6 +1766,28 @@ class NativeVideoView(
+                 // le plein écran en créerait un second par-dessus.
+                 beginDispose(result)
+             }
++            "phoneVolume" -> {
++                phoneVolume = (call.arguments as Number).toFloat().coerceIn(0f, 1f)
++                if (!reconnect.holdMute && !pausedByFocus && !suspended &&
++                    owners.owner == playerKey) player.volume = phoneVolume
++                result.success(null)
++            }
++            "phoneRate" -> {
++                phoneRate = (call.arguments as Number).toFloat()
++                player.setPlaybackSpeed(phoneRate)
++                result.success(null)
++            }
++            "phoneTrackMode" -> {
++                val type = when (call.argument<String>("type")) {
++                    "audio" -> C.TRACK_TYPE_AUDIO
++                    "video" -> C.TRACK_TYPE_VIDEO
++                    else -> C.TRACK_TYPE_TEXT
++                }
++                val disable = call.argument<Boolean>("disable") == true
++                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
++                    .clearOverridesOfType(type).setTrackTypeDisabled(type, disable).build()
++                result.success(null)
++            }
+             "seekTo" -> {
+                 val ms = (call.argument<Number>("ms"))?.toLong() ?: 0L
+                 val dur = player.duration
+@@ -1824,7 +1857,7 @@ class NativeVideoView(
+                 preparePlayRequested = true
+                 requestOwnFocus()
+                 if (!reconnect.holdMute && !pausedByFocus) {
+-                    player.volume = AudioHandoff.VOLUME_FULL
++                    player.volume = phoneVolume
+                 }
+                 player.play()
+                 result.success(null)
+@@ -1913,6 +1946,7 @@ class NativeVideoView(
+         val audio = ArrayList<SpokenCandidate>()
+         tracks.groups.forEachIndexed { gi, g ->
+             val type = when (g.type) {
++                C.TRACK_TYPE_VIDEO -> "video"
+                 C.TRACK_TYPE_AUDIO -> "audio"
+                 C.TRACK_TYPE_TEXT -> "text"
+                 else -> null
+@@ -1931,6 +1965,10 @@ class NativeVideoView(
+                         "channels" to f.channelCount,
+                         "selected" to selected,
+                         "roleFlags" to f.roleFlags,
++                        "codec" to f.sampleMimeType,
++                        "width" to f.width,
++                        "height" to f.height,
++                        "bitrate" to f.bitrate,
+                     )
+                 )
+                 if (type == "audio") {
+@@ -2365,7 +2403,8 @@ class NativeVideoView(
+         val lang = prefAudio
+         if (!lang.isNullOrBlank()) params.setPreferredAudioLanguage(lang)
+         player.trackSelectionParameters = params.build()
+-        val item = MediaItem.Builder().setUri(url).setTag(token).build()
++        player.setPlaybackSpeed(phoneRate)
++        val item = MediaItem.Builder().setUri(url).setTag(token).setMimeType(phoneMime).build()
+         if (startPositionMs != null && startPositionMs > 0L) {
+             player.setMediaItem(item, startPositionMs)
+         } else {
+@@ -2577,7 +2616,7 @@ class NativeVideoView(
+         // Perte de focus pendant le zap : on ne remonte pas. Le GAIN le fera.
+         if (pausedByFocus) return
+         try {
+-            player.volume = AudioHandoff.VOLUME_FULL
++            player.volume = phoneVolume
+         } catch (_: RuntimeException) {
+             // Un volume refusé laisse la chaîne muette plutôt que planter.
+         }
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 7308be0..fbb052a 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -27,6 +27,8 @@ environment:
+   flutter: ">=3.24.0"
+ 
+ dependencies:
++  # Adaptateur des commandes du lecteur déjà présentes sur le téléphone.
++  media_kit: ^1.2.6
+   flutter:
+     sdk: flutter
+ 

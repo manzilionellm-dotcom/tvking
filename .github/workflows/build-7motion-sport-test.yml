@@ -76,7 +76,7 @@ jobs:
     - name: Récupérer le candidat mobile déjà testé sur Android
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
-        ref: 69eee01d24f50d5e516935b94a189f791de0837c
+        ref: ${{ inputs.play_aab && '8ea5a55075d8b5ad334643b780067c486a917f61' || '69eee01d24f50d5e516935b94a189f791de0837c' }}
         path: mobile-reviewed
         persist-credentials: false
     - name: Appliquer le patch Sport et relever la release clients
@@ -84,7 +84,12 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |-
         set -euo pipefail
-        bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+        if [[ "${{ inputs.play_aab }}" == "true" ]]; then
+          bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../mobile-reviewed
+        else
+          bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+        fi
+        python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
         gh api "repos/$GITHUB_REPOSITORY/releases/tags/phone-latest" > "$RUNNER_TEMP/client-before.json"
     - name: Setup Java 17 (Temurin)
       uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
@@ -566,7 +571,7 @@ jobs:
         # PHONE_VERSION_CODE est déjà vérifié supérieur aux versions publiées.
         PLAY_VERSION_CODE="$PHONE_VERSION_CODE"
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.8 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.9 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
@@ -606,8 +611,15 @@ jobs:
         assert actual == source, "Commit reconstruit différent du lancement"
         bundle=Path("build/play-review/7motion.aab")
         # Vérifier les deux logos réellement embarqués, pas seulement leur source.
+        reference_decoder={
+            "base/lib/arm64-v8a/libffmpegJNI.so": "47247da50df2a92976cf792421c1ed63507e4197cb29c9c36d5981c1c79f2525",
+            "base/lib/armeabi-v7a/libffmpegJNI.so": "6410d251c8f599c8c9723fad693a88430add6539b098799a90e593af9c6b7160",
+            "base/lib/x86_64/libffmpegJNI.so": "f14cf078d1e054b4700416ddb7f69d593b515f5f7e22d2f6f114f38d3b5d6989",
+        }
         logos={}
         with zipfile.ZipFile(bundle) as archive:
+            for member,digest in reference_decoder.items():
+                assert hashlib.sha256(archive.read(member)).hexdigest() == digest, "Décodeur différent du build NovaTube : "+member
             for name in ("7motion_launcher_red.png", "7motion_signature_red.png"):
                 asset="assets/branding/"+name
                 expected=hashlib.sha256(Path(asset).read_bytes()).hexdigest()
@@ -617,7 +629,8 @@ jobs:
         proof={
             "sourceSha": source,
             "mobileSourceSha": subprocess.check_output(["git", "-C", "../mobile-reviewed", "rev-parse", "HEAD"], text=True).strip(),
-            "backendUrl": "https://api.zuno8k.com",
+            "videoDecoderSha256": reference_decoder,
+            "videoReferenceSha": "40906981373998a861c14cffaa7f7d88eb063e42",
             "sourceTree": subprocess.check_output(["git", "-C", "../mission", "rev-parse", "HEAD^{tree}"], text=True).strip(),
             "mobileBaseSha": "37fdf3305c5de9d35e20fd6567df38008fc7a7ee",
             "package": report["package"], "versionCode": int(report["versionCode"]),

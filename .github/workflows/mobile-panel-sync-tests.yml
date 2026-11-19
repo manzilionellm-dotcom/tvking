@@ -36,6 +36,10 @@ concurrency:
 
 jobs:
   regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [reviewed, play]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -51,7 +55,7 @@ jobs:
       - name: Récupérer le candidat mobile déjà testé sur Android
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 69eee01d24f50d5e516935b94a189f791de0837c
+          ref: ${{ matrix.edition == 'play' && '8ea5a55075d8b5ad334643b780067c486a917f61' || '69eee01d24f50d5e516935b94a189f791de0837c' }}
           path: mobile-reviewed
           persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -61,19 +65,26 @@ jobs:
       - name: Préparer le code mobile sans fusionner la lignée TV
         working-directory: phone
         run: |
-          bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+          if [[ "${{ matrix.edition }}" == "play" ]]; then
+            bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../mobile-reviewed
+          else
+            bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+          fi
+          python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
           flutter pub get
           flutter gen-l10n
       - name: Vérifier la numérotation des APK publiés
         working-directory: phone
         run: bash ci/build_label_test.sh
       - name: Vérifier la classification du matériel sans appareil client
+        if: matrix.edition == 'reviewed'
         working-directory: phone
         run: bash ci/test-device-hardware-kind.sh
       - name: Analyser le code mobile complet
         working-directory: phone
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - name: Vérifier les gestes et les actions utilisateur corrigés
+        if: matrix.edition == 'reviewed'
         working-directory: phone
         run: flutter test --reporter expanded test/core/settled_page_view_test.dart test/features/playlists/library_refresh_test.dart test/features/playlists/import_return_test.dart
       - name: Vérifier les régressions et la suite mobile complète
@@ -85,7 +96,52 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: 7motion-premium-preview
+          name: 7motion-premium-preview-${{ matrix.edition }}
           path: phone/build/premium-captures/*.png
           if-no-files-found: ignore
+          retention-days: 14
+
+  android-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 8ea5a55075d8b5ad334643b780067c486a917f61
+          path: production
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Vérifier le rendu sur le téléphone Android avec deux mires locales
+        working-directory: phone
+        run: |
+          bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../production
+          python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libpulse0 python3-pil
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          bash ../mission/android-app/ci/mobile/novatube_video/android-playback-test.sh
+      - name: Conserver les trois captures de l’écran Android
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-mobile-video
+          path: phone/build/video-captures/*.png
+          if-no-files-found: error
           retention-days: 14
