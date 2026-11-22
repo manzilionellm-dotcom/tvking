@@ -1,0 +1,68 @@
+name: NOVATUBE MAX - genuine Android 14 relay recording
+
+on:
+  push:
+    branches: [feature/novatube-review-access-20261122]
+    paths:
+      - '.github/workflows/novatube-max-record-review.yml'
+      - 'android-app/ci/novatube_play_review/download_build.py'
+      - 'android-app/ci/novatube_play_review/dlna_receiver.py'
+      - 'android-app/ci/novatube_play_review/record_review.py'
+      - 'android-app/ci/novatube_play_review/run_emulator.sh'
+      - 'android-app/ci/novatube_play_review/SsdpResponder.java'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: novatube-max-review-recording-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Commit exact des sources de l'APK/AAB, indépendamment des scripts vidéo.
+  NOVATUBE_BUILD_COMMIT: 1139c92d500b70469d4fff4a52eb1ae6fd618dc3
+
+jobs:
+  record:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Installer les outils vidéo et OCR
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg tesseract-ocr python3-pil
+          sudo chmod 666 /dev/kvm
+      - name: Récupérer et vérifier le build exact sans nouvelle compilation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ci/novatube_play_review/download_build.py
+      - name: Filmer le vrai parcours utilisateur et vérifier son service Android
+        run: |
+          set -euo pipefail
+          mkdir -p build/novatube_review_recording
+          cp build/novatube_review_input/build-identity.json build/novatube_review_recording/
+          bash ci/novatube_play_review/run_emulator.sh \
+            build/novatube_review_input/NOVATUBE-MAX-1794878684-ci.apk \
+            build/novatube_review_recording
+      - name: Conserver la vidéo réelle et les preuves, y compris en cas d’échec
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: novatube-max-android14-recording-${{ github.run_id }}
+          path: |
+            android-app/build/novatube_review_recording/**
+            !android-app/build/novatube_review_recording/media/**
+          if-no-files-found: warn
+          retention-days: 14
