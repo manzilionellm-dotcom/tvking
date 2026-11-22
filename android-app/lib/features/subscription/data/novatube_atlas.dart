@@ -9,7 +9,7 @@
 //
 //    POST /api/novatube4k/register  { raw_mac }   → fiche + essai serveur
 //    POST /api/novatube4k/state     { raw_mac }   → licence + listes du panel
-//    POST /api/novatube4k/redeem    { raw_mac, access_code } → code consommé
+//    POST /api/novatube4k/redeem    { raw_mac, access_code } → accès ou récupération
 //    POST /api/novatube4k/ack       { raw_mac, source_rev, applied, app_version }
 //    POST /api/novatube4k/panel     { raw_mac, model, … } → présence, signaux
 //    POST /api/novatube4k/blackbox  { raw_mac, text }    → journal de la box
@@ -144,15 +144,21 @@ class NovatubeAtlas {
       // On attend donc l'inscription authentifiée normale avant l'échange.
       if (!_registered) {
         await readStatus();
-        if (!_registered) {
-          return recoveryCode.value == null
-              ? NovatubeRedemption.unavailable
-              : NovatubeRedemption.deviceAuthRequired;
+        if (!_registered && recoveryCode.value == null) {
+          return NovatubeRedemption.unavailable;
         }
       }
+      // Après réinstallation, seul un code déjà lié à une attribution
+      // admissible peut réassocier la nouvelle clé côté serveur. Un conflit
+      // d'inscription n'empêche donc pas cette vérification explicite ; il
+      // n'autorise aucune réassociation ni licence du côté de l'application.
       final NovatubeReply reply =
           await post('redeem', <String, Object?>{'access_code': code});
-      if (reply.ok) return NovatubeRedemption.accepted;
+      if (reply.ok) {
+        _registered = true;
+        recoveryCode.value = null;
+        return NovatubeRedemption.accepted;
+      }
       switch (reply.status) {
         case 400:
         case 403:

@@ -256,13 +256,43 @@ void main() {
       expect(read.status.plan, 'lifetime');
     });
 
-    test('clé en conflit : aucune tentative de code sur une autre fiche', () async {
-      replies.add((_) => http.Response(
-          '{"ok":false,"recovery":{"code":"482913"}}', 409));
+    test('réinstallation : un code peut faire vérifier une attribution existante', () async {
+      replies.addAll(<http.Response Function(http.Request)>[
+        (_) => http.Response('{"ok":false,"recovery":{"code":"482913"}}', 409),
+        (_) => http.Response('{"ok":true,"redeemed":false}', 200),
+        (_) => http.Response(jsonEncode(_state(kind: 'paid', expiresIn: null)), 200),
+      ]);
       expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
-          NovatubeRedemption.deviceAuthRequired);
-      expect(seen.single.url.path, '/api/novatube4k/register');
+          NovatubeRedemption.accepted);
+      expect(seen.map((http.Request r) => r.url.path), <String>[
+        '/api/novatube4k/register',
+        '/api/novatube4k/redeem',
+      ]);
+      expect(NovatubeAtlas.instance.recoveryCode.value, isNull);
+      expect(seen.last.headers['X-Device-Key'], seen.first.headers['X-Device-Key']);
+      final RemoteStatusRead read = await NovatubeAtlas.instance.readStatus();
+      expect(seen.last.url.path, '/api/novatube4k/state');
+      expect(read.status.paid, isTrue);
+      expect(read.status.plan, 'lifetime');
+    });
+
+    test('réinstallation refusée : conserve le conflit sans fabriquer de licence', () async {
+      replies.addAll(<http.Response Function(http.Request)>[
+        (_) => http.Response('{"ok":false,"recovery":{"code":"482913"}}', 409),
+        (_) => http.Response('{"ok":false,"error":"redemption_conflict"}', 409),
+      ]);
+      expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
+          NovatubeRedemption.conflict);
+      expect(seen.length, 2);
       expect(NovatubeAtlas.instance.recoveryCode.value, '482913');
+      expect(NovatubeAtlas.instance.servedSources, isNull);
+    });
+
+    test('inscription hors ligne : aucun code envoyé sans fiche connue', () async {
+      replies.add((_) => http.Response('{"ok":false}', 503));
+      expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
+          NovatubeRedemption.unavailable);
+      expect(seen.single.url.path, '/api/novatube4k/register');
     });
 
     for (final MapEntry<int, NovatubeRedemption> failure
