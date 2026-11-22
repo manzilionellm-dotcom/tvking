@@ -1503,5 +1503,14 @@
   "novatubeStatusExpired": "Adgangen er udløbet. Dine playlister bevares: giv din kode til din forhandler for at genaktivere.",
   "novatubeStatusSuspended": "Licens suspenderet. Kontakt din forhandler.",
   "novatubePlayerNotice": "NovaTube er en afspiller: der leveres ingen kanaler eller tv-abonnement.",
-  "novatubeRecoveryCode": "Hjælpekode til din forhandler: {code}"
+  "novatubeRecoveryCode": "Hjælpekode til din forhandler: {code}",
+  "novatubeAccessCode": "Adgangskode",
+  "novatubeAccessCodeHelp": "Indtast den kode, du har modtaget, for at aktivere denne enhed.",
+  "novatubeRedeemCode": "Aktivér",
+  "novatubeCodeInvalid": "Ugyldig kode. Kontrollér den, og prøv igen.",
+  "novatubeCodeDeviceAuth": "Denne enhed skal tilknyttes. Kontrollér din adgang, eller brug supportkoden på velkomstskærmen.",
+  "novatubeCodeConflict": "Denne kode kan ikke aktivere denne enhed. Kontakt din udbyder.",
+  "novatubeCodeRateLimited": "For mange forsøg. Vent et par minutter, og prøv igen.",
+  "novatubeCodeUnavailable": "Bekræftelse er ikke tilgængelig. Kontrollér forbindelsen, og prøv igen.",
+  "novatubeCodeAccepted": "Koden er accepteret. Kontrollér din adgang, hvis licensen ikke opdateres."
 }

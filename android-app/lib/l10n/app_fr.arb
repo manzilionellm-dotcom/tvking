@@ -3302,5 +3302,14 @@
   "novatubePlayerNotice": "NovaTube est un lecteur : aucune chaîne ni aucun abonnement TV n'est fourni.",
   "@novatubePlayerNotice": {"description": "Édition NovaTube TV : rappel juridique, l'app ne fournit aucun contenu."},
   "novatubeRecoveryCode": "Code d'assistance pour votre revendeur : {code}",
-  "@novatubeRecoveryCode": {"description": "Édition NovaTube TV : code temporaire de réassociation (données de l'app effacées).", "placeholders": {"code": {"type": "String"}}}
+  "@novatubeRecoveryCode": {"description": "Édition NovaTube TV : code temporaire de réassociation (données de l'app effacées).", "placeholders": {"code": {"type": "String"}}},
+  "novatubeAccessCode": "Code d’accès",
+  "novatubeAccessCodeHelp": "Entrez le code d’accès qui vous a été remis pour activer cet appareil.",
+  "novatubeRedeemCode": "Activer",
+  "novatubeCodeInvalid": "Code invalide. Vérifiez-le et réessayez.",
+  "novatubeCodeDeviceAuth": "Cet appareil doit être associé. Vérifiez votre accès ou utilisez le code d’assistance affiché sur l’accueil.",
+  "novatubeCodeConflict": "Ce code ne peut pas activer cet appareil. Contactez votre fournisseur.",
+  "novatubeCodeRateLimited": "Trop de tentatives. Patientez quelques minutes puis réessayez.",
+  "novatubeCodeUnavailable": "Vérification indisponible. Vérifiez votre connexion et réessayez.",
+  "novatubeCodeAccepted": "Code accepté. Vérifiez votre accès si la licence ne s’actualise pas."
 }

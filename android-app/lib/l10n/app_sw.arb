@@ -1503,5 +1503,14 @@
   "novatubeStatusExpired": "Ufikiaji umeisha. Orodha zako zimehifadhiwa: mpe muuzaji msimbo wako ili kuwasha tena.",
   "novatubeStatusSuspended": "Leseni imesimamishwa. Wasiliana na muuzaji wako.",
   "novatubePlayerNotice": "NovaTube ni kicheza video: hakuna chaneli wala usajili wa TV unaotolewa.",
-  "novatubeRecoveryCode": "Msimbo wa msaada kwa muuzaji wako: {code}"
+  "novatubeRecoveryCode": "Msimbo wa msaada kwa muuzaji wako: {code}",
+  "novatubeAccessCode": "Msimbo wa ufikiaji",
+  "novatubeAccessCodeHelp": "Weka msimbo wa ufikiaji uliopokea ili kuwezesha kifaa hiki.",
+  "novatubeRedeemCode": "Wezesha",
+  "novatubeCodeInvalid": "Msimbo si sahihi. Uangalie na ujaribu tena.",
+  "novatubeCodeDeviceAuth": "Kifaa hiki kinahitaji kuunganishwa. Angalia ufikiaji wako au tumia msimbo wa usaidizi kwenye skrini ya kukaribisha.",
+  "novatubeCodeConflict": "Msimbo huu hauwezi kuwezesha kifaa hiki. Wasiliana na mtoa huduma wako.",
+  "novatubeCodeRateLimited": "Majaribio mengi sana. Subiri dakika chache kisha ujaribu tena.",
+  "novatubeCodeUnavailable": "Uthibitishaji haupatikani. Angalia muunganisho wako na ujaribu tena.",
+  "novatubeCodeAccepted": "Msimbo umekubaliwa. Angalia ufikiaji wako ikiwa leseni haijasasishwa."
 }

@@ -18,6 +18,7 @@ import 'package:tv_king/features/device/data/novatube_identity.dart';
 import 'package:tv_king/features/playlists/domain/open_source_input.dart';
 import 'package:tv_king/features/tv/presentation/tv_add_source_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_novatube_welcome_screen.dart';
+import 'package:tv_king/features/tv/presentation/tv_novatube_access_code_dialog.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 
 import 'ahem_fonts.dart';
@@ -69,10 +70,27 @@ void main() {
     expect(find.text(_mac), findsOneWidget);
     expect(find.text("Licence en attente d'activation"), findsOneWidget);
     expect(find.text('Vérifier mon accès'), findsOneWidget);
+    expect(find.text('Code d’accès'), findsOneWidget);
     // Le client ne voit jamais le nom du panel ni une adresse de serveur.
     expect(find.textContaining('Atlas'), findsNothing);
     expect(find.textContaining('http'), findsNothing);
     expect(find.textContaining('zuno8k'), findsNothing);
+  });
+
+  testWidgets('le code d’accès ouvre un formulaire vide, sans changer la licence',
+      (WidgetTester tester) async {
+    await _pumpWelcome(tester);
+    final Finder button =
+        find.byKey(const ValueKey<String>('novatube-welcome-code'));
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.byType(TvNovatubeAccessCodeDialog), findsOneWidget);
+    expect(tester.widget<TextFormField>(find.byType(TextFormField)).controller!.text,
+        isEmpty);
+    await tester.tap(find.text('Annuler'));
+    await tester.pumpAndSettle();
+    expect(find.text("Licence en attente d'activation"), findsOneWidget);
   });
 
   testWidgets('le bouton M3U ouvre le formulaire M3U', (WidgetTester tester) async {

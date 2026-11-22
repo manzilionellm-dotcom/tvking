@@ -2940,5 +2940,14 @@
   "novatubeStatusExpired": "Accesso scaduto. Le tue playlist sono conservate: comunica il tuo codice al rivenditore per riattivare.",
   "novatubeStatusSuspended": "Licenza sospesa. Contatta il tuo rivenditore.",
   "novatubePlayerNotice": "NovaTube è un lettore: non fornisce canali né abbonamenti TV.",
-  "novatubeRecoveryCode": "Codice di assistenza per il tuo rivenditore: {code}"
+  "novatubeRecoveryCode": "Codice di assistenza per il tuo rivenditore: {code}",
+  "novatubeAccessCode": "Codice di accesso",
+  "novatubeAccessCodeHelp": "Inserisci il codice di accesso ricevuto per attivare questo dispositivo.",
+  "novatubeRedeemCode": "Attiva",
+  "novatubeCodeInvalid": "Codice non valido. Controllalo e riprova.",
+  "novatubeCodeDeviceAuth": "Questo dispositivo deve essere associato. Verifica il tuo accesso o usa il codice di assistenza nella schermata iniziale.",
+  "novatubeCodeConflict": "Questo codice non può attivare questo dispositivo. Contatta il tuo fornitore.",
+  "novatubeCodeRateLimited": "Troppi tentativi. Attendi qualche minuto e riprova.",
+  "novatubeCodeUnavailable": "Verifica non disponibile. Controlla la connessione e riprova.",
+  "novatubeCodeAccepted": "Codice accettato. Verifica il tuo accesso se la licenza non si aggiorna."
 }

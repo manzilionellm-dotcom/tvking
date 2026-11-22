@@ -1571,5 +1571,14 @@
   "novatubeStatusExpired": "Access expired. Your playlists are kept: give your code to your reseller to reactivate.",
   "novatubeStatusSuspended": "Licence suspended. Contact your reseller.",
   "novatubePlayerNotice": "NovaTube is a player: no channels or TV subscription are provided.",
-  "novatubeRecoveryCode": "Support code for your reseller: {code}"
+  "novatubeRecoveryCode": "Support code for your reseller: {code}",
+  "novatubeAccessCode": "Access code",
+  "novatubeAccessCodeHelp": "Enter the access code you received to activate this device.",
+  "novatubeRedeemCode": "Activate",
+  "novatubeCodeInvalid": "Invalid code. Check it and try again.",
+  "novatubeCodeDeviceAuth": "This device must be linked. Check your access or use the support code shown on the welcome screen.",
+  "novatubeCodeConflict": "This code cannot activate this device. Contact your provider.",
+  "novatubeCodeRateLimited": "Too many attempts. Wait a few minutes and try again.",
+  "novatubeCodeUnavailable": "Verification unavailable. Check your connection and try again.",
+  "novatubeCodeAccepted": "Code accepted. Check your access if the licence does not update."
 }

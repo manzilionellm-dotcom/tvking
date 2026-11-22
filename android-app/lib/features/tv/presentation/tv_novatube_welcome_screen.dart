@@ -46,6 +46,7 @@ import '../core/tv_focusable.dart';
 import '../core/tv_tokens.dart';
 import 'tv_add_source_screen.dart';
 import 'tv_components.dart';
+import 'tv_novatube_access_code_dialog.dart';
 import 'tv_shell.dart';
 
 class TvNovatubeWelcomeScreen extends StatefulWidget {
@@ -62,6 +63,7 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
   // « … » tant que l'identité n'est pas lue (quelques millisecondes).
   String _mac = '…';
   bool _busy = false;
+  bool _codeDialogOpen = false;
 
   @override
   void initState() {
@@ -95,6 +97,31 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
       RemoteActivationWatch.instance.nudge();
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Le code passe par Atlas ; seule la relecture normale de la licence
+  /// peut ouvrir TvGate. Même un succès de `redeem` n'invente pas un accès
+  /// local si la vérification suivante échoue ou si le serveur le bloque.
+  Future<void> _openAccessCode() async {
+    if (_busy || _codeDialogOpen) return;
+    _codeDialogOpen = true;
+    try {
+      final bool? accepted = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const TvNovatubeAccessCodeDialog(),
+      );
+      if (accepted != true || !mounted) return;
+      await _checkAccess();
+      if (mounted &&
+          SubscriptionState.instance.status != SubscriptionStatus.paid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.novatubeCodeAccepted)),
+        );
+      }
+    } finally {
+      _codeDialogOpen = false;
     }
   }
 
@@ -231,13 +258,28 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 22),
-                    SizedBox(
-                      width: 360,
-                      child: TvCtaButton(
-                        autofocus: widget.licenseOnly,
-                        label: _busy ? l10n.tvChecking : l10n.novatubeCheckAccess,
-                        onSelect: _busy ? null : _checkAccess,
-                      ),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 20,
+                      runSpacing: 16,
+                      children: <Widget>[
+                        SizedBox(
+                          width: 360,
+                          child: TvCtaButton(
+                            autofocus: widget.licenseOnly,
+                            label: _busy ? l10n.tvChecking : l10n.novatubeCheckAccess,
+                            onSelect: _busy ? null : _checkAccess,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 360,
+                          child: TvCtaButton(
+                            key: const ValueKey<String>('novatube-welcome-code'),
+                            label: l10n.novatubeAccessCode,
+                            onSelect: _busy ? null : _openAccessCode,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 22),
                     if (widget.licenseOnly)

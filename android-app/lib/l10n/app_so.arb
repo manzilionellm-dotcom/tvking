@@ -3253,5 +3253,14 @@
   "novatubeStatusExpired": "Gelitaanku wuu dhacay. Liisaskaagu waa la hayaa: sii koodhkaaga iibiyaha si dib loogu hawlgeliyo.",
   "novatubeStatusSuspended": "Shatiga waa la hakiyay. La xiriir iibiyahaaga.",
   "novatubePlayerNotice": "NovaTube waa ciyaariye: lama bixiyo wax kanaal ah ama rukummo TV ah.",
-  "novatubeRecoveryCode": "Koodhka caawimaadda ee iibiyahaaga: {code}"
+  "novatubeRecoveryCode": "Koodhka caawimaadda ee iibiyahaaga: {code}",
+  "novatubeAccessCode": "Koodhka gelitaanka",
+  "novatubeAccessCodeHelp": "Geli koodhka gelitaanka ee lagu siiyay si aad u hawlgeliso qalabkan.",
+  "novatubeRedeemCode": "Hawl geli",
+  "novatubeCodeInvalid": "Koodhku sax ma aha. Hubi oo mar kale isku day.",
+  "novatubeCodeDeviceAuth": "Qalabkan waa in la xiriiriyaa. Hubi gelitaankaaga ama isticmaal koodhka taageerada ee shaashadda soo-dhaweynta.",
+  "novatubeCodeConflict": "Koodhkani ma hawlgelin karo qalabkan. La xiriir bixiyahaaga.",
+  "novatubeCodeRateLimited": "Isku dayo aad u badan. Sug dhowr daqiiqo oo mar kale isku day.",
+  "novatubeCodeUnavailable": "Xaqiijinta lama heli karo. Hubi xiriirkaaga oo mar kale isku day.",
+  "novatubeCodeAccepted": "Koodhka waa la aqbalay. Hubi gelitaankaaga haddii rukhsaddu aysan cusboonaysiin."
 }

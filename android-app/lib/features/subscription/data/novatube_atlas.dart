@@ -9,6 +9,7 @@
 //
 //    POST /api/novatube4k/register  { raw_mac }   → fiche + essai serveur
 //    POST /api/novatube4k/state     { raw_mac }   → licence + listes du panel
+//    POST /api/novatube4k/redeem    { raw_mac, access_code } → code consommé
 //    POST /api/novatube4k/ack       { raw_mac, source_rev, applied, app_version }
 //    POST /api/novatube4k/panel     { raw_mac, model, … } → présence, signaux
 //    POST /api/novatube4k/blackbox  { raw_mac, text }    → journal de la box
@@ -41,6 +42,18 @@ class NovatubeReply {
   final int status;
   final Map<String, dynamic>? body;
   bool get ok => status == 200 && body?['ok'] == true;
+}
+
+/// Verdict d'un code d'accès, sans le code lui-même ni un corps serveur
+/// susceptible de contenir des informations privées. « accepted » signifie
+/// seulement que le serveur l'a reconnu : la licence se relit par `state`.
+enum NovatubeRedemption {
+  accepted,
+  invalidCode,
+  deviceAuthRequired,
+  conflict,
+  rateLimited,
+  unavailable,
 }
 
 class NovatubeAtlas {
@@ -106,6 +119,59 @@ class NovatubeAtlas {
       return RemoteStatusRead.offline;
     } catch (_) {
       return RemoteStatusRead.offline;
+    }
+  }
+
+  /// Les codes sont saisis ou collés. On tolère la casse et les espaces
+  /// autour, mais on ne corrige pas un caractère ambigu à la place du client.
+  /// Ce format n'accorde aucun accès : seul le serveur peut accepter le code.
+  static String? normalizeAccessCode(String input) {
+    final String code = input.trim().toUpperCase();
+    return RegExp(r'^NVMAX-(?:[0-9A-F]{8}-){3}[0-9A-F]{8}$').hasMatch(code)
+        ? code
+        : null;
+  }
+
+  /// Échange explicite d'un code contre une licence pour CET appareil.
+  /// La clé d'installation et la MAC suivent le même canal que `state`.
+  /// Le code n'est ni sauvegardé, ni journalisé, ni utilisé pour fabriquer
+  /// un état payé local. Après succès, l'écran relit l'état normal du serveur.
+  Future<NovatubeRedemption> redeemAccessCode(String input) async {
+    final String? code = normalizeAccessCode(input);
+    if (code == null) return NovatubeRedemption.invalidCode;
+    try {
+      // Un utilisateur peut ouvrir le dialogue avant la première veille.
+      // On attend donc l'inscription authentifiée normale avant l'échange.
+      if (!_registered) {
+        await readStatus();
+        if (!_registered) {
+          return recoveryCode.value == null
+              ? NovatubeRedemption.unavailable
+              : NovatubeRedemption.deviceAuthRequired;
+        }
+      }
+      final NovatubeReply reply =
+          await post('redeem', <String, Object?>{'access_code': code});
+      if (reply.ok) return NovatubeRedemption.accepted;
+      switch (reply.status) {
+        case 400:
+        case 403:
+          return NovatubeRedemption.invalidCode;
+        case 401:
+          // La fiche a pu être supprimée depuis la dernière lecture :
+          // le prochain essai repassera par l'inscription habituelle.
+          _registered = false;
+          return NovatubeRedemption.deviceAuthRequired;
+        case 409:
+          return NovatubeRedemption.conflict;
+        case 429:
+          return NovatubeRedemption.rateLimited;
+        default:
+          return NovatubeRedemption.unavailable;
+      }
+    } catch (_) {
+      // Aucun détail réseau (et surtout aucun code) dans le journal.
+      return NovatubeRedemption.unavailable;
     }
   }
 

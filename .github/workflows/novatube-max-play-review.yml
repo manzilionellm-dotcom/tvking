@@ -1,0 +1,122 @@
+name: NOVATUBE MAX - build Play 1794878684
+
+# Branche de préparation uniquement. Aucun envoi Play, aucune publication APK,
+# aucune clé de signature durable dans ce travail de compilation.
+on:
+  push:
+    branches: [feature/novatube-review-access-20261122]
+    paths:
+      - 'android-app/lib/**'
+      - 'android-app/packages/**'
+      - 'android-app/test/novatube_tv/**'
+      - 'android-app/ci/novatube_play_review/prepare_play.py'
+      - 'android-app/ci/novatube_play_review/verify_build.py'
+      - '.github/workflows/novatube-max-play-review.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: novatube-max-play-build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  ZUNO_APP_ID: com.sevenmotion.novatube.tv
+  ZUNO_APP_LABEL: NOVATUBE MAX
+  NOVATUBE_VERSION_CODE: '1794878684'
+  NOVATUBE_VERSION_NAME: '1.0.1'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+
+      - name: Préparer le manifeste et la marque de cette édition Play
+        run: |
+          set -euo pipefail
+          test ! -f android/key.properties
+          python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
+          python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
+          cp ci/proguard-rules.pro android/app/proguard-rules.pro
+          python3 ci/novatube_tv/prepare_build.py
+          flutter pub get
+          flutter gen-l10n
+          dart run flutter_launcher_icons -f flutter_launcher_icons_novatube_tv.yaml
+          python3 ci/tv/apply_splash.py
+          python3 ci/novatube_tv/prepare_build.py --splash-color
+          python3 ci/novatube_play_review/prepare_play.py
+
+      - name: Compatibilité du plugin de luminosité avec Gradle
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          for path in Path.home().glob('.pub-cache/hosted/pub.dev/screen_brightness_android-*/android/build.gradle'):
+              kept, depth, inside = [], 0, False
+              for line in path.read_text().splitlines(keepends=True):
+                  if not inside and re.match(r'^\s*kotlin\s*\{', line):
+                      inside = True
+                      depth = line.count('{') - line.count('}')
+                      inside = depth > 0
+                      continue
+                  if inside:
+                      depth += line.count('{') - line.count('}')
+                      inside = depth > 0
+                  else:
+                      kept.append(line)
+              path.write_text(''.join(kept))
+          PY
+
+      - name: Vérifier les changements de l’édition NovaTube
+        run: |
+          set -euo pipefail
+          flutter analyze --no-pub --no-fatal-infos \
+            lib/features/subscription/data/novatube_atlas.dart \
+            lib/features/tv/presentation/tv_novatube_welcome_screen.dart \
+            test/novatube_tv
+          flutter test --no-pub --dart-define=NOVATUBE_TV=true test/novatube_tv
+
+      - name: Compiler AAB et APK avec les mêmes paramètres de production
+        run: |
+          set -euo pipefail
+          args=(--release --no-pub --no-tree-shake-icons \
+            --android-skip-build-dependency-validation \
+            --target-platform android-arm,android-arm64,android-x64 \
+            --build-name="$NOVATUBE_VERSION_NAME" --build-number="$NOVATUBE_VERSION_CODE" \
+            --dart-define=NOVATUBE_TV=true --dart-define=PLAY_BUILD=true \
+            --dart-define=APP_BUILD_TS="$NOVATUBE_VERSION_CODE" \
+            --dart-define=GIT_SHA="$GITHUB_SHA" --target=lib/main_tv.dart)
+          flutter build appbundle "${args[@]}"
+          flutter build apk "${args[@]}"
+          mkdir -p build/novatube_play_review
+          cp build/app/outputs/bundle/release/app-release.aab build/novatube_play_review/NOVATUBE-MAX-1794878684-ci.aab
+          cp build/app/outputs/flutter-apk/app-release.apk build/novatube_play_review/NOVATUBE-MAX-1794878684-ci.apk
+          cp android/app/src/main/AndroidManifest.xml build/novatube_play_review/source-manifest.xml
+          python3 ci/novatube_play_review/verify_build.py build/novatube_play_review
+
+      - name: Conserver les binaires et leur provenance, sans clé de signature
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: novatube-max-play-1794878684-${{ github.sha }}
+          path: android-app/build/novatube_play_review/
+          if-no-files-found: error
+          retention-days: 14

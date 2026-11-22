@@ -2940,5 +2940,14 @@
   "novatubeStatusExpired": "Erişim süresi doldu. Listeleriniz korunur: yeniden etkinleştirmek için kodunuzu bayinize verin.",
   "novatubeStatusSuspended": "Lisans askıya alındı. Bayinizle iletişime geçin.",
   "novatubePlayerNotice": "NovaTube bir oynatıcıdır: hiçbir kanal veya TV aboneliği sağlanmaz.",
-  "novatubeRecoveryCode": "Bayiniz için destek kodu: {code}"
+  "novatubeRecoveryCode": "Bayiniz için destek kodu: {code}",
+  "novatubeAccessCode": "Erişim kodu",
+  "novatubeAccessCodeHelp": "Bu cihazı etkinleştirmek için size verilen erişim kodunu girin.",
+  "novatubeRedeemCode": "Etkinleştir",
+  "novatubeCodeInvalid": "Geçersiz kod. Kodu kontrol edip tekrar deneyin.",
+  "novatubeCodeDeviceAuth": "Bu cihazın eşleştirilmesi gerekiyor. Erişiminizi kontrol edin veya karşılama ekranındaki destek kodunu kullanın.",
+  "novatubeCodeConflict": "Bu kod bu cihazı etkinleştiremiyor. Sağlayıcınızla iletişime geçin.",
+  "novatubeCodeRateLimited": "Çok fazla deneme yapıldı. Birkaç dakika bekleyip tekrar deneyin.",
+  "novatubeCodeUnavailable": "Doğrulama kullanılamıyor. Bağlantınızı kontrol edip tekrar deneyin.",
+  "novatubeCodeAccepted": "Kod kabul edildi. Lisans güncellenmezse erişiminizi kontrol edin."
 }

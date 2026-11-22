@@ -2940,5 +2940,14 @@
   "novatubeStatusExpired": "访问已过期。您的播放列表已保留：将代码提供给经销商即可重新激活。",
   "novatubeStatusSuspended": "许可证已暂停。请联系您的经销商。",
   "novatubePlayerNotice": "NovaTube 是一款播放器：不提供任何频道或电视订阅。",
-  "novatubeRecoveryCode": "提供给经销商的协助代码：{code}"
+  "novatubeRecoveryCode": "提供给经销商的协助代码：{code}",
+  "novatubeAccessCode": "访问代码",
+  "novatubeAccessCodeHelp": "输入您收到的访问代码以激活此设备。",
+  "novatubeRedeemCode": "激活",
+  "novatubeCodeInvalid": "代码无效。请检查后重试。",
+  "novatubeCodeDeviceAuth": "需要关联此设备。请检查您的访问权限，或使用欢迎屏幕上显示的支持代码。",
+  "novatubeCodeConflict": "此代码无法激活此设备。请联系您的提供商。",
+  "novatubeCodeRateLimited": "尝试次数过多。请等待几分钟后重试。",
+  "novatubeCodeUnavailable": "暂时无法验证。请检查网络连接后重试。",
+  "novatubeCodeAccepted": "代码已接受。如果许可证未更新，请检查您的访问权限。"
 }

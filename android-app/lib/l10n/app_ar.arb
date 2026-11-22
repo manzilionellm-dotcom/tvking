@@ -1503,5 +1503,14 @@
   "novatubeStatusExpired": "انتهى الوصول. قوائمك محفوظة: أعطِ رمزك للموزّع لإعادة التفعيل.",
   "novatubeStatusSuspended": "الترخيص معلّق. تواصل مع الموزّع.",
   "novatubePlayerNotice": "NovaTube مشغّل فقط: لا يوفّر أي قنوات أو اشتراك تلفزيوني.",
-  "novatubeRecoveryCode": "رمز المساعدة للموزّع: {code}"
+  "novatubeRecoveryCode": "رمز المساعدة للموزّع: {code}",
+  "novatubeAccessCode": "رمز الوصول",
+  "novatubeAccessCodeHelp": "أدخل رمز الوصول الذي تلقيته لتفعيل هذا الجهاز.",
+  "novatubeRedeemCode": "تفعيل",
+  "novatubeCodeInvalid": "الرمز غير صالح. تحقّق منه وحاول مجددًا.",
+  "novatubeCodeDeviceAuth": "يجب ربط هذا الجهاز. تحقّق من وصولك أو استخدم رمز الدعم الظاهر في شاشة الترحيب.",
+  "novatubeCodeConflict": "لا يمكن لهذا الرمز تفعيل هذا الجهاز. تواصل مع مزوّدك.",
+  "novatubeCodeRateLimited": "محاولات كثيرة جدًا. انتظر بضع دقائق وحاول مجددًا.",
+  "novatubeCodeUnavailable": "التحقّق غير متاح. تحقّق من اتصالك وحاول مجددًا.",
+  "novatubeCodeAccepted": "تم قبول الرمز. تحقّق من وصولك إذا لم يتم تحديث الترخيص."
 }

@@ -1503,5 +1503,14 @@
   "novatubeStatusExpired": "Åtkomsten har gått ut. Dina spellistor sparas: ge din kod till din återförsäljare för att återaktivera.",
   "novatubeStatusSuspended": "Licensen är avstängd. Kontakta din återförsäljare.",
   "novatubePlayerNotice": "NovaTube är en spelare: inga kanaler eller tv-abonnemang tillhandahålls.",
-  "novatubeRecoveryCode": "Hjälpkod till din återförsäljare: {code}"
+  "novatubeRecoveryCode": "Hjälpkod till din återförsäljare: {code}",
+  "novatubeAccessCode": "Åtkomstkod",
+  "novatubeAccessCodeHelp": "Ange åtkomstkoden du fick för att aktivera den här enheten.",
+  "novatubeRedeemCode": "Aktivera",
+  "novatubeCodeInvalid": "Ogiltig kod. Kontrollera den och försök igen.",
+  "novatubeCodeDeviceAuth": "Den här enheten måste kopplas. Kontrollera din åtkomst eller använd supportkoden på välkomstskärmen.",
+  "novatubeCodeConflict": "Den här koden kan inte aktivera den här enheten. Kontakta din leverantör.",
+  "novatubeCodeRateLimited": "För många försök. Vänta några minuter och försök igen.",
+  "novatubeCodeUnavailable": "Verifiering är inte tillgänglig. Kontrollera anslutningen och försök igen.",
+  "novatubeCodeAccepted": "Koden har godkänts. Kontrollera din åtkomst om licensen inte uppdateras."
 }

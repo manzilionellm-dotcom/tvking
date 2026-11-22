@@ -19,6 +19,8 @@ import 'package:tv_king/features/subscription/data/novatube_atlas.dart';
 import 'package:tv_king/features/subscription/data/subscription_backend.dart';
 
 const int _day = 24 * 60 * 60 * 1000;
+// Valeur factice : aucun de ces tests ne contacte un serveur réel.
+const String _accessCode = 'NVMAX-01234567-89ABCDEF-01234567-89ABCDEF';
 
 Map<String, dynamic> _state({
   String status = 'active',
@@ -125,6 +127,25 @@ void main() {
     });
   });
 
+  group('format du code d’accès', () {
+    test('coller un code en minuscules avec espaces autour est accepté', () {
+      expect(NovatubeAtlas.normalizeAccessCode('  ${_accessCode.toLowerCase()}\n'),
+          _accessCode);
+    });
+
+    test('un code tronqué, ambigu ou un code appareil reste invalide', () {
+      for (final String input in <String>[
+        '',
+        'MK:12:34:56:78:90',
+        _accessCode.substring(0, _accessCode.length - 1),
+        _accessCode.replaceFirst('A', 'G'),
+        _accessCode.replaceFirst('-', ' '),
+      ]) {
+        expect(NovatubeAtlas.normalizeAccessCode(input), isNull);
+      }
+    });
+  });
+
   group('client HTTP (faux serveur, aucun réseau)', () {
     late List<http.Request> seen;
     late List<http.Response Function(http.Request)> replies;
@@ -196,6 +217,98 @@ void main() {
       final RemoteStatusRead r = await NovatubeAtlas.instance.readStatus();
       expect(r.reached, isFalse);
       expect(NovatubeAtlas.instance.servedSources, isNull);
+    });
+
+    test('code invalide : aucun appel réseau ni inscription', () async {
+      expect(await NovatubeAtlas.instance.redeemAccessCode('invalid'),
+          NovatubeRedemption.invalidCode);
+      expect(seen, isEmpty);
+    });
+
+    test('code authentifié, non sauvegardé ; licence relue par state', () async {
+      replies.addAll(<http.Response Function(http.Request)>[
+        okState,
+        (_) => http.Response('{"ok":true,"redeemed":true}', 200),
+        (_) => http.Response(jsonEncode(_state(kind: 'paid', expiresIn: null)), 200),
+      ]);
+      final NovatubeRedemption result = await NovatubeAtlas.instance
+          .redeemAccessCode(' ${_accessCode.toLowerCase()} ');
+      expect(result, NovatubeRedemption.accepted);
+      expect(seen.map((http.Request r) => r.url.path), <String>[
+        '/api/novatube4k/register',
+        '/api/novatube4k/redeem',
+      ]);
+      expect(seen.last.headers['X-Device-Key'],
+          matches(RegExp(r'^[a-f0-9]{64}$')));
+      expect(jsonDecode(seen.last.body), <String, dynamic>{
+        'raw_mac': 'BFE64C01681D',
+        'access_code': _accessCode,
+      });
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      expect(prefs.getKeys().any((String key) =>
+          prefs.get(key).toString().contains(_accessCode)), isFalse);
+      // Le succès de redeem n'a pas fabriqué une licence ou une liste.
+      // Seule cette lecture suivante apporte l'état payé réel.
+      expect(seen.length, 2);
+      final RemoteStatusRead read = await NovatubeAtlas.instance.readStatus();
+      expect(seen.last.url.path, '/api/novatube4k/state');
+      expect(read.status.paid, isTrue);
+      expect(read.status.plan, 'lifetime');
+    });
+
+    test('clé en conflit : aucune tentative de code sur une autre fiche', () async {
+      replies.add((_) => http.Response(
+          '{"ok":false,"recovery":{"code":"482913"}}', 409));
+      expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
+          NovatubeRedemption.deviceAuthRequired);
+      expect(seen.single.url.path, '/api/novatube4k/register');
+      expect(NovatubeAtlas.instance.recoveryCode.value, '482913');
+    });
+
+    for (final MapEntry<int, NovatubeRedemption> failure
+        in <int, NovatubeRedemption>{
+      400: NovatubeRedemption.invalidCode,
+      401: NovatubeRedemption.deviceAuthRequired,
+      403: NovatubeRedemption.invalidCode,
+      409: NovatubeRedemption.conflict,
+      429: NovatubeRedemption.rateLimited,
+      503: NovatubeRedemption.unavailable,
+    }.entries) {
+      test('code refusé HTTP ${failure.key} : verdict sûr, sans activation', () async {
+        replies.addAll(<http.Response Function(http.Request)>[
+          okState,
+          (_) => http.Response('{"ok":false,"error":"private_detail"}', failure.key),
+        ]);
+        expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
+            failure.value);
+        expect(seen.length, 2);
+      });
+    }
+
+    test('réponse invalide ou panne pendant échange : jamais accepté', () async {
+      replies.addAll(<http.Response Function(http.Request)>[
+        okState,
+        (_) => http.Response('<html>interruption</html>', 200),
+        (_) => throw http.ClientException('réseau coupé'),
+      ]);
+      expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
+          NovatubeRedemption.unavailable);
+      expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
+          NovatubeRedemption.unavailable);
+    });
+
+    test('une lecture suspendue après échange reste bloquée', () async {
+      replies.addAll(<http.Response Function(http.Request)>[
+        okState,
+        (_) => http.Response('{"ok":true,"redeemed":false}', 200),
+        (_) => http.Response(jsonEncode(_state(status: 'frozen')), 200),
+      ]);
+      expect(await NovatubeAtlas.instance.redeemAccessCode(_accessCode),
+          NovatubeRedemption.accepted);
+      final RemoteStatusRead read = await NovatubeAtlas.instance.readStatus();
+      expect(read.status.frozen, isTrue);
+      expect(read.status.paid, isFalse);
+      expect(read.status.trialUntil, 0);
     });
 
     test('accusé de réception des listes', () async {
