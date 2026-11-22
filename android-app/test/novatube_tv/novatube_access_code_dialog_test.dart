@@ -37,7 +37,6 @@ void main() {
     NovatubeAtlas.instance.resetForTesting();
     NovatubeAtlas.baseUrl = 'https://atlas.test';
     seen = <http.Request>[];
-    reply = Completer<http.Response>();
     accepted = null;
     NovatubeAtlas.clientFactory = () => MockClient((http.Request request) async {
           seen.add(request);
@@ -54,6 +53,9 @@ void main() {
   });
 
   Future<void> openDialog(WidgetTester tester, {Size size = const Size(1280, 720)}) async {
+    // Le futur HTTP appartient à la zone FakeAsync du test widget,
+    // pas à la zone réelle du setUp : pump peut ainsi traiter sa réponse.
+    reply = Completer<http.Response>();
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

@@ -47,8 +47,9 @@ identity = {
     'version_name': os.environ.get('NOVATUBE_VERSION_NAME', '1.0.1'),
     'source_commit': os.environ['GITHUB_SHA'],
     'source_run_id': os.environ['GITHUB_RUN_ID'],
+    'build_environment': 'github_actions' if os.environ.get('GITHUB_ACTIONS') == 'true' else 'local',
     'play_build': True,
-    'signing': 'CI debug key only; final stable-key signing happens separately',
+    'signing': 'Temporary test key only; final stable-key signing happens separately',
     'dart_libraries_sha256': libraries,
     'files': {p.name: {'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in [apk, aab]},
 }
