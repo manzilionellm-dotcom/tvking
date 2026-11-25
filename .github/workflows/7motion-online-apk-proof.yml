@@ -1,0 +1,58 @@
+name: 7 MOTION — valider le même APK en ligne sur Android 17
+on:
+  push:
+    branches: ['diag/7motion-online-20261125']
+    paths: ['.github/workflows/7motion-online-apk-proof.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  online:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: f0a93b90416838abcfbb03cf49ef6e1e6bfe257d
+          persist-credentials: false
+      - name: Récupérer l’artefact exact du correctif de test
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: 15021871757
+          run-id: 45611973771
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/startup-download
+          merge-multiple: true
+      - name: Vérifier l’empreinte du binaire reçu
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostic
+          mv "$RUNNER_TEMP/startup-download/7motion-startup-qa.apk" "$RUNNER_TEMP/delivered.apk"
+          echo 'b6f05175aa75d10eda0e365c62abf2aa9b62bf6a72fd323e09f9b536057dd669  delivered.apk' > diagnostic/SHA256SUMS
+          (cd "$RUNNER_TEMP" && sha256sum -c "$GITHUB_WORKSPACE/diagnostic/SHA256SUMS")
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Démarrer l’APK en ligne sur un émulateur vierge
+        env:
+          EXPECTED_PACKAGE: com.manzilionellm.tvking.qa.startup
+          ANDROID_API: '37.0'
+          IMAGE_TAG: google_apis_ps16k
+          NETWORK_MODE: online
+        run: |
+          set -euo pipefail
+          # Maintenir le droit du groupe de l'agent lorsque le noyau recrée KVM.
+          printf 'KERNEL=="kvm", GROUP="%s", MODE="0660"\n' "$(id -gn)" | sudo tee /etc/udev/rules.d/99-7motion-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo udevadm settle
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          bash android-app/ci/mobile/free/diagnose-delivered-apk.sh
+      - name: Conserver le diagnostic et la preuve de premier plan
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-android17-online-startup-0.4.2
+          path: diagnostic/
+          if-no-files-found: error
+          retention-days: 7
