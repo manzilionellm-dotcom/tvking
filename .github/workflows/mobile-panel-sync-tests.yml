@@ -214,6 +214,7 @@ jobs:
           python3 "$recipe/prepare_novatube_video.py"
           bash "$recipe/free/prepare-sources.sh"
           flutter create --no-pub --platforms=android --org com.manzilionellm.tvking --project-name tv_king .
+          cp "$recipe/novatube_video/production-pubspec.lock.fixture" pubspec.lock
           flutter pub get --enforce-lockfile
           flutter gen-l10n
       - name: Préparer Android avec les annonces de test et la signature debug
