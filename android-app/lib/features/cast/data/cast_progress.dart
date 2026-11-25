@@ -12,6 +12,8 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/i18n/l10n_now.dart';
+
 /// Étapes ordonnées d'une session de cast — du plus optimiste au
 /// plus dégradé. Toutes ne sont pas atteintes : si la 1ère réussit,
 /// on saute directement à [streaming].
@@ -96,29 +98,34 @@ class CastProgress {
   static const CastProgress idle =
       CastProgress(stage: CastStage.idle, message: '');
 
-  // ---- Constructeurs préfaits (français court, ton premium) ----
+  // ---- Constructeurs préfaits (message court, ton premium) ----
+  //
+  //  i18n : les messages sortent d'AppLocalizations via `l10nNow`
+  //  (langue active = choix Réglages sinon langue du téléphone).
+  //  Ce sont des getters (plus des const) : le message est résolu
+  //  au moment de l'émission, donc toujours dans la bonne langue.
 
-  static const CastProgress validating = CastProgress(
-    stage: CastStage.validatingStream,
-    message: 'Vérification du flux…',
-  );
+  static CastProgress get validating => CastProgress(
+        stage: CastStage.validatingStream,
+        message: l10nNow.castProgressValidating,
+      );
 
-  static const CastProgress detecting = CastProgress(
-    stage: CastStage.detectingReceiver,
-    message: 'Détection de la TV…',
-  );
+  static CastProgress get detecting => CastProgress(
+        stage: CastStage.detectingReceiver,
+        message: l10nNow.castProgressDetecting,
+      );
 
-  static const CastProgress relayStarting = CastProgress(
-    stage: CastStage.startingRelay,
-    message: 'Préparation du relais…',
-  );
+  static CastProgress get relayStarting => CastProgress(
+        stage: CastStage.startingRelay,
+        message: l10nNow.castProgressRelay,
+      );
 
   static CastProgress connecting({int attempt = 1, int total = 1}) {
     return CastProgress(
       stage: CastStage.connectingToReceiver,
       message: total > 1
-          ? 'Connexion à la TV ($attempt/$total)…'
-          : 'Connexion à la TV…',
+          ? l10nNow.castProgressConnectingAttempt(attempt, total)
+          : l10nNow.castProgressConnecting,
       attempt: attempt,
       totalAttempts: total,
     );
@@ -131,25 +138,25 @@ class CastProgress {
   }) {
     return CastProgress(
       stage: CastStage.retryingWithFallback,
-      message: 'Nouvel essai en mode compatible ($attempt/$total)…',
+      message: l10nNow.castProgressRetrying(attempt, total),
       attempt: attempt,
       totalAttempts: total,
       technicalDetail: reason,
     );
   }
 
-  static const CastProgress webFallback = CastProgress(
-    stage: CastStage.switchingToWebFallback,
-    message: 'Passage en mode universel (QR code)…',
-  );
+  static CastProgress get webFallback => CastProgress(
+        stage: CastStage.switchingToWebFallback,
+        message: l10nNow.castProgressWebFallback,
+      );
 
-  static const CastProgress live = CastProgress(
-    stage: CastStage.streaming,
-    message: 'Diffusion en cours sur la TV',
-  );
+  static CastProgress get live => CastProgress(
+        stage: CastStage.streaming,
+        message: l10nNow.castProgressLive,
+      );
 
-  static const CastProgress pausedState =
-      CastProgress(stage: CastStage.paused, message: 'Pause');
+  static CastProgress get pausedState =>
+      CastProgress(stage: CastStage.paused, message: l10nNow.playerPause);
 
   static CastProgress failure(String userMessage, {String? details}) {
     return CastProgress(

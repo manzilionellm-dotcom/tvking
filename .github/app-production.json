@@ -1,0 +1,13 @@
+{
+  "mode": "frozen",
+  "zunoTvReview": {
+    "scope": "zuno-tv",
+    "reviewedBy": "manzilionellm-dotcom",
+    "reviewedAt": "2026-11-04T23:28:10Z",
+    "expiresAt": "2026-11-05T18:00:00Z",
+    "reason": "Autorisation explicite du propriétaire, relayée par GROK_BOT dans cette conversation : fusionner les PR Zuno dans l’ordre, ajouter l’accueil « Ce soir » (#209) puis Phantom Black (#210) comme dernières fusions visuelles si leurs tests passent, publier la version 117 et fournir le lien Downloader. Le candidat c9684989665cfb44963f28b450b5d5288ef337fa ajoute #210 au train déjà arrivé sur ccr-b93e1afd-gwirw0 : #194, #195, #208 (qui porte #205 et #198), #207, #196, #197, #199, #200, #201, #204, #202, puis #209 avec #203. Phantom Black reste une option : Confort est l’apparence par défaut, et le reflet de focus est coupé sous 2 Go comme le prévoit #207. La fusion corrige un conflit que git ne voyait pas : sous Phantom Black, le verre, le fond et le halo du soir confort ne sont plus peints ; deux tests le fixent. La suite locale qui rejoue la CI (l10n, analyse sans erreur, 1 000 tests Flutter, tests Worker, gardes de configuration et scripts CI) est passée, et la PR #217 est verte sur ce commit, pixels du lecteur natif sur API 29 et API 35 compris. Un APK de contrôle signé debug, construit localement depuis ce commit, a réussi run-apk-startup.sh sur API 29 et API 35 : ouverture hors réseau, stabilité, vraie sortie et réouverture. Le futur APK 117 signé client doit réussir ses propres deux contrôles stricts sur le même binaire avant publication. Cette autorisation reprend la demande de livraison du propriétaire ; elle ne prétend ni à une revue humaine indépendante du code ni à un essai sur box physique. Le gel commun reste actif, aucun autre canal ni nettoyage n’est autorisé, et la fenêtre se termine le 5 novembre 2026 à 18:00 UTC sans prolongation.",
+    "sourceCommit": "c9684989665cfb44963f28b450b5d5288ef337fa",
+    "androidTree": "07686eaec2d638be91ea799b1e321b205c24f838",
+    "workflowBlob": "fe125745e59bf72cff31b99a2708693463e72f5a"
+  }
+}

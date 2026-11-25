@@ -1,0 +1,2898 @@
+diff --git a/test/realtime_sync_service_test.dart b/test/realtime_sync_service_test.dart
+index 71522773b7c88b102bc0e49b4f3d9e822e6c8665..2b76e6b5aa50500745bf09d70d0f0fb326c70d1d 100644
+--- a/test/realtime_sync_service_test.dart
++++ b/test/realtime_sync_service_test.dart
+@@ -13,48 +13,15 @@ import 'package:flutter_test/flutter_test.dart';
+ import 'package:tv_king/core/realtime/realtime_sync_service.dart';
+
+ void main() {
+-  group('computeBackoff', () {
+-    test('séquence nominale 5 → 10 → 30 → 60 → 120 s (jitter 0)', () {
+-      expect(RealtimeSyncService.computeBackoff(0),
+-          const Duration(seconds: 5));
+-      expect(RealtimeSyncService.computeBackoff(1),
+-          const Duration(seconds: 10));
+-      expect(RealtimeSyncService.computeBackoff(2),
+-          const Duration(seconds: 30));
+-      expect(RealtimeSyncService.computeBackoff(3),
+-          const Duration(seconds: 60));
+-      expect(RealtimeSyncService.computeBackoff(4),
+-          const Duration(seconds: 120));
+-    });
+-
+-    test('plafonné à 120 s au-delà du dernier palier', () {
+-      expect(RealtimeSyncService.computeBackoff(5),
+-          const Duration(seconds: 120));
+-      expect(RealtimeSyncService.computeBackoff(42),
+-          const Duration(seconds: 120));
+-    });
+-
+-    test('un attempt négatif retombe sur le 1er palier', () {
+-      expect(RealtimeSyncService.computeBackoff(-3),
+-          const Duration(seconds: 5));
+-    });
+-
+-    test('jitter ±20 % appliqué proportionnellement', () {
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: 0.2),
+-          const Duration(seconds: 6)); // 5 s +20 %
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: -0.2),
+-          const Duration(seconds: 4)); // 5 s −20 %
+-      expect(RealtimeSyncService.computeBackoff(4, jitter: 0.1),
+-          const Duration(seconds: 132)); // 120 s +10 %
+-    });
+-
+-    test('jitter hors bornes ramené dans [−0.2, +0.2]', () {
+-      // Un jitter aberrant (bug d'appelant) ne doit JAMAIS produire un
+-      // délai nul ou démesuré : il est borné à ±20 %.
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: 5.0),
+-          const Duration(seconds: 6));
+-      expect(RealtimeSyncService.computeBackoff(0, jitter: -5.0),
+-          const Duration(seconds: 4));
++  group('computeBackoff — reconnexion 1 à 30 s', () {
++    test('séquence et plafond, même avec jitter', () {
++      for (final MapEntry<int, int> item in <int>[1, 2, 4, 8, 16, 30, 30].asMap().entries) {
++        expect(RealtimeSyncService.computeBackoff(item.key), Duration(seconds: item.value));
++      }
++      expect(RealtimeSyncService.computeBackoff(-1), const Duration(seconds: 1));
++      expect(RealtimeSyncService.computeBackoff(999, jitter: 0.2), const Duration(seconds: 30));
++      expect(RealtimeSyncService.computeBackoff(0, jitter: -5), const Duration(seconds: 1));
++      expect(RealtimeSyncService.computeBackoff(1, jitter: 5), const Duration(milliseconds: 2400));
+     });
+   });
+
+diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
+index 303938d3dc4be731b25cef7f413763e1d19ba880..610a90775a4531a7e79236b589b46a4b034b1241 100644
+--- a/lib/core/app/panel_live_wait.dart
++++ b/lib/core/app/panel_live_wait.dart
+@@ -1,33 +1,8 @@
+-// =========================================================
+-//  panel_live_wait.dart — le panel joint le téléphone À L'INSTANT
+-// =========================================================
+-//  POURQUOI CE FICHIER EXISTE (06/10/2026).
+-//
+-//  Mesuré par le propriétaire sur son téléphone (MK:30:70:0E:D7:5B) :
+-//  « Effacer les listes » dans le panel → le serveur ne sert plus aucune
+-//  liste (0/3), mais le téléphone garde ses listes. Ajouter une liste →
+-//  « Pas encore de chaînes ». Le téléphone ne lisait le panel qu'à
+-//  l'ouverture, au réveil (foreground_sync.dart) et toutes les 60 s :
+-//  rien n'était instantané.
+-//
+-//  La box, elle, écoute le serveur en direct. Ici, le même canal en sa
+-//  forme la plus simple : l'ATTENTE LONGUE du Worker
+-//    GET /api/box/wait/<MAC>?after=<dernier numéro>&timeout=25000
+-//  Le serveur garde la requête ouverte jusqu'à 25 s et répond DÈS qu'un
+-//  ordre part pour cette MAC (liste ajoutée, retirée, éteinte, effacée,
+-//  activation…). Le téléphone relit alors ses listes et sa licence tout
+-//  de suite, par le chemin habituel (RemoteSourceRepository.sync, qui
+-//  porte aussi les ordres et l'effacement du panel).
+-//
+-//  Règles :
+-//    • seulement app au premier plan (batterie, données) ;
+-//    • une seule relecture à la fois ; un ordre qui arrive pendant une
+-//      relecture en relance UNE après (rien n'est perdu, pas de rafale) ;
+-//    • serveur sans canal (404) → on s'arrête, le minuteur de 60 s reste ;
+-//    • panne réseau → réessai après 2, 4, 8… 30 s ;
+-//    • aucun secret dans la requête ni dans le journal (MAC + numéro).
+-//  Repli : préférence `zuno.mobile.live_wait_off` = vrai → pas d'écoute.
+-// =========================================================
++// Synchronisation du téléphone : le WebSocket de RealtimeSyncService
++// et le repli HTTP partagent la même file d'ordres et le même curseur par MAC.
++// Une coupure déclenche une interrogation toutes les 5 s. L'ordre reste
++// rejouable tant que l'état local ET son accusé ne sont pas confirmés.
++// Aucun secret ni identifiant fournisseur dans les trames ou les journaux.
+ import 'dart:async';
+ import 'dart:convert';
+
+@@ -35,11 +10,23 @@ import 'package:flutter/foundation.dart';
+ import 'package:flutter/widgets.dart';
+ import 'package:http/http.dart' as http;
+ import 'package:shared_preferences/shared_preferences.dart';
++import 'package:package_info_plus/package_info_plus.dart';
+
+ import '../../features/device/data/device_identity.dart';
++import '../../features/device/data/device_secret.dart';
+ import '../../features/playlists/data/remote_source_repository.dart';
+ import '../../features/subscription/data/subscription_backend.dart';
+ import '../../features/subscription/data/subscription_state.dart';
++import '../../features/simple_home/data/announcement_repository.dart';
++import '../../features/theme/data/remote_theme_repository.dart';
++import '../../features/pricing/data/pricing_repository.dart';
++import '../../features/simple_home/data/home_layout_repository.dart';
++import '../../features/country_home/data/featured_repository.dart';
++import '../../features/ads/data/startup_ad_repository.dart';
++import '../../features/feedback/data/feedback_repository.dart';
++import '../../features/playlists/data/default_servers.dart';
++import '../../features/about/data/force_update_checker.dart';
++import '../update/build_flags.dart';
+
+ /// Préférence de repli : vrai = pas d'écoute en direct (ancien comportement).
+ const String kLiveWaitOffKey = 'zuno.mobile.live_wait_off';
+@@ -87,7 +74,7 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
+ /// Délai avant de réessayer après [failures] échecs d'affilée.
+ Duration liveWaitBackoff(int failures) {
+   if (failures <= 0) return Duration.zero;
+-  final int s = 1 << (failures.clamp(1, 5)); // 2, 4, 8, 16, 32
++  final int s = 1 << (failures.clamp(1, 6) - 1); // 1, 2, 4, 8, 16, 30
+   return Duration(seconds: s > 30 ? 30 : s);
+ }
+
+@@ -101,9 +88,22 @@ class PanelLiveWait with WidgetsBindingObserver {
+   @visibleForTesting
+   http.Client Function() clientFactory = http.Client.new;
+
++  /// Cadence du repli à vide, remplaçable dans les tests du cycle réseau.
++  @visibleForTesting
++  Duration pollPeriod = const Duration(seconds: 5);
++
+   static Future<void> _defaultOnChange() async {
++    if (!await SubscriptionState.instance.refreshAfterPanel()) {
++      throw StateError('statut non confirmé après l’ordre');
++    }
++    // Une suspension réussie ferme volontairement la lecture des sources.
++    // Elle doit être accusée après le verrouillage local, sans lire des codes
++    // désormais interdits. Un ordre de liste attendra un accès rétabli.
++    if (SubscriptionState.instance.remote.shouldBlock) {
++      RemoteSourceRepository.lastConfigRev = null;
++      return;
++    }
+     final RemoteSyncResult result = await RemoteSourceRepository.sync();
+-    await SubscriptionState.instance.syncIfStale(force: true);
+     // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
+     // ce contrôle, une suppression reçue pendant une coupure réseau
+     // était marquée « traitée » avant d'avoir été appliquée localement.
+@@ -111,16 +111,330 @@ class PanelLiveWait with WidgetsBindingObserver {
+         result == RemoteSyncResult.sourceFailed) {
+       throw StateError('synchronisation des sources : ${result.name}');
+     }
++    // L'inventaire suit sans retarder l'affichage de la liste ni son accusé.
++    unawaited(SubscriptionState.instance.syncWithBackend());
+   }
+
+   bool _installed = false;
+   bool _running = false;
+   int _generation = 0;
+   http.Client? _client;
++  bool socketOnline = false;
++  int _cursor = 0;
++  String? _cursorMac;
++  Future<void> _ordersTail = Future<void>.value();
++
++  Future<int> cursorFor(String mac) async {
++    final prefs = await SharedPreferences.getInstance();
++    if (_cursorMac != mac) {
++      _cursor = prefs.getInt(liveWaitCursorKey(mac)) ?? 0;
++      _cursorMac = mac;
++    }
++    return _cursor;
++  }
++
++  /// Le WebSocket et le repli partagent UNE file et UN curseur durable.
++  Future<void> acceptSocketFrame(Map<String, dynamic> frame) async {
++    final String mac = await DeviceIdentity.instance.mac;
++    if (frame['mac'] != mac || frame['seq'] is! num) return;
++    await _consume(
++      <String, Object?>{
++        'box': <Object?>[
++          <String, Object?>{
++            'id': frame['seq'],
++            'kind': frame['type'],
++            'order_id': frame['order_id'],
++          },
++        ],
++      },
++      mac,
++      _generation,
++      fromSocket: true,
++    );
++  }
++
++  Future<http.Response> _wait(
++    http.Client client,
++    String mac,
++    int cursor,
++  ) async {
++    return client
++        .get(
++          Uri.parse(
++            '$kSubscriptionBaseUrl/api/box/wait/$mac?after=$cursor&timeout=200',
++          ),
++          headers: await DeviceSecret.instance.headers(),
++        )
++        .timeout(const Duration(seconds: 5));
++  }
++
++  Future<void> _consume(
++    Object? body,
++    String mac,
++    int gen, {
++    bool fromSocket = false,
++  }) {
++    final Future<void> operation = _ordersTail.then((_) async {
++      if (gen != _generation || await DeviceIdentity.instance.mac != mac)
++        return;
++      final int cursor = await cursorFor(mac);
++      final LiveWaitStep step = readLiveWait(body, cursor);
++      if (!step.changed) return;
++      Object? pending = body;
++      if (fromSocket && step.cursor != cursor + 1) {
++        // Un paquet précédent a pu échouer ou être perdu. Seul le journal
++        // HTTP du serveur peut dire quels ordres restent à confirmer.
++        final client = clientFactory();
++        try {
++          final response = await _wait(client, mac, cursor);
++          if (response.statusCode != 200)
++            throw StateError('journal indisponible');
++          pending = jsonDecode(response.body);
++          if (readLiveWait(pending, cursor).cursor < step.cursor) {
++            throw StateError('journal incomplet');
++          }
++        } finally {
++          client.close();
++        }
++      }
++      if (pending is! Map || pending['box'] is! List) return;
++      final commands =
++          (pending['box'] as List)
++              .whereType<Map<Object?, Object?>>()
++              .where(
++                (item) => item['id'] is int && (item['id'] as int) > cursor,
++              )
++              .toList()
++            ..sort((a, b) => (a['id'] as int).compareTo(b['id'] as int));
++      // L'API accuse au maximum 20 ordres par POST. Un curseur n'est
++      // sauvegardé qu'après acceptation de toutes les réponses du lot.
++      for (int offset = 0; offset < commands.length; offset += 20) {
++        final batch = commands.skip(offset).take(20).toList();
++        if (gen != _generation || await DeviceIdentity.instance.mac != mac)
++          return;
++        await _applyTracked({'box': batch}, _cursor, mac, gen);
++        if (gen != _generation || await DeviceIdentity.instance.mac != mac)
++          return;
++        final int last = batch.last['id'] as int;
++        final bool saved = await (await SharedPreferences.getInstance()).setInt(
++          liveWaitCursorKey(mac),
++          last,
++        );
++        if (!saved) throw StateError('curseur non enregistré');
++        _cursor = last;
++      }
++    });
++    _ordersTail = operation.then<void>(
++      (_) {},
++      onError: (Object _, StackTrace __) {},
++    );
++    return operation;
++  }
+
+   Future<void>? _syncing;
+   bool _again = false;
+
++  /// Accusé du protocole réellement déployé (box_orders), sans identifiants
++  /// fournisseur. Un HTTP 200 contenant une erreur par ordre reste un refus.
++  Future<bool> _ack(
++    String mac,
++    List<Map<String, Object?>> orders, {
++    Set<String>? terminal,
++  }) async {
++    if (orders.isEmpty) return true;
++    final http.Client client = clientFactory();
++    try {
++      final http.Response response = await client
++          .post(
++            Uri.parse('$kSubscriptionBaseUrl/api/box/ack/$mac'),
++            headers: await DeviceSecret.instance.headers(jsonBody: true),
++            body: jsonEncode(<String, Object?>{'orders': orders}),
++          )
++          .timeout(const Duration(seconds: 8));
++      if (response.statusCode != 200) return false;
++      final Object? decoded = jsonDecode(response.body);
++      if (decoded is! Map || decoded['results'] is! List) return false;
++      final List<dynamic> results = decoded['results'] as List<dynamic>;
++      for (final order in orders) {
++        final id = order['order_id'];
++        final matches = results.whereType<Map<Object?, Object?>>().where(
++          (row) => row['order_id'] == id,
++        );
++        if (matches.length != 1) return false;
++        final row = matches.single;
++        if (row['status'] != 200 || row['error'] != null) return false;
++        final state = row['state'];
++        if (order['state'] == 'received' &&
++            (state == 'applied' || state == 'failed')) {
++          terminal?.add(id as String);
++          continue;
++        }
++        // Le Worker accepte encore un accusé final après expiration, mais le
++        // premier accusé « reçu » laisse cet ordre dans l'état « expired ».
++        if (order['state'] == 'received' && state == 'expired') continue;
++        if (state != order['state']) return false;
++      }
++      return true;
++    } catch (_) {
++      return false;
++    } finally {
++      client.close();
++    }
++  }
++
++  Future<void> _applyTracked(
++    Object? body,
++    int cursor,
++    String mac,
++    int gen,
++  ) async {
++    final List<Map<String, Object?>> tracked = <Map<String, Object?>>[];
++    if (body is Map && body['box'] is List) {
++      for (final Object? item in body['box'] as List) {
++        if (item is! Map || item['id'] is! num || (item['id'] as num) <= cursor)
++          continue;
++        final String id = '${item['order_id'] ?? ''}';
++        if (!RegExp(r'^[A-Za-z0-9_.:-]{8,80}$').hasMatch(id)) continue;
++        tracked.add(<String, Object?>{
++          'order_id': id,
++          'kind': '${item['kind'] ?? ''}',
++        });
++      }
++    }
++    final int received = DateTime.now().millisecondsSinceEpoch;
++    String version = '';
++    final terminal = <String>{};
++    if (tracked.isNotEmpty) {
++      try {
++        version = (await PackageInfo.fromPlatform()).version;
++      } catch (_) {}
++      final bool receivedOk = await _ack(mac, <Map<String, Object?>>[
++        for (final item in tracked)
++          <String, Object?>{
++            'order_id': item['order_id'],
++            'state': 'received',
++            'received_at': received,
++            'app_version': version,
++          },
++      ], terminal: terminal);
++      if (!receivedOk) throw StateError('réception non confirmée');
++      tracked.removeWhere((order) => terminal.contains(order['order_id']));
++    }
++    try {
++      final List<dynamic> commands = body is Map && body['box'] is List
++          ? body['box'] as List<dynamic>
++          : <dynamic>[];
++      final Set<String> kinds = commands
++          .whereType<Map<Object?, Object?>>()
++          .where((item) => !terminal.contains(item['order_id']))
++          .map((item) => '${item['kind'] ?? ''}')
++          .toSet();
++      const statusKinds = <String>{
++        'activate',
++        'renew',
++        'expire',
++        'suspend',
++        'resume',
++        'block',
++        'transfer',
++        'device_delete',
++        'license',
++        'source',
++        'source_clear',
++      };
++      const configKinds = <String>{
++        'theme',
++        'pricing',
++        'home',
++        'featured',
++        'ad',
++        'feedback',
++        'servers',
++        'force_update',
++        'message',
++      };
++      if (kinds.any(statusKinds.contains)) await trigger();
++      // Chaque accusé attend la relecture de SON réglage. Un serveur en
++      // erreur ne transforme jamais un ancien cache en succès appliqué.
++      for (final String kind in kinds) {
++        switch (kind) {
++          case 'theme':
++            await RemoteThemeRepository.fetchAndApply(strict: true);
++            break;
++          case 'pricing':
++            await PricingRepository.fetch(strict: true);
++            break;
++          case 'home':
++            await HomeLayoutRepository.instance.refresh(strict: true);
++            break;
++          case 'featured':
++            await FeaturedRepository.instance.refresh(strict: true);
++            break;
++          case 'ad':
++            await StartupAdRepository.instance.fetch(strict: true);
++            break;
++          case 'feedback':
++            await FeedbackRepository.instance.reload(strict: true);
++            break;
++          case 'servers':
++            await DefaultServersApi.fetch(forceRefresh: true, strict: true);
++            break;
++          case 'force_update':
++            if (kIsPlayBuild) break;
++            await ForceUpdateChecker.instance.mustUpdate(strict: true);
++            ForceUpdateChecker.instance.requestRecheck();
++            break;
++        }
++      }
++      const sourceKinds = <String>{'source', 'source_clear'};
++      final restricted = SubscriptionState.instance.remote.shouldBlock;
++      String? rejection(Object? kind) {
++        if (kind == 'force_update' && kIsPlayBuild)
++          return 'update_managed_by_play';
++        if (sourceKinds.contains(kind) && restricted)
++          return 'source_access_restricted';
++        if (!statusKinds.contains(kind) && !configKinds.contains(kind))
++          return 'unsupported_on_phone';
++        return null;
++      }
++
++      if (!restricted &&
++          tracked.any((item) => sourceKinds.contains(item['kind'])) &&
++          RemoteSourceRepository.lastConfigRev == null) {
++        throw StateError('révision des listes non appliquée');
++      }
++      if (kinds.contains('message')) {
++        await AnnouncementRepository.refreshFromPanel();
++      }
++      if (gen != _generation || await DeviceIdentity.instance.mac != mac) {
++        throw StateError('installation modifiée');
++      }
++      final bool confirmed = await _ack(mac, <Map<String, Object?>>[
++        for (final item in tracked)
++          <String, Object?>{
++            'order_id': item['order_id'],
++            'state': rejection(item['kind']) == null ? 'applied' : 'failed',
++            'received_at': received,
++            'applied_at': DateTime.now().millisecondsSinceEpoch,
++            'app_version': version,
++            if (rejection(item['kind']) == null)
++              'result': 'refreshed'
++            else
++              'error_code': rejection(item['kind']),
++            if (!restricted &&
++                sourceKinds.contains(item['kind']) &&
++                RemoteSourceRepository.lastConfigRev != null)
++              'config_rev': RemoteSourceRepository.lastConfigRev,
++          },
++      ]);
++      if (!confirmed) throw StateError('accusé non confirmé');
++    } catch (_) {
++      // « failed » est terminal dans le Worker exporté. Une panne réseau
++      // reste RECEIVED jusqu'à la reprise, elle ne doit pas condamner l'ordre.
++      rethrow;
++    }
++  }
++
+   /// À appeler une fois au démarrage du téléphone.
+   Future<void> install() async {
+     if (_installed) return;
+@@ -145,6 +459,7 @@ class PanelLiveWait with WidgetsBindingObserver {
+
+   void start() {
+     if (_running) return;
++    _cursorMac = null;
+     _running = true;
+     final int gen = ++_generation;
+     unawaited(_loop(gen));
+@@ -159,7 +474,6 @@ class PanelLiveWait with WidgetsBindingObserver {
+
+   /// Relecture unique : un ordre pendant une relecture en relance une
+   /// seule après, jamais deux en parallèle.
+-  @visibleForTesting
+   Future<void> trigger() {
+     final Future<void>? running = _syncing;
+     if (running != null) {
+@@ -187,76 +501,40 @@ class PanelLiveWait with WidgetsBindingObserver {
+   }
+
+   Future<void> _loop(int gen) async {
+-    int failures = 0;
+-    int cursor = 0;
+-    String? cursorMac;
+     while (_running && gen == _generation) {
+-      final String mac = await DeviceIdentity.instance.mac;
+-      if (gen != _generation) return;
+-      if (!mac.startsWith('MK:')) {
+-        _running = false;
+-        return;
+-      }
+-      if (cursorMac != mac) {
+-        cursorMac = mac;
+-        cursor = 0;
+-        failures = 0;
++      final DateTime next = DateTime.now().add(pollPeriod);
++      if (!socketOnline) {
++        final http.Client client = clientFactory();
++        _client = client;
++        bool received = false;
+         try {
+-          cursor =
+-              (await SharedPreferences.getInstance()).getInt(
+-                liveWaitCursorKey(mac),
+-              ) ??
+-              0;
+-        } catch (_) {}
+-        if (gen != _generation) return;
+-      }
+-      final http.Client client = clientFactory();
+-      _client = client;
+-      try {
+-        final Uri uri = Uri.parse(
+-          '$kSubscriptionBaseUrl/api/box/wait/$mac?after=$cursor&timeout=25000',
+-        );
+-        final http.Response resp = await client
+-            .get(
+-              uri,
+-              headers: const <String, String>{'Accept': 'application/json'},
+-            )
+-            .timeout(const Duration(seconds: 40));
+-        if (gen != _generation) return;
+-        if (resp.statusCode == 404) {
+-          // Serveur sans canal : le minuteur de 60 s reste le filet.
+-          if (kDebugMode) debugPrint('[PanelLiveWait] pas de canal (404)');
+-          _running = false;
+-          return;
+-        }
+-        if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
+-        final LiveWaitStep step = readLiveWait(jsonDecode(resp.body), cursor);
+-        // Le serveur conserve le signal dans son anneau. On attend la
+-        // vraie relecture AVANT d'avancer le curseur : un échec rejoue
+-        // le même ordre après backoff au lieu de le perdre jusqu'au poll.
+-        if (step.changed) await trigger();
+-        if (gen != _generation) return;
+-        final String currentMac = await DeviceIdentity.instance.mac;
+-        if (gen != _generation) return;
+-        if (currentMac != mac) continue;
+-        failures = 0;
+-        if (step.cursor != cursor) {
+-          cursor = step.cursor;
+-          try {
+-            await (await SharedPreferences.getInstance()).setInt(
+-              liveWaitCursorKey(mac),
+-              cursor,
+-            );
+-          } catch (_) {}
++          final String mac = await DeviceIdentity.instance.mac;
++          final int cursor = await cursorFor(mac);
++          final http.Response response = await _wait(client, mac, cursor);
++          if (gen != _generation) return;
++          if (response.statusCode == 200) {
++            final Object? body = jsonDecode(response.body);
++            received = readLiveWait(body, cursor).changed;
++            await _consume(body, mac, gen);
++          }
++          // Même sans canal serveur, le statut et les listes restent sondés.
++          if (!socketOnline && !received) await trigger();
++        } catch (_) {
++          if (gen != _generation) return;
++          if (!received) {
++            try {
++              await trigger();
++            } catch (_) {
++              /* Le prochain tour réessaie. */
++            }
++          }
++        } finally {
++          client.close();
++          if (identical(_client, client)) _client = null;
+         }
+-      } catch (e) {
+-        if (gen != _generation) return;
+-        failures++;
+-        if (kDebugMode) debugPrint('[PanelLiveWait] attente : $e');
+-        await Future<void>.delayed(liveWaitBackoff(failures));
+-      } finally {
+-        client.close();
+-        if (identical(_client, client)) _client = null;
++      }
++      while (_running && gen == _generation && DateTime.now().isBefore(next)) {
++        await Future<void>.delayed(const Duration(milliseconds: 100));
+       }
+     }
+   }
+diff --git a/lib/core/backend/backend_hosts.dart b/lib/core/backend/backend_hosts.dart
+index 9af28ffe9c91269336107c3940e61353dbae8f2e..9c0694890211d7a5a38ee05011830d1b6f758e56 100644
+--- a/lib/core/backend/backend_hosts.dart
++++ b/lib/core/backend/backend_hosts.dart
+@@ -4,11 +4,9 @@
+ //  Le worker Cloudflare `seven-motion-backend` répond sur DEUX adresses
+ //  qui pointent sur le MÊME code et la MÊME base D1 :
+ //
+-//    1. https://app.7themotion.com                       (domaine maison)
+-//    2. https://seven-motion-backend.manzilionel-lm.workers.dev
+-//                                                        (adresse Cloudflare
+-//                                                         native, indépendante
+-//                                                         du DNS du domaine)
++//    1. https://api.zuno8k.com                       (domaine maison)
++//    2. https://app.7themotion.com
++//
+ //
+ //  Si le domaine maison casse (DNS Hostinger/Cloudflare, expiration,
+ //  blocage), le heartbeat bascule sur l'adresse de secours et TOUTE
+@@ -27,12 +25,10 @@ import '../observability/structured_logger.dart';
+
+ abstract final class BackendHosts {
+   /// Domaine maison — TOUJOURS essayé en premier (auto-guérison).
+-  static const String primary = 'https://app.7themotion.com';
++  static const String primary = 'https://api.zuno8k.com';
+
+-  /// Adresse Cloudflare native du MÊME worker — ne dépend pas du DNS
+-  /// du domaine maison. Secours uniquement.
+-  static const String backup =
+-      'https://seven-motion-backend.manzilionel-lm.workers.dev';
++  /// Autre domaine de production du même Worker et du même panel.
++  static const String backup = 'https://app.7themotion.com';
+
+   static const String _kPrefKey = 'backend.preferred_host';
+
+diff --git a/lib/core/realtime/realtime_sync_service.dart b/lib/core/realtime/realtime_sync_service.dart
+index 8b5cec4636e4a048144caac6dac6da6f4a910fde..2f01907a6d2e20b22daf2b5c6497fd32651f7468 100644
+--- a/lib/core/realtime/realtime_sync_service.dart
++++ b/lib/core/realtime/realtime_sync_service.dart
+@@ -6,7 +6,7 @@
+ //  complet : docs/REALTIME-PROTOCOL.md (§3 et §6).
+ //
+ //  Rôle :
+-//    1. Ouvrir un WebSocket vers le backend (`/api/rt/device`) avec le
++//    1. Ouvrir un WebSocket vers le backend (`/api/box/ws`) avec le
+ //       MAC virtuel de l'appareil — le panel voit alors l'appareil
+ //       « en ligne » en direct.
+ //    2. Recevoir les ordres `sync` (status / sources / config / all) et
+@@ -20,7 +20,7 @@
+ //  déployé, réseau KO, plateforme sans dart:io…), l'app se comporte
+ //  exactement comme avant. Aucune exception ne sort de ce service.
+ //
+-//  Reconnexion : backoff 5 → 10 → 30 → 60 → 120 s (plafond), jitter
++//  Reconnexion : backoff 1 → 2 → 4 → 8 → 16 → 30 s (plafond), jitter
+ //  ±20 %, remise à zéro après 60 s de connexion stable. Sur
+ //  `bye{reason:'replaced'}` (un autre appareil a pris le même MAC),
+ //  on attend directement le backoff MAXIMUM pour ne pas se battre.
+@@ -55,6 +55,8 @@ import '../../features/subscription/data/now_playing.dart';
+ import '../../features/subscription/data/subscription_state.dart';
+ import '../../features/theme/data/remote_theme_repository.dart';
+ import '../app/boot_guard.dart';
++import '../app/panel_live_wait.dart';
++import '../../features/device/data/device_secret.dart';
+ import '../app/build_info.dart';
+ import '../backend/backend_hosts.dart';
+ import '../profiles/remote_profiles_repository.dart';
+@@ -269,10 +271,10 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+   // ============================================================
+
+   /// Paliers de reconnexion (secondes) — contrat §6.
+-  static const List<int> kBackoffSeconds = <int>[5, 10, 30, 60, 120];
++  static const List<int> kBackoffSeconds = <int>[1, 2, 4, 8, 16, 30];
+
+   /// Durée de connexion au-delà de laquelle on considère la liaison
+-  /// « stable » → le prochain incident repart au 1er palier (5 s).
++  /// « stable » → le prochain incident repart au 1er palier (1 s).
+   static const Duration kStableAfter = Duration(seconds: 60);
+
+   /// « Activation express » — filet UNIVERSEL (téléphone + tablette + TV)
+@@ -315,7 +317,7 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+             : attempt);
+     final double j = jitter.clamp(-0.2, 0.2).toDouble();
+     final int ms = (kBackoffSeconds[idx] * 1000 * (1 + j)).round();
+-    return Duration(milliseconds: ms);
++    return Duration(milliseconds: ms.clamp(1000, 30000));
+   }
+
+   // ============================================================
+@@ -416,6 +418,7 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+     // Boîte de réception persistante : relève les messages déposés depuis
+     // le panel (livrés même si l'appareil était hors ligne à l'envoi).
+     unawaited(DeviceMessageRepository.fetchAndShow());
++    await PanelLiveWait.instance.install();
+     await _connect();
+   }
+
+@@ -499,6 +502,7 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+     }
+     if (_connected) {
+       _connected = false;
++      PanelLiveWait.instance.socketOnline = false;
+       notifyListeners();
+     }
+     await _connect();
+@@ -523,9 +527,10 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+           .replaceFirst('http://', 'ws://');
+       // `Uri.replace(queryParameters:)` encode tout proprement
+       // (les ':' du MAC deviennent %3A, comme attendu par le worker).
+-      final Uri uri = Uri.parse('$base/api/rt/device').replace(
++      final Uri uri = Uri.parse('$base/api/box/ws').replace(
+         queryParameters: <String, String>{
+           'mac': mac,
++          'after': '${await PanelLiveWait.instance.cursorFor(mac)}',
+           'platform': _platform,
+           'v': version,
+           'b': '$kBuildTs',
+@@ -539,7 +544,9 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+       // jamais écouté, jamais fermé — et l'appareil apparaîtrait « en
+       // ligne » en double sur le hub jusqu'au bye{replaced}. On garde la
+       // Future d'origine pour FERMER proprement ce socket retardataire.
+-      final Future<WebSocket> pending = WebSocket.connect(uri.toString());
++      await DeviceSecret.instance.enroll(mac);
++      final Future<WebSocket> pending = WebSocket.connect(uri.toString(),
++          headers: await DeviceSecret.instance.headers());
+       final WebSocket ws = await pending.timeout(
+         const Duration(seconds: 10),
+         onTimeout: () {
+@@ -551,12 +558,14 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+       );
+       _socket = ws;
+       _connected = true;
++      PanelLiveWait.instance.socketOnline = true;
++      ws.pingInterval = const Duration(seconds: 10);
+       _connecting = false;
+       notifyListeners();
+       if (kDebugMode) debugPrint('[Realtime] connecté ($_platform)');
+
+       // Après 60 s sans incident, la liaison est jugée stable → le
+-      // prochain souci repartira au 1er palier (5 s).
++      // prochain souci repartira au 1er palier (1 s).
+       _stableTimer?.cancel();
+       _stableTimer = Timer(kStableAfter, () => _attempt = 0);
+
+@@ -575,11 +584,11 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+       _startTimers();
+
+       ws.listen(
+-        _onFrame,
+-        onDone: _onClosed,
++        (data) { if (identical(_socket, ws)) _onFrame(data); },
++        onDone: () { if (identical(_socket, ws)) _onClosed(); },
+         onError: (Object e) {
+           if (kDebugMode) debugPrint('[Realtime] socket error: $e');
+-          _onClosed();
++          if (identical(_socket, ws)) _onClosed();
+         },
+         cancelOnError: true,
+       );
+@@ -604,6 +613,7 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+     _stableTimer?.cancel(); // (déjà tiré si la liaison était stable)
+     if (_connected) {
+       _connected = false;
++      PanelLiveWait.instance.socketOnline = false;
+       notifyListeners();
+     }
+     if (kDebugMode) debugPrint('[Realtime] déconnecté');
+@@ -633,11 +643,10 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+
+   void _startTimers() {
+     _stopTimers();
+-    // Keepalive : frame TEXTE littérale 'ping' toutes les 45 s. Le hub
+-    // répond 'pong' sans même se réveiller (setWebSocketAutoResponse).
+-    _pingTimer = Timer.periodic(const Duration(seconds: 45), (_) {
++    // Battement applicatif toutes les 10 s ; le DO renouvelle la présence.
++    _pingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+       try {
+-        _socket?.add('ping');
++        _socket?.add('{"v":1,"type":"hello"}');
+       } catch (e) {
+         if (kDebugMode) debugPrint('[Realtime] ping: $e');
+       }
+@@ -690,6 +699,16 @@ class RealtimeSyncService extends ChangeNotifier with WidgetsBindingObserver {
+     try {
+       if (data is! String) return; // frames binaires : hors contrat
+       if (data == 'pong') return; // réponse au keepalive
++      final Object? decoded = jsonDecode(data);
++      if (decoded is Map<String, dynamic>) {
++        if (decoded['type'] == 'hello') { _attempt = 0; return; }
++        if (decoded['seq'] is num && decoded['mac'] is String) {
++          unawaited(PanelLiveWait.instance.acceptSocketFrame(decoded).then((_) {
++            notifyListeners();
++          }).catchError((Object _) { unawaited(forceReconnect()); }));
++          return;
++        }
++      }
+       final RtEvent? event = RtEvent.parse(data);
+       if (event == null) return; // non-JSON / type inconnu → silencieux
+       switch (event.type) {
+diff --git a/lib/features/about/data/force_update_checker.dart b/lib/features/about/data/force_update_checker.dart
+index f318d873c116f702bdbaff59cc3cdc942c7068d0..e7a1e7263d8e3bcb34121ed99786ff8934b2ecbd 100644
+--- a/lib/features/about/data/force_update_checker.dart
++++ b/lib/features/about/data/force_update_checker.dart
+@@ -48,7 +48,7 @@ class ForceUpdateChecker {
+
+   /// `true` si l'app installée doit être mise à jour de force.
+   Future<bool> mustUpdate(
+-      {Duration timeout = const Duration(seconds: 6)}) async {
++      {Duration timeout = const Duration(seconds: 6), bool strict = false}) async {
+     // Play Store : la mise à jour forcée passe par le Store, pas par
+     // le sideload GitHub. On ne déclenche jamais ce flux côté Play.
+     if (kIsPlayBuild) return false;
+@@ -59,16 +59,23 @@ class ForceUpdateChecker {
+         '&platform=${AppPlatform.id}',
+       );
+       final http.Response resp = await http.get(uri).timeout(timeout);
+-      if (resp.statusCode != 200) return false;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Seuil de mise à jour non confirmé');
++        return false;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return false;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Seuil de mise à jour invalide');
++        return false;
++      }
+       final Object? raw = decoded['minBuildTs'];
+       final int minBuildTs =
+           raw is int ? raw : int.tryParse('${raw ?? 0}') ?? 0;
+       // Obsolète UNIQUEMENT si l'admin a posé un seuil ET qu'on est avant.
+       return minBuildTs > 0 && kBuildTs < minBuildTs;
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[ForceUpdate] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[ForceUpdate] ${e.runtimeType}');
+       return false; // fail-open
+     }
+   }
+diff --git a/lib/features/about/presentation/about_screen.dart b/lib/features/about/presentation/about_screen.dart
+index e9d6d219f0b13394e6b811e55c4de4a07930c771..922b2c13d7a13b6efae59a6f01b564ade066d11d 100644
+--- a/lib/features/about/presentation/about_screen.dart
++++ b/lib/features/about/presentation/about_screen.dart
+@@ -164,7 +164,7 @@ class _AboutScreenState extends State<AboutScreen> {
+                 label: context.l10n.aboutPrivacyPolicy,
+                 onTap: () => _openUrl(
+                   // Même politique et domaine que la fiche du store.
+-                  'https://app.7themotion.com/privacy',
++                  'https://7themotion.pages.dev/7motion-free/privacy/',
+                 ),
+                 external: true,
+               ),
+diff --git a/lib/features/ads/data/startup_ad_repository.dart b/lib/features/ads/data/startup_ad_repository.dart
+index 881d8eddb0bbc9823a205d6e4b9cb2783c42d119..3138a40ad31ecf5fd352c49116e6d688863dedaa 100644
+--- a/lib/features/ads/data/startup_ad_repository.dart
++++ b/lib/features/ads/data/startup_ad_repository.dart
+@@ -42,14 +42,20 @@ class StartupAdRepository {
+   AdConfig get config => _config;
+
+   /// Récupère la config distante. Retourne la config (mise en cache).
+-  Future<AdConfig> fetch() async {
++  Future<AdConfig> fetch({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/ad'))
+           .timeout(const Duration(seconds: 5));
+-      if (resp.statusCode != 200) return _config;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return _config;
++      }
+       final Object? d = jsonDecode(resp.body);
+-      if (d is! Map) return _config;
++      if (d is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return _config;
++      }
+       final String url = (d['url'] ?? '').toString();
+       final Object? rawSkip = d['skip'];
+       final int skip = rawSkip is int
+@@ -62,7 +68,8 @@ class StartupAdRepository {
+         freq: (d['freq'] ?? 'always').toString(),
+       );
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[StartupAd] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[StartupAd] ${e.runtimeType}');
+     }
+     return _config;
+   }
+diff --git a/lib/features/channels/presentation/widgets/source_choice_sheet.dart b/lib/features/channels/presentation/widgets/source_choice_sheet.dart
+index 60dea573735797ae62db2a2f17d88c27f0fe50c3..4010a5ccaecbd82db6eec5449ba4b68a9eac9966 100644
+--- a/lib/features/channels/presentation/widgets/source_choice_sheet.dart
++++ b/lib/features/channels/presentation/widgets/source_choice_sheet.dart
+@@ -23,6 +23,7 @@ import '../../../../core/i18n/l10n_extension.dart';
+ import '../../../../core/support/vip_support.dart';
+ import '../../../../core/theme/app_colors.dart';
+ import '../../../../core/theme/app_text_styles.dart';
++import '../../../../core/update/build_flags.dart';
+ import '../../../../core/widgets/legal_disclaimer.dart';
+ import '../../../device/data/device_identity.dart';
+ import '../../../onboarding/data/device_class_repository.dart';
+@@ -32,6 +33,7 @@ import 'mac_activation_view.dart';
+
+ /// Ouvre la feuille de choix de source depuis l'accueil.
+ Future<void> showSourceChoiceSheet(BuildContext context) {
++  if (kIsPlayBuild) return showM3uLoginSheet(context);
+   return showModalBottomSheet<void>(
+     context: context,
+     backgroundColor: AppColors.surface,
+diff --git a/lib/features/country_home/data/featured_repository.dart b/lib/features/country_home/data/featured_repository.dart
+index 2216627d81323680e7fee010e95b9967d9656fcd..022393e22a0c43b43120a6f277a4d352ab63a8bc 100644
+--- a/lib/features/country_home/data/featured_repository.dart
++++ b/lib/features/country_home/data/featured_repository.dart
+@@ -2,7 +2,7 @@
+ //  featured_repository.dart — "Favori du jour" (piloté panel)
+ // =========================================================
+ //  L'admin met une chaîne en avant chaque jour (ex. TF1 + « Mondial
+-// aujourd'hui »). L'app la lit ici et l'affiche dans son grand HERO
++//  aujourd'hui ⚽ »). L'app la lit ici et l'affiche dans son grand HERO
+ //  d'accueil à la place du #1 automatique — pour que l'app vive au
+ //  quotidien. Vide = HERO normal.
+ //
+@@ -29,7 +29,7 @@ class FeaturedRepository extends ChangeNotifier {
+   /// Nom de la chaîne mise en avant ('' = aucune).
+   String get name => _name;
+
+-  /// Note associée (ex. « Mondial aujourd'hui »).
++  /// Note associée (ex. « Mondial aujourd'hui ⚽ »).
+   String get note => _note;
+
+   bool get hasFeatured => _name.trim().isNotEmpty;
+@@ -40,14 +40,20 @@ class FeaturedRepository extends ChangeNotifier {
+     unawaited(refresh());
+   }
+
+-  Future<void> refresh() async {
++  Future<void> refresh({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/featured'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final String name = (decoded['name'] ?? '').toString();
+       final String note = (decoded['note'] ?? '').toString();
+       if (name != _name || note != _note) {
+@@ -56,7 +62,8 @@ class FeaturedRepository extends ChangeNotifier {
+         notifyListeners();
+       }
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Featured] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[Featured] ${e.runtimeType}');
+     }
+   }
+ }
+diff --git a/lib/features/feedback/data/feedback_repository.dart b/lib/features/feedback/data/feedback_repository.dart
+index 00c06f9d168fbabd89b93a12364ec81de683106c..6561ffcee40385513cb3ce20a11c867518319ce9 100644
+--- a/lib/features/feedback/data/feedback_repository.dart
++++ b/lib/features/feedback/data/feedback_repository.dart
+@@ -32,18 +32,32 @@ class FeedbackRepository {
+     await _fetch();
+   }
+
+-  Future<void> _fetch() async {
++  /// Relit l'invitation. Appelé quand le panel vient d'en poser une,
++  /// sans attendre le prochain démarrage de l'app.
++  Future<void> reload({bool strict = false}) async {
++    _initialized = true;
++    await _fetch(strict: strict);
++  }
++
++  Future<void> _fetch({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/feedback-prompt'))
+           .timeout(const Duration(seconds: 5));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? d = jsonDecode(resp.body);
+-      if (d is! Map) return;
++      if (d is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       _enabled = d['enabled'] == true;
+       _message = (d['message'] ?? '').toString();
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Feedback] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[Feedback] ${e.runtimeType}');
+     }
+   }
+
+diff --git a/lib/features/playlists/data/cloud_backup_repository.dart b/lib/features/playlists/data/cloud_backup_repository.dart
+index c91128b370a23a7d5f5e4c0c8608575235085838..8b1b52db268eefff3abdcdb9c37ddadfbd47c905 100644
+--- a/lib/features/playlists/data/cloud_backup_repository.dart
++++ b/lib/features/playlists/data/cloud_backup_repository.dart
+@@ -20,11 +20,8 @@
+ //      typiquement un 1er lancement après réinstallation). On ne
+ //      touche jamais à des données déjà présentes.
+ //
+-//  Remarque vie privée : comme `device-source`, le blob est lisible
+-//  par qui connaît la MAC (route publique). Il contient les codes que
+-//  l'utilisateur a lui-même saisis — c'est cohérent avec le modèle
+-//  existant (la source poussée par le panel l'est déjà). Cf. politique
+-//  de confidentialité.
++//  Dans la version Play gratuite, la sauvegarde des accès personnels
++//  est facultative. Le panel garde sa propre liaison avec l'appareil.
+ // =========================================================
+
+ import 'dart:async';
+@@ -35,6 +32,7 @@ import 'package:http/http.dart' as http;
+ import 'package:shared_preferences/shared_preferences.dart';
+
+ import '../../../core/i18n/l10n_now.dart';
++import '../../../core/update/build_flags.dart';
+ import '../../../core/observability/structured_logger.dart';
+ import '../../device/data/device_identity.dart';
+ import '../../device/data/device_secret.dart';
+@@ -50,6 +48,7 @@ class CloudBackupRepository {
+   static final CloudBackupRepository instance = CloudBackupRepository._();
+
+   static const String _kRestoredKey = 'backup.restored.v1';
++  static const String _kBackupOptIn = 'seven.free.cloud_backup.opt_in.v1';
+   Future<void>? _restoreWork;
+   Future<void> _uploadTail = Future<void>.value();
+
+@@ -72,6 +71,24 @@ class CloudBackupRepository {
+
+   /// Démarre la sauvegarde automatique : on ré-uploade (debounce) dès
+   /// que les playlists ou les favoris changent.
++  Future<bool> backupEnabled() async {
++    if (!kIsPlayBuild) return true;
++    final prefs = await SharedPreferences.getInstance();
++    return prefs.getBool(_kBackupOptIn) ?? false;
++  }
++
++  Future<void> setBackupEnabled(bool enabled) async {
++    final prefs = await SharedPreferences.getInstance();
++    if (!await prefs.setBool(_kBackupOptIn, enabled)) {
++      throw StateError('backup preference unavailable');
++    }
++    _debounce?.cancel();
++    if (enabled) {
++      // Sur une installation vide, proposer la restauration avant un nouvel envoi.
++      unawaited(restoreIfNeeded().then((_) => _schedule()));
++    }
++  }
++
+   void start() {
+     if (_started) return;
+     _started = true;
+@@ -103,6 +120,7 @@ class CloudBackupRepository {
+
+   Future<void> _uploadSnapshot() async {
+     try {
++      if (!await backupEnabled()) return;
+       final List<Playlist> playlists =
+           await PlaylistRepository.instance.getAllPlaylists();
+       final Set<String> deleted = await SourceOptOuts.read();
+@@ -126,10 +144,12 @@ class CloudBackupRepository {
+         'favorites': FavoritesRepository.instance.current.toList(),
+       };
+
++      final headers = await DeviceSecret.instance.headers(jsonBody: true);
++      if (!await backupEnabled()) return;
+       final http.Response response = await http
+           .put(
+             Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'),
+-            headers: await DeviceSecret.instance.headers(jsonBody: true),
++            headers: headers,
+             body: jsonEncode(<String, Object?>{'data': data}),
+           )
+           .timeout(const Duration(seconds: 8));
+@@ -165,7 +185,7 @@ class CloudBackupRepository {
+       // volontaire. Sur une nouvelle installation cette préférence est
+       // absente : la récupération habituelle reste possible.
+       final SharedPreferences prefs = await SharedPreferences.getInstance();
+-      if (prefs.getBool(_kRestoredKey) ?? false) return;
++      if (!await backupEnabled() || (prefs.getBool(_kRestoredKey) ?? false)) return;
+       final List<Playlist> existing =
+           await PlaylistRepository.instance.getAllPlaylists();
+       // L'utilisateur a déjà des données locales → on ne touche à rien.
+@@ -176,7 +196,7 @@ class CloudBackupRepository {
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/backup/$mac'),
+               headers: await DeviceSecret.instance.headers())
+           .timeout(const Duration(seconds: 8));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200 || !await backupEnabled()) return;
+
+       final Map<String, dynamic> body =
+           jsonDecode(resp.body) as Map<String, dynamic>;
+diff --git a/lib/features/playlists/data/default_servers.dart b/lib/features/playlists/data/default_servers.dart
+index 54f49d66c4369648ff795f3941f05097c2d2b6ba..9d096e074161f5547f3c46a3a2dba484839f3fda 100644
+--- a/lib/features/playlists/data/default_servers.dart
++++ b/lib/features/playlists/data/default_servers.dart
+@@ -82,8 +82,8 @@ abstract final class DefaultServersApi {
+   ///
+   /// Ne throw jamais : en dernier recours renvoie une liste vide,
+   /// et l'UI affiche un message « serveurs indisponibles, réessaie ».
+-  static Future<List<DefaultServer>> fetch({bool forceRefresh = false}) async {
+-    if (!forceRefresh && _memoryCache != null) {
++  static Future<List<DefaultServer>> fetch({bool forceRefresh = false, bool strict = false}) async {
++    if (!forceRefresh && !strict && _memoryCache != null) {
+       return _memoryCache!;
+     }
+
+@@ -94,6 +94,8 @@ abstract final class DefaultServersApi {
+       return network;
+     }
+
++    if (strict) throw StateError('Liste des serveurs non confirmée');
++
+     // Réseau KO → on retombe sur le dernier cache disque connu.
+     final List<DefaultServer> disk = await _readCache();
+     _memoryCache = disk;
+@@ -116,8 +118,8 @@ abstract final class DefaultServersApi {
+       }
+       final Map<String, dynamic> body =
+           jsonDecode(resp.body) as Map<String, dynamic>;
+-      final List<dynamic> raw =
+-          (body['servers'] as List<dynamic>?) ?? const <dynamic>[];
++      if (body['servers'] is! List) return null;
++      final List<dynamic> raw = body['servers'] as List<dynamic>;
+       final List<DefaultServer> servers = raw
+           .whereType<Map<String, dynamic>>()
+           .map(DefaultServer.fromJson)
+diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
+index 2d23943633d66766b9bba6dd2f27beac952df59f..1997ac1e013bc80b52a08320693506c134343728 100644
+--- a/lib/features/playlists/data/remote_source_repository.dart
++++ b/lib/features/playlists/data/remote_source_repository.dart
+@@ -59,25 +59,9 @@ enum RemoteSyncResult {
+ }
+
+ abstract final class RemoteSourceRepository {
+-  /// CONFORMITÉ MAGASINS (refus Amazon du 19/08/2026, « pirated content ») :
+-  /// dans les builds DISTRIBUÉS PAR UN STORE (Google Play TV, Amazon
+-  /// Appstore — `PLAY_BUILD=true`), l'app était un LECTEUR « apporte ton
+-  /// abonnement » : AUCUNE source poussée par le panel.
+-  ///
+-  /// DÉCISION DU PROPRIÉTAIRE (20/09/2026), réaffirmée deux fois après
+-  /// avoir été prévenu du risque : « l'activation à distance doit être le
+-  /// cœur du code — même sur le Play Store ». La source poussée par le
+-  /// panel est donc chargée PARTOUT, build Play compris. Ce qui reste hors
+-  /// du build Play, et qui est la partie que Google sanctionne le plus
+-  /// sûrement : les offres, les prix, le bouton d'achat et le verrou de
+-  /// licence (voir mac_activation_view, subscription_state). Le risque
+-  /// résiduel — un examen qui verrait des chaînes arriver sans que
+-  /// l'utilisateur les ait ajoutées — est connu du propriétaire ; un
+-  /// réviseur avec une installation neuve ne reçoit rien, puisqu'aucun
+-  /// revendeur n'a assigné de source à SON numéro.
+-  ///
+-  /// Le champ reste (et reste testable) : remettre `kIsPlayBuild` ici
+-  /// suffit à revenir à la posture magasin stricte.
++  /// Une liste personnelle et une attribution du panel sont deux sources
++  /// distinctes. Le serveur décide des attributions pour cette installation.
++  /// Les tests peuvent simuler une édition sans attribution à distance.
+   @visibleForTesting
+   static bool storeBuild = false;
+
+@@ -99,6 +83,8 @@ abstract final class RemoteSourceRepository {
+   /// Best effort, idempotent (la dédup évite de réimporter à chaque boot).
+   /// Renvoie un [RemoteSyncResult] pour permettre un diagnostic précis.
+   static Future<RemoteSyncResult>? _syncInFlight;
++  /// Révision réellement lue, utilisée pour confirmer la bonne liste au panel.
++  static int? lastConfigRev;
+   static bool _syncAgain = false;
+
+   /// Le réveil, le minuteur et le panel peuvent demander une relecture
+@@ -134,6 +120,7 @@ abstract final class RemoteSourceRepository {
+   }
+
+   static Future<RemoteSyncResult> _syncOnce({int hop = 0}) async {
++    lastConfigRev = null;
+     // Build store : pas de source poussée, pas d'ordres du panel (cf.
+     // [storeBuild]). L'utilisateur ajoute ses sources lui-même.
+     if (storeBuild) return RemoteSyncResult.noSource;
+@@ -159,6 +146,8 @@ abstract final class RemoteSourceRepository {
+           : decoded.map(
+               (Object? k, Object? v) => MapEntry<String, dynamic>('$k', v),
+             );
++      final Object? revision = body['rev'] ?? body['updated_at'];
++      lastConfigRev = revision is num ? revision.toInt() : null;
+
+       // AVANT le verrou : une MAC tombstonée renvoie blocked + le
+       // nouveau numéro. Si on markBlocked d'abord, l'écran reste
+@@ -182,6 +171,7 @@ abstract final class RemoteSourceRepository {
+       if (blocked is String &&
+           blocked.isNotEmpty &&
+           blocked != 'mac_reassigned') {
++        lastConfigRev = null;
+         await SubscriptionState.instance.markBlockedFromSource(blocked);
+         return RemoteSyncResult.noSource;
+       }
+@@ -285,6 +275,7 @@ abstract final class RemoteSourceRepository {
+   static Future<void> _applyOrders(String mac, Object? raw) async {
+     if (raw is! List || raw.isEmpty) return;
+     final List<int> done = <int>[];
++    bool applyFailed = false;
+     for (final Object? o in raw) {
+       if (o is! Map<String, dynamic>) continue;
+       final Object? rawId = o['id'];
+@@ -319,24 +310,21 @@ abstract final class RemoteSourceRepository {
+           }
+         }
+         done.add(id); // cible absente = ordre sans objet -> acquitte quand meme
+-      } catch (e) {
+-        if (kDebugMode) debugPrint('[Orders] echec ordre: $e');
++      } catch (_) {
++        applyFailed = true;
+       }
+     }
+-    if (done.isEmpty) return;
+-    try {
+-      await http
+-          .post(
+-            Uri.parse('$kSubscriptionBaseUrl/api/device-orders/ack'),
+-            headers: await DeviceSecret.instance.headers(jsonBody: true),
+-            body: jsonEncode(<String, Object>{'mac': mac, 'ids': done}),
+-          )
+-          .timeout(const Duration(seconds: 8));
+-    } catch (_) {
+-      // Pas d'accuse -> l'ordre reviendra a la prochaine synchro. Les deux
+-      // actions sont IDEMPOTENTES (supprimer une liste absente, activer une
+-      // liste deja active) : le rejouer est sans danger.
++    if (done.isNotEmpty) {
++      final response = await http.post(
++        Uri.parse('$kSubscriptionBaseUrl/api/device-orders/ack'),
++        headers: await DeviceSecret.instance.headers(jsonBody: true),
++        body: jsonEncode(<String, Object>{'mac': mac, 'ids': done}),
++      ).timeout(const Duration(seconds: 8));
++      if (response.statusCode != 200) throw StateError('accusé des listes refusé');
+     }
++    // Cette erreur maintient le curseur de la notification en amont. Les
++    // opérations déjà confirmées sont idempotentes lorsque le panel les rejoue.
++    if (applyFailed) throw StateError('modification locale incomplète');
+   }
+
+   /// Applique un ordre `source_update` : le revendeur a CORRIGE, depuis le
+@@ -515,11 +503,12 @@ abstract final class RemoteSourceRepository {
+         onProgress: onProgress,
+         makeActive: shouldActivate(item, sources),
+       );
+-      if (r == RemoteSyncResult.loaded) {
+-        agg = RemoteSyncResult.loaded;
+-      } else if (agg != RemoteSyncResult.loaded &&
+-          r == RemoteSyncResult.sourceFailed) {
++      if (r == RemoteSyncResult.sourceFailed) {
++        // Une liste réussie ne masque pas l'échec d'une autre : sinon
++        // le panel annoncerait le trio appliqué alors qu'il est incomplet.
+         agg = RemoteSyncResult.sourceFailed;
++      } else if (r == RemoteSyncResult.loaded && agg != RemoteSyncResult.sourceFailed) {
++        agg = RemoteSyncResult.loaded;
+       }
+     }
+     return agg;
+diff --git a/lib/features/playlists/presentation/free_player_sources.dart b/lib/features/playlists/presentation/free_player_sources.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..1566261fca1308437833394fb585dbe15d329d8a
+--- /dev/null
++++ b/lib/features/playlists/presentation/free_player_sources.dart
+@@ -0,0 +1,121 @@
++import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++
++import '../../../core/app/panel_live_wait.dart';
++import '../../../core/i18n/l10n_extension.dart';
++import '../../device/data/device_identity.dart';
++import 'm3u_login_sheet.dart';
++
++/// L'ajout d'une source personnelle ne dépend pas de la disponibilité du panel.
++class FreePlayerSources extends StatelessWidget {
++  const FreePlayerSources({super.key});
++
++  @override
++  Widget build(BuildContext context) {
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: <Widget>[
++        Text(context.l10n.emptyAddYourFirst),
++        const SizedBox(height: 12),
++        FilledButton.icon(
++          onPressed: () => showM3uLoginSheet(context),
++          icon: const Icon(Icons.playlist_add),
++          label: Text(context.l10n.tvSourceAddM3uTitle),
++        ),
++        OutlinedButton.icon(
++          onPressed: () => showM3uLoginSheet(context, xtream: true),
++          icon: const Icon(Icons.key),
++          label: Text(context.l10n.playlistTypeXtream),
++        ),
++        const SizedBox(height: 12),
++        const FreePlayerPanelTile(),
++      ],
++    );
++  }
++}
++
++class FreePlayerPanelTile extends StatefulWidget {
++  const FreePlayerPanelTile({super.key});
++
++  @override
++  State<FreePlayerPanelTile> createState() => _FreePlayerPanelTileState();
++}
++
++enum _SyncStatus { idle, running, success, failure }
++
++class _FreePlayerPanelTileState extends State<FreePlayerPanelTile> {
++  _SyncStatus _status = _SyncStatus.idle;
++
++  Future<void> _synchronize() async {
++    if (_status == _SyncStatus.running) return;
++    setState(() => _status = _SyncStatus.running);
++    try {
++      await PanelLiveWait.instance.trigger();
++      if (mounted) setState(() => _status = _SyncStatus.success);
++    } catch (_) {
++      if (mounted) setState(() => _status = _SyncStatus.failure);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final DeviceIdentity identity = DeviceIdentity.instance;
++    return ExpansionTile(
++      title: Text(context.l10n.freePanelTitle),
++      leading: const Icon(Icons.sync),
++      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
++      expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
++      children: <Widget>[
++        ListenableBuilder(
++          listenable: identity,
++          builder: (context, _) => FutureBuilder<String>(
++            key: ValueKey(identity.macSync),
++            future: identity.mac,
++            builder: (context, snapshot) {
++              final String? id = snapshot.hasData
++                  ? DeviceIdentity.stripPrefix(snapshot.data!)
++                  : null;
++              return ListTile(
++                contentPadding: EdgeInsets.zero,
++                title: Text(context.l10n.deviceIdLabel),
++                subtitle: id == null ? null : SelectableText(id),
++                trailing: IconButton(
++                  tooltip: context.l10n.buttonCopy,
++                  onPressed: id == null
++                      ? null
++                      : () async {
++                          await Clipboard.setData(ClipboardData(text: id));
++                          if (!context.mounted) return;
++                          ScaffoldMessenger.of(context).showSnackBar(
++                            SnackBar(content: Text(context.l10n.idCopied(id))),
++                          );
++                        },
++                  icon: const Icon(Icons.copy),
++                ),
++              );
++            },
++          ),
++        ),
++        OutlinedButton.icon(
++          onPressed: _status == _SyncStatus.running ? null : _synchronize,
++          icon: _status == _SyncStatus.running
++              ? const SizedBox.square(
++                  dimension: 18,
++                  child: CircularProgressIndicator(strokeWidth: 2),
++                )
++              : const Icon(Icons.refresh),
++          label: Text(context.l10n.buttonSyncNow),
++        ),
++        if (_status == _SyncStatus.success || _status == _SyncStatus.failure)
++          Semantics(
++            liveRegion: true,
++            child: Text(
++              _status == _SyncStatus.success
++                  ? context.l10n.freePanelSynced
++                  : context.l10n.playlistResyncFailed,
++            ),
++          ),
++      ],
++    );
++  }
++}
+diff --git a/lib/features/playlists/presentation/m3u_login_sheet.dart b/lib/features/playlists/presentation/m3u_login_sheet.dart
+index b7914e6e053cc2823d600ed4c5eb126b4e7803ca..b6e19bfaf72fa65bf4627509fda57382e35c9dde 100644
+--- a/lib/features/playlists/presentation/m3u_login_sheet.dart
++++ b/lib/features/playlists/presentation/m3u_login_sheet.dart
+@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
+
+ import '../../../core/i18n/l10n_extension.dart';
+ import '../../../core/theme/app_colors.dart';
++import '../../../core/update/build_flags.dart';
+ import '../../../core/theme/app_text_styles.dart';
+ import '../data/import_progress.dart';
+ import '../data/playlist_repository.dart';
+@@ -23,18 +24,20 @@ import '../domain/playlist.dart';
+ import 'import_progress_screen.dart';
+ import 'source_calibration_sheet.dart';
+
+-Future<void> showM3uLoginSheet(BuildContext context) {
++Future<void> showM3uLoginSheet(BuildContext context, {bool xtream = false}) {
+   return showModalBottomSheet<void>(
+     context: context,
+     backgroundColor: Colors.transparent,
+     isScrollControlled: true,
+     useSafeArea: true,
+-    builder: (_) => const _M3uLoginSheet(),
++    builder: (_) => _M3uLoginSheet(xtream: xtream),
+   );
+ }
+
+ class _M3uLoginSheet extends StatefulWidget {
+-  const _M3uLoginSheet();
++  const _M3uLoginSheet({required this.xtream});
++
++  final bool xtream;
+
+   @override
+   State<_M3uLoginSheet> createState() => _M3uLoginSheetState();
+@@ -42,7 +45,7 @@ class _M3uLoginSheet extends StatefulWidget {
+
+ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+   // 'm3u' ou 'xtream'.
+-  String _mode = 'm3u';
++  late String _mode = widget.xtream ? 'xtream' : 'm3u';
+
+   final TextEditingController _urlCtrl = TextEditingController();
+   final TextEditingController _nameCtrl = TextEditingController();
+@@ -73,7 +76,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+       // On accepte le lien même sans « http:// » tapé (le revendeur/
+       // fournisseur donne parfois juste le domaine) — on le complète.
+       final String url = SourceLinkUtils.ensureScheme(_urlCtrl.text);
+-      if (url.isEmpty) {
++      if (!SourceLinkUtils.isAllowedSourceUrl(url)) {
+         setState(() => _error = context.l10n.loginInvalidUrl);
+         return;
+       }
+@@ -99,7 +102,8 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+           pass = pass.isEmpty ? extracted.password : pass;
+         }
+       }
+-      if (server.isEmpty) {
++      server = SourceLinkUtils.sanitizeXtreamServer(server);
++      if (!SourceLinkUtils.isAllowedSourceUrl(server)) {
+         setState(() => _error = context.l10n.loginInvalidServer);
+         return;
+       }
+@@ -139,11 +143,7 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+       final Object? e = outcome.error;
+       setState(() {
+         _busy = false;
+-        _error = e == null
+-            ? null
+-            : (e is Exception
+-                ? e.toString().replaceFirst('Exception: ', '')
+-                : context.l10n.errorWithMessage('$e'));
++        _error = e == null ? null : context.l10n.freeSourceError;
+       });
+       return;
+     }
+@@ -211,6 +211,10 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+                             AppTextStyles.headlineLarge.copyWith(fontSize: 22)),
+                   ],
+                 ),
++                if (kIsPlayBuild) ...<Widget>[
++                  const SizedBox(height: 12),
++                  Text(context.l10n.freeSourceBackup),
++                ],
+                 const SizedBox(height: 14),
+                 // ----- Sélecteur M3U / Xtream -----
+                 Row(
+diff --git a/lib/features/pricing/data/pricing_repository.dart b/lib/features/pricing/data/pricing_repository.dart
+index 0b1147361bb2b444e387c2f6d9cdd436c761c76c..eb9037392a923f514177186fd5b74a8af52ac730 100644
+--- a/lib/features/pricing/data/pricing_repository.dart
++++ b/lib/features/pricing/data/pricing_repository.dart
+@@ -75,14 +75,20 @@ abstract final class PricingRepository {
+   static PricingConfig get current => notifier.value;
+
+   /// Récupère les tarifs distants et met à jour [notifier]. Best-effort.
+-  static Future<void> fetch() async {
++  static Future<void> fetch({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/pricing'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+
+       String str(String key, String fallback) {
+         final String v = (decoded[key] ?? '').toString().trim();
+@@ -102,7 +108,8 @@ abstract final class PricingRepository {
+         promoMessage: (decoded['promoMessage'] ?? '').toString(),
+       );
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Pricing] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[Pricing] ${e.runtimeType}');
+     }
+   }
+ }
+diff --git a/lib/features/privacy/presentation/shield_settings_screen.dart b/lib/features/privacy/presentation/shield_settings_screen.dart
+index 8bb1caa893157a3282977bb750596edf8ae8d3d9..4d1847428c7834767deee9a09593d2937956fdfc 100644
+--- a/lib/features/privacy/presentation/shield_settings_screen.dart
++++ b/lib/features/privacy/presentation/shield_settings_screen.dart
+@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
+
+ import '../../../core/i18n/l10n_extension.dart';
+ import '../../../core/privacy/privacy_shield.dart';
++import '../../../core/update/build_flags.dart';
++import '../../playlists/data/cloud_backup_repository.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_text_styles.dart';
+
+@@ -71,6 +73,7 @@ class ShieldSettingsScreen extends StatelessWidget {
+                 title: Text(context.l10n.tvShieldTelemetry),
+                 subtitle: Text(context.l10n.tvShieldTelemetryHint),
+               ),
++              if (kIsPlayBuild) const _CloudBackupSetting(),
+               const SizedBox(height: 16),
+               Container(
+                 padding: const EdgeInsets.all(14),
+@@ -91,3 +94,53 @@ class ShieldSettingsScreen extends StatelessWidget {
+     );
+   }
+ }
++
++class _CloudBackupSetting extends StatefulWidget {
++  const _CloudBackupSetting();
++
++  @override
++  State<_CloudBackupSetting> createState() => _CloudBackupSettingState();
++}
++
++class _CloudBackupSettingState extends State<_CloudBackupSetting> {
++  final _backup = CloudBackupRepository.instance;
++  late Future<bool> _enabled;
++  bool _saving = false;
++
++  @override
++  void initState() {
++    super.initState();
++    _enabled = _backup.backupEnabled();
++  }
++
++  Future<void> _change(bool value) async {
++    setState(() => _saving = true);
++    try {
++      await _backup.setBackupEnabled(value);
++    } catch (_) {
++      if (mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(
++          SnackBar(content: Text(context.l10n.sevenBackupSaveError)),
++        );
++      }
++    } finally {
++      if (mounted) {
++        setState(() {
++          _enabled = _backup.backupEnabled();
++          _saving = false;
++        });
++      }
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) => FutureBuilder<bool>(
++    future: _enabled,
++    builder: (context, snapshot) => SwitchListTile(
++      value: snapshot.data ?? false,
++      onChanged: snapshot.hasData && !_saving ? _change : null,
++      title: Text(context.l10n.sevenBackupTitle),
++      subtitle: Text(context.l10n.sevenBackupHint),
++    ),
++  );
++}
+diff --git a/lib/features/settings/presentation/settings_screen.dart b/lib/features/settings/presentation/settings_screen.dart
+index 704ee4fad2bddda59395fba73905d93456f56f72..1e036084a7c02f841d6c5ce398864ff29d9d0e03 100644
+--- a/lib/features/settings/presentation/settings_screen.dart
++++ b/lib/features/settings/presentation/settings_screen.dart
+@@ -19,6 +19,8 @@ import '../../../core/support/vip_help_card.dart';
+ import '../../../core/theme/app_colors.dart';
+ import '../../../core/theme/app_text_styles.dart';
+ import '../../about/presentation/about_screen.dart';
++import '../../ads/presentation/seven_motion_ads.dart';
++import '../../playlists/presentation/free_player_sources.dart';
+ import '../../cast/presentation/cast_diagnostics_screen.dart';
+ import 'notifications_settings_screen.dart';
+ import '../../channels/data/recently_watched_repository.dart';
+@@ -63,7 +65,8 @@ class SettingsScreen extends StatelessWidget {
+             //  où il en est dans les 10j d'essai (ou si payé) + un
+             //  CTA pour acheter sur 7themotion.com (paiement externe,
+             //  pas d'in-app purchase Google Play).
+-            _SectionTitle(context.l10n.settingsMySubscription),
++            if (kIsPlayBuild) const FreePlayerPanelTile(),
++            if (!kIsPlayBuild) _SectionTitle(context.l10n.settingsMySubscription),
+             // JAMAIS dans le build Play Store (20/09/2026) : la carte mène
+             // à un achat hors facturation Google — motif de suspension,
+             // pas de simple rejet. Dans ce build, l'app ne vend rien.
+@@ -220,9 +223,9 @@ class SettingsScreen extends StatelessWidget {
+               ),
+             ),
+             _ActionTile(
+-              icon: Icons.support_agent_rounded,
+-              title: context.l10n.settingsActivateCheckTitle,
+-              subtitle: context.l10n.settingsActivateCheckSubtitle,
++              icon: kIsPlayBuild ? Icons.playlist_add : Icons.support_agent_rounded,
++              title: kIsPlayBuild ? context.l10n.addPlaylist : context.l10n.settingsActivateCheckTitle,
++              subtitle: kIsPlayBuild ? context.l10n.sourceOwnSub : context.l10n.settingsActivateCheckSubtitle,
+               onTap: () => showSourceChoiceSheet(context),
+             ),
+
+@@ -319,6 +322,11 @@ class SettingsScreen extends StatelessWidget {
+                 ),
+               ),
+             ),
++            if (kIsPlayBuild)
++              const Padding(
++                padding: EdgeInsets.only(top: 24),
++                child: SevenMotionAdsBanner(),
++              ),
+           ],
+         ),
+       ),
+diff --git a/lib/features/simple_home/data/announcement_repository.dart b/lib/features/simple_home/data/announcement_repository.dart
+index 373efb131130a959a6770dc17df29035ae131b36..36a7dc21545cd1db397108109b872542d8849081 100644
+--- a/lib/features/simple_home/data/announcement_repository.dart
++++ b/lib/features/simple_home/data/announcement_repository.dart
+@@ -93,6 +93,14 @@ abstract final class AnnouncementRepository {
+   /// d'accueil l'écoute et re-fetch aussitôt : l'annonce apparaît en
+   /// direct, sans attendre un remontage du widget ni un redémarrage.
+   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
++  static Announcement? latest;
++  static bool hasLatest = false;
++
++  /// L'annonce est chargée avant APPLIED ; la bannière utilise ce résultat.
++  static Future<void> refreshFromPanel() async {
++    await fetchLatest(strict: true);
++    notifyChanged();
++  }
+
+   /// À appeler quand le serveur signale un changement de config.
+   static void notifyChanged() => revision.value++;
+@@ -100,7 +108,7 @@ abstract final class AnnouncementRepository {
+   /// Récupère la dernière annonce publiée, ou `null` si aucune / erreur
+   /// réseau. On reste SILENCIEUX en cas d'échec : une annonce est un
+   /// bonus, jamais bloquant.
+-  static Future<Announcement?> fetchLatest() async {
++  static Future<Announcement?> fetchLatest({bool strict = false}) async {
+     try {
+       // LANGUE DU CLIENT : le revendeur écrit son annonce dans UNE langue ;
+       // le backend la traduit (et la met en cache) dans celle de l'app.
+@@ -110,11 +118,14 @@ abstract final class AnnouncementRepository {
+           .get(Uri.parse(
+               '$kSubscriptionBaseUrl/api/announcement?lang=$lang'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return null;
++      if (resp.statusCode != 200) throw StateError('annonce indisponible');
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map<String, dynamic>) return null;
+-      return Announcement.fromJson(decoded);
++      if (decoded is! Map<String, dynamic>) throw StateError('annonce invalide');
++      latest = Announcement.fromJson(decoded);
++      hasLatest = true;
++      return latest;
+     } catch (e) {
++      if (strict) rethrow;
+       if (kDebugMode) debugPrint('[Announcement] fetch: $e');
+       return null;
+     }
+diff --git a/lib/features/simple_home/data/home_layout_repository.dart b/lib/features/simple_home/data/home_layout_repository.dart
+index 8cfa08dccf8e8f56d18ae97dc3426d22a6d93022..d290eab7eb3913081cb63a18e30b881fa8152f46 100644
+--- a/lib/features/simple_home/data/home_layout_repository.dart
++++ b/lib/features/simple_home/data/home_layout_repository.dart
+@@ -135,22 +135,32 @@ class HomeLayoutRepository extends ChangeNotifier {
+   }
+
+   /// Va chercher la config distante. Silencieux en cas d'échec.
+-  Future<void> refresh() async {
++  Future<void> refresh({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/home-layout'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map<String, dynamic>) return;
++      if (decoded is! Map<String, dynamic>) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? items = decoded['items'];
+-      if (items is! List) return;
++      if (items is! List) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       _applyJsonList(items);
+       // Mémorise la dernière config valide.
+       final SharedPreferences prefs = await SharedPreferences.getInstance();
+       await prefs.setString(_cacheKey, jsonEncode(items));
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[HomeLayout] refresh: $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[HomeLayout] refresh: ${e.runtimeType}');
+     }
+   }
+
+@@ -163,7 +173,6 @@ class HomeLayoutRepository extends ChangeNotifier {
+         if (c != null) next[c.key] = c;
+       }
+     }
+-    if (next.isEmpty) return;
+     _byKey = next;
+     notifyListeners();
+   }
+diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
+index f1b500b92c8776bd8429de789bf2cca6b4110007..477865a6c3ca7a907f3cd72cf142c9934c70d90f 100644
+--- a/lib/features/simple_home/presentation/simple_home_screen.dart
++++ b/lib/features/simple_home/presentation/simple_home_screen.dart
+@@ -27,6 +27,9 @@ import 'package:flutter/material.dart';
+
+ import '../../../core/branding/brand_config.dart';
+ import '../../../core/flavor/flavor.dart';
++import '../../../core/update/build_flags.dart';
++import '../../playlists/presentation/free_player_sources.dart';
++import '../../playlists/presentation/m3u_login_sheet.dart';
+ import '../../../core/branding/brand_logo.dart';
+ import '../../../core/i18n/l10n_extension.dart';
+ import '../../../core/theme/app_colors.dart';
+@@ -212,6 +215,8 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+   /// paraissait ne « rien faire ».
+   Future<void> _pollActivation() async {
+     if (_polling || _importing || !mounted) return;
++    // Ne pas empiler un import du panel au-dessus d'une saisie personnelle.
++    if (kIsPlayBuild && ModalRoute.of(context)?.isCurrent == false) return;
+     // Déjà des chaînes ? on arrête le sondage (cas course / retour écran).
+     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
+       _activationPoll?.cancel();
+@@ -231,6 +236,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+       _polling = false;
+     }
+     if (!mounted || pending.isEmpty) return;
++    if (kIsPlayBuild && ModalRoute.of(context)?.isCurrent == false) return;
+     // Course : une autre voie (temps réel, sync silencieux de secours) a pu
+     // charger entre-temps → on ne double pas.
+     if (PlaylistRepository.instance.currentChannels.isNotEmpty) {
+@@ -303,9 +309,10 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+                               children: <Widget>[
+                                 const AnnouncementBanner(),
+                                 const RadioEntry(),
+-                                _GuestEntryBar(
+-                                  onTap: () => openGuestScreen(context),
+-                                ),
++                                if (!kIsPlayBuild)
++                                  _GuestEntryBar(
++                                    onTap: () => openGuestScreen(context),
++                                  ),
+                               ],
+                             ),
+                           ),
+@@ -319,11 +326,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+     );
+   }
+
+-  // ----- Accueil VIDE : activation par code MAC uniquement -----
+-  //  Le client ne saisit RIEN (ni M3U, ni serveur, ni identifiant). Il
+-  //  voit son code, l'envoie au revendeur, puis « Vérifier mon
+-  //  abonnement » charge la source poussée. Au succès, le StreamBuilder
+-  //  se reconstruit tout seul et révèle la liste des catégories.
++  // Accueil vide : sources personnelles sur Play, activation sur l’APK direct.
+   Widget _buildActivationEntry(BuildContext context) {
+     return SingleChildScrollView(
+       physics: const BouncingScrollPhysics(),
+@@ -344,13 +347,16 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+             ),
+           ),
+           const SizedBox(height: 24),
+-          // « Invité ou code perso ? » — le tout premier choix d'une nouvelle
+-          // install : soit on a été invité par un ami (mode invité), soit on a
+-          // son propre identifiant à activer (les blocs ci-dessous).
+-          _GuestEntryCard(onTap: () => openGuestScreen(context)),
+-          const SizedBox(height: 22),
+-          const RadioEntry(),
+-          const MacActivationView(),
++          if (kIsPlayBuild) ...<Widget>[
++            const FreePlayerSources(),
++            const SizedBox(height: 22),
++            const RadioEntry(),
++          ] else ...<Widget>[
++            _GuestEntryCard(onTap: () => openGuestScreen(context)),
++            const SizedBox(height: 22),
++            const RadioEntry(),
++            const MacActivationView(),
++          ],
+           const SizedBox(height: 14),
+           const LegalDisclaimer.compact(),
+         ],
+@@ -517,7 +523,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+           MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+         ),
+       ),
+-      onAdd: () => _openFromBottomBar(() => showActivationSheet(context)),
++      onAdd: () => _openFromBottomBar(() => kIsPlayBuild
++          ? showM3uLoginSheet(context)
++          : showActivationSheet(context)),
+     );
+   }
+ }
+diff --git a/lib/features/simple_home/presentation/widgets/announcement_banner.dart b/lib/features/simple_home/presentation/widgets/announcement_banner.dart
+index 29bcd167ac02b6e9f3f079da0b08798f1491469c..4b1b82fb1037f7326470b22e4031a6455e463dd3 100644
+--- a/lib/features/simple_home/presentation/widgets/announcement_banner.dart
++++ b/lib/features/simple_home/presentation/widgets/announcement_banner.dart
+@@ -19,6 +19,7 @@
+ //  Aucune dépendance au cast.
+ // =========================================================
+
++import 'dart:async';
+ import 'package:flutter/material.dart';
+ import 'package:url_launcher/url_launcher.dart';
+
+@@ -76,17 +77,20 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
+     _load();
+     // Temps réel : quand l'admin publie/retire une annonce, le
+     // RealtimeSyncService incrémente `revision` → on re-fetch aussitôt.
+-    AnnouncementRepository.revision.addListener(_load);
++    AnnouncementRepository.revision.addListener(_loadPanel);
+   }
+
+   @override
+   void dispose() {
+-    AnnouncementRepository.revision.removeListener(_load);
++    AnnouncementRepository.revision.removeListener(_loadPanel);
+     super.dispose();
+   }
+
+-  Future<void> _load() async {
+-    final Announcement? a = await AnnouncementRepository.fetchLatest();
++  void _loadPanel() { unawaited(_load(fromPanel: true)); }
++
++  Future<void> _load({bool fromPanel = false}) async {
++    final Announcement? a = fromPanel && AnnouncementRepository.hasLatest
++        ? AnnouncementRepository.latest : await AnnouncementRepository.fetchLatest();
+     if (!mounted) return;
+     if (a == null) {
+       // Annonce retirée par l'admin → on efface le bandeau en direct.
+diff --git a/lib/features/subscription/data/subscription_backend.dart b/lib/features/subscription/data/subscription_backend.dart
+index 3e0c967b31cb83ddd0db1616b1f236f3d1f278a3..5ca3d03c04d07e3014ace24877b4f01b13cb9ef8 100644
+--- a/lib/features/subscription/data/subscription_backend.dart
++++ b/lib/features/subscription/data/subscription_backend.dart
+@@ -48,9 +48,8 @@ import 'now_playing.dart';
+ /// activations/sources → « l'app ne se connecte pas avec le panel ».
+ ///
+ /// FAILOVER : ce n'est plus une adresse EN DUR mais un getter vers
+-/// [BackendHosts.current]. Le heartbeat sonde `app.7themotion.com`
+-/// puis, s'il ne répond pas, l'adresse Cloudflare native du MÊME
+-/// worker — et toute l'app (sources, thème, annonces, sauvegarde…)
++/// [BackendHosts.current]. Le heartbeat sonde le domaine du panel
++/// puis, si nécessaire, le deuxième domaine du même Worker — et toute l'app (sources, thème, annonces, sauvegarde…)
+ /// bascule d'un coup sur l'hôte qui marche. Voir backend_hosts.dart.
+ String get kSubscriptionBaseUrl => BackendHosts.current;
+
+@@ -213,12 +212,8 @@ abstract final class SubscriptionBackend {
+         'playing': NowPlaying.instance.current.isNotEmpty,
+         // mobile / tv → le panel distingue les deux apps.
+         'platform': AppPlatform.id,
+-        // BUILD MAGASIN (Play / Amazon) — 20/09/2026. Dans ce build, l'app
+-        // est un lecteur « apporte ta liste » : elle IGNORE les sources
+-        // poussées par le panel (RemoteSourceRepository.storeBuild, décidé
+-        // après le refus Amazon du 19/08). Sans ce drapeau, le revendeur
+-        // pousse une liste, rien n'arrive, et personne ne sait pourquoi —
+-        // c'est arrivé au propriétaire lui-même. Avec, le panel le DIT.
++        // Le panel distingue la distribution Play grâce à ce champ. Une
++        // attribution à cette installation reste gérée par /api/device-source.
+         'store': kIsPlayBuild,
+         // INVENTAIRE des sources réellement présentes sur l'appareil (celles
+         // poussées par le panel ET celles que le client a ajoutées lui-même).
+diff --git a/lib/features/subscription/data/subscription_state.dart b/lib/features/subscription/data/subscription_state.dart
+index a7b2afc782caefad889610748ecda644ce9fbd5a..8882e8d4c05a703540431c8ca7e7440661de3d78 100644
+--- a/lib/features/subscription/data/subscription_state.dart
++++ b/lib/features/subscription/data/subscription_state.dart
+@@ -301,16 +301,13 @@ class SubscriptionState extends ChangeNotifier {
+     return d != null && d >= 0 && d <= kExpiryWarnDays;
+   }
+
+-  /// True si l'app doit afficher un écran bloquant.
+-  ///
+-  /// JAMAIS dans le build Play Store (20/09/2026). Ce build est un lecteur
+-  /// « apporte ta liste » : il ne vend pas de licence d'app, donc il ne
+-  /// peut pas en bloquer l'usage pour la vendre ailleurs — un écran
+-  /// « essai terminé, achète sur 7themotion.com » est une vente hors
+-  /// facturation Google, motif de SUSPENSION de la fiche. Gel, ban et
+-  /// prêt restent des décisions du panel sur l'APK direct, pas ici.
++  /// Le lecteur Play est gratuit pour les listes personnelles. Un gel ou un
++  /// bannissement explicite du panel s'applique aussi au lecteur déjà ouvert.
+   bool get shouldBlockUser {
+-    if (kIsPlayBuild) return false;
++    if (kIsPlayBuild) {
++      final SubscriptionStatus current = status;
++      return current == SubscriptionStatus.frozen || current == SubscriptionStatus.banned;
++    }
+     if (!_loaded) return false;
+     if (_remote.exists && _remote.loaned) return true;
+     final SubscriptionStatus s = status;
+@@ -320,9 +317,9 @@ class SubscriptionState extends ChangeNotifier {
+   }
+
+   /// True SSI on a le droit de charger des chaînes / lancer le player.
+-  /// Build Play Store : toujours — voir [shouldBlockUser].
++  /// Le build Play respecte uniquement la suspension explicite de l'appareil.
+   bool get canStream {
+-    if (kIsPlayBuild) return true;
++    if (kIsPlayBuild) return !shouldBlockUser;
+     if (!_loaded) return false;
+     if (shouldBlockUser) return false;
+     final SubscriptionStatus s = status;
+@@ -479,6 +476,18 @@ class SubscriptionState extends ChangeNotifier {
+   /// Synchronise avec le backend Cloudflare.
+   Future<void> syncWithBackend() => _syncWork ??= _syncBackend().whenComplete(() => _syncWork = null);
+
++  int _successfulRemoteReads = 0;
++
++  /// Un ordre du panel exige une lecture partie APRÈS sa réception.
++  /// Un cache hors ligne ou un heartbeat déjà en vol ne vaut pas accusé.
++  Future<bool> refreshAfterPanel() async {
++    final Future<void>? previous = _syncWork;
++    if (previous != null) await previous;
++    final int before = _successfulRemoteReads;
++    await syncWithBackend();
++    return _successfulRemoteReads > before;
++  }
++
+   Future<void> _syncBackend() async {
+     final int revision = _authorityRevision;
+     _lastSyncAttempt = _now;
+@@ -498,6 +507,7 @@ class SubscriptionState extends ChangeNotifier {
+         return;
+       }
+       await _applyRemoteSnapshot(snap);
++      _successfulRemoteReads++;
+     } catch (e) {
+       if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
+       StructuredLogger.instance.warn(
+diff --git a/lib/features/theme/data/remote_theme_repository.dart b/lib/features/theme/data/remote_theme_repository.dart
+index f582f60fdbb9871fca0648f200fbecba633a9dfc..2b57982425c332cdba776371e9fd520d198e47c8 100644
+--- a/lib/features/theme/data/remote_theme_repository.dart
++++ b/lib/features/theme/data/remote_theme_repository.dart
+@@ -25,16 +25,22 @@ import '../../subscription/data/subscription_backend.dart';
+
+ abstract final class RemoteThemeRepository {
+   /// Récupère le thème distant et l'applique (nom + couleur d'accent).
+-  static Future<void> fetchAndApply() async {
++  static Future<void> fetchAndApply({bool strict = false}) async {
+     try {
+       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV
+       // lit le thème TV (?platform=tv).
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+
+       // Nom affiché ('' = on garde le nom du flavor).
+       final String name = (decoded['appName'] ?? '').toString();
+@@ -46,7 +52,8 @@ abstract final class RemoteThemeRepository {
+         AccentController.instance.applyCustom(accent);
+       }
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[RemoteTheme] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[RemoteTheme] ${e.runtimeType}');
+     }
+   }
+
+diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
+index fd6c4419e47d3504be893f2e06ce9e6b9fef58b0..b1ad49aaf2c1e4baf9fd856701d5429244bd1bdc 100644
+--- a/lib/l10n/app_ar.arb
++++ b/lib/l10n/app_ar.arb
+@@ -1,5 +1,12 @@
+ {
++  "sevenBackupTitle": "نسخ قوائم التشغيل احتياطيًا عبر الإنترنت",
++  "sevenBackupHint": "لاستعادة قوائمك لاحقًا، سيرسل 7 MOTION روابط M3U وعناوين خوادم Xtream وبيانات الدخول بما فيها كلمات المرور والمفضلة إلى خادمه. هذا اختياري.",
++  "sevenBackupSaveError": "تعذّر حفظ اختيارك. حاول مجددًا.",
+   "@@locale": "ar",
++  "freePanelTitle": "إدارة الجهاز",
++  "freePanelSynced": "استجابت لوحة الإدارة.",
++  "freeSourceError": "تعذّر استيراد المصدر. تحقق من الرابط أو بيانات تسجيل الدخول.",
++  "freeSourceBackup": "النسخ الاحتياطي لرابط القائمة وبيانات تسجيل الدخول اختياري. يمكنك تفعيله في إعدادات الخصوصية.",
+   "appName": "7 MOTION",
+   "appTagline": "سينما بلا حدود",
+   "navHome": "الرئيسية",
+diff --git a/lib/l10n/app_da.arb b/lib/l10n/app_da.arb
+index 4603a8d82640db17b558c5116ea36d1970c71b13..38577eb8a72e3a4d842314eb61ae47357349b706 100644
+--- a/lib/l10n/app_da.arb
++++ b/lib/l10n/app_da.arb
+@@ -1,5 +1,12 @@
+ {
++  "sevenBackupTitle": "Sikkerhedskopiér mine afspilningslister online",
++  "sevenBackupHint": "For at kunne gendanne dem sender 7 MOTION dine M3U-links, Xtream-servere og loginoplysninger (inklusive adgangskoder) samt favoritter til sin server. Det er valgfrit.",
++  "sevenBackupSaveError": "Dit valg kunne ikke gemmes. Prøv igen.",
+   "@@locale": "da",
++  "freePanelTitle": "Enhedsadministration",
++  "freePanelSynced": "Panelet svarede.",
++  "freeSourceError": "Kilden kunne ikke importeres. Kontrollér linket eller loginoplysningerne.",
++  "freeSourceBackup": "Sikkerhedskopiering af dit link og dine loginoplysninger er valgfri. Du kan slå den til i privatlivsindstillingerne.",
+   "appName": "7 MOTION",
+   "appTagline": "Biograf uden grænser",
+   "navHome": "Hjem",
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index b3f13fb9f788c339b180677193b1ad53af3c3c34..a450a5754c46e46620584d788fe335d8f12b3fe2 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -1,5 +1,12 @@
+ {
++  "sevenBackupTitle": "Back up my playlists online",
++  "sevenBackupHint": "To restore them later, 7 MOTION will send your M3U links, Xtream servers and credentials (including passwords), and favourites to its server. This is optional.",
++  "sevenBackupSaveError": "Could not save this choice. Please try again.",
+   "@@locale": "en",
++  "freePanelTitle": "Device management",
++  "freePanelSynced": "The panel responded.",
++  "freeSourceError": "Could not import this source. Check the link or sign-in details.",
++  "freeSourceBackup": "Backing up your playlist link and sign-in details is optional. You can enable it in privacy settings.",
+   "appName": "7 MOTION",
+   "appTagline": "Cinema without limits",
+   "navHome": "Home",
+diff --git a/lib/l10n/app_es.arb b/lib/l10n/app_es.arb
+index 1dba02106708f572bf09c364a62545531d13d14a..fb213d80e2230ed88c8fe001b6ba5677e1f859e2 100644
+--- a/lib/l10n/app_es.arb
++++ b/lib/l10n/app_es.arb
+@@ -1,5 +1,12 @@
+ {
++  "sevenBackupTitle": "Guardar mis listas en línea",
++  "sevenBackupHint": "Para restaurarlas, 7 MOTION enviará a su servidor tus enlaces M3U, servidores y credenciales de Xtream (incluidas las contraseñas) y favoritos. Es opcional.",
++  "sevenBackupSaveError": "No se pudo guardar tu elección. Inténtalo de nuevo.",
+   "@@locale": "es",
++  "freePanelTitle": "Gestión del dispositivo",
++  "freePanelSynced": "El panel ha respondido.",
++  "freeSourceError": "No se pudo importar la fuente. Comprueba el enlace o los datos de acceso.",
++  "freeSourceBackup": "La copia de seguridad del enlace y los datos de acceso de tu lista es opcional. Puedes activarla en los ajustes de privacidad.",
+   "appName": "7 MOTION",
+   "appTagline": "Cine sin límites",
+   "navHome": "Inicio",
+diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
+index cc2e3a994bf62f60566f6614e8f61da3bb356e95..369d0ab463427c56d1aadf05bf6cff95b72e3e6b 100644
+--- a/lib/l10n/app_fr.arb
++++ b/lib/l10n/app_fr.arb
+@@ -1,7 +1,14 @@
+ {
++  "sevenBackupTitle": "Sauvegarder mes playlists en ligne",
++  "sevenBackupHint": "Pour les restaurer, 7 MOTION enverra à son serveur vos liens M3U, adresses et identifiants Xtream (y compris les mots de passe) et vos favoris. Cette option est facultative.",
++  "sevenBackupSaveError": "Impossible d’enregistrer ce choix. Réessayez.",
+   "@@locale": "fr",
+   "@@x-template": true,
+   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",
++  "freePanelTitle": "Gestion de cet appareil",
++  "freePanelSynced": "Le panel a répondu.",
++  "freeSourceError": "Import impossible. Vérifie le lien ou les identifiants de ta source.",
++  "freeSourceBackup": "La sauvegarde du lien et des identifiants de ta liste est facultative. Tu peux l’activer dans les réglages de confidentialité.",
+   "appName": "7 MOTION",
+   "@appName": {
+     "description": "Nom de la marque — ne pas traduire."
+diff --git a/lib/l10n/app_nb.arb b/lib/l10n/app_nb.arb
+index 3ca799ce5c790c80a8580052104ba722214890c2..d9230012f0dd6d9ac38782b85229b61dfc4eb7d6 100644
+--- a/lib/l10n/app_nb.arb
++++ b/lib/l10n/app_nb.arb
+@@ -1,5 +1,12 @@
+ {
++  "sevenBackupTitle": "Sikkerhetskopier spillelistene mine på nett",
++  "sevenBackupHint": "For å kunne gjenopprette dem sender 7 MOTION M3U-lenkene dine, Xtream-serverne og påloggingsopplysningene dine (inkludert passord) samt favoritter til serveren sin. Dette er valgfritt.",
++  "sevenBackupSaveError": "Kunne ikke lagre valget. Prøv igjen.",
+   "@@locale": "nb",
++  "freePanelTitle": "Enhetsadministrasjon",
++  "freePanelSynced": "Panelet svarte.",
++  "freeSourceError": "Kunne ikke importere kilden. Kontroller lenken eller innloggingsopplysningene.",
++  "freeSourceBackup": "Det er valgfritt å sikkerhetskopiere lenken og innloggingsopplysningene til spillelisten din. Du kan slå det på i personverninnstillingene.",
+   "appName": "7 MOTION",
+   "appTagline": "Kino uten grenser",
+   "navHome": "Hjem",
+diff --git a/lib/l10n/app_sv.arb b/lib/l10n/app_sv.arb
+index a6b0539f7daa579d294f2c3e53fc4f941cda0f54..7633603029fe645aa821c573b9b735906459ea45 100644
+--- a/lib/l10n/app_sv.arb
++++ b/lib/l10n/app_sv.arb
+@@ -1,5 +1,12 @@
+ {
++  "sevenBackupTitle": "Säkerhetskopiera mina spellistor online",
++  "sevenBackupHint": "För att kunna återställa dem skickar 7 MOTION dina M3U-länkar, Xtream-servrar och inloggningsuppgifter (inklusive lösenord) samt favoriter till sin server. Detta är frivilligt.",
++  "sevenBackupSaveError": "Valet kunde inte sparas. Försök igen.",
+   "@@locale": "sv",
++  "freePanelTitle": "Enhetshantering",
++  "freePanelSynced": "Panelen svarade.",
++  "freeSourceError": "Källan kunde inte importeras. Kontrollera länken eller inloggningsuppgifterna.",
++  "freeSourceBackup": "Det är frivilligt att säkerhetskopiera spellistans länk och inloggningsuppgifter. Du kan aktivera det i integritetsinställningarna.",
+   "appName": "7 MOTION",
+   "appTagline": "Bio utan gränser",
+   "navHome": "Hem",
+diff --git a/lib/l10n/app_sw.arb b/lib/l10n/app_sw.arb
+index 6a549608b2d0b339d31278f031337d4f0141fc39..0d08384ef0f7d94ddde988fad2862b16351d7bd7 100644
+--- a/lib/l10n/app_sw.arb
++++ b/lib/l10n/app_sw.arb
+@@ -1,5 +1,12 @@
+ {
++  "sevenBackupTitle": "Hifadhi nakala za orodha zangu mtandaoni",
++  "sevenBackupHint": "Ili kuzirejesha baadaye, 7 MOTION itatuma viungo vyako vya M3U, seva na taarifa za kuingia za Xtream (pamoja na nywila), na vipendwa kwenye seva yake. Hili ni hiari.",
++  "sevenBackupSaveError": "Imeshindikana kuhifadhi chaguo hili. Jaribu tena.",
+   "@@locale": "sw",
++  "freePanelTitle": "Usimamizi wa kifaa",
++  "freePanelSynced": "Paneli imejibu.",
++  "freeSourceError": "Chanzo hakikuweza kuingizwa. Kagua kiungo au maelezo ya kuingia.",
++  "freeSourceBackup": "Kuhifadhi nakala ya kiungo cha orodha yako na maelezo ya kuingia ni hiari. Unaweza kuwasha huduma hii kwenye mipangilio ya faragha.",
+   "appName": "7 MOTION",
+   "appTagline": "Sinema bila mipaka",
+   "navHome": "Mwanzo",
+diff --git a/test/core/app/panel_live_wait_test.dart b/test/core/app/panel_live_wait_test.dart
+index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..0907b9ad3e25f28d621eb9827e7395ad1cdad8ca 100644
+--- a/test/core/app/panel_live_wait_test.dart
++++ b/test/core/app/panel_live_wait_test.dart
+@@ -14,6 +14,7 @@ import 'package:http/testing.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:tv_king/core/app/panel_live_wait.dart';
+ import 'package:tv_king/features/device/data/device_identity.dart';
++import 'package:tv_king/features/playlists/data/remote_source_repository.dart';
+
+ // Clé attendue sur disque, indépendante du calcul du service : les tests
+ // peuvent ainsi s'exécuter aussi contre sa version antérieure.
+@@ -52,10 +53,10 @@ void main() {
+       expect(readLiveWait('pas du json', 4).changed, isFalse);
+     });
+
+-    test('réessai : 2, 4, 8, 16, 30 s au plus', () {
++    test('réessai : 1, 2, 4, 8, 16, 30 s au plus', () {
+       expect(liveWaitBackoff(0), Duration.zero);
+-      expect(liveWaitBackoff(1), const Duration(seconds: 2));
+-      expect(liveWaitBackoff(3), const Duration(seconds: 8));
++      expect(liveWaitBackoff(1), const Duration(seconds: 1));
++      expect(liveWaitBackoff(3), const Duration(seconds: 4));
+       expect(liveWaitBackoff(9), const Duration(seconds: 30));
+     });
+   });
+@@ -71,11 +72,90 @@ void main() {
+       DeviceIdentity.instance.debugResetCache();
+       w = PanelLiveWait.instance;
+       w.stop();
++      w.pollPeriod = const Duration(milliseconds: 650);
+       syncs = 0;
+       w.onChange = () async => syncs++;
+     });
+
+-    tearDown(() => w.stop());
++    tearDown(() {
++      w.stop();
++      w.pollPeriod = const Duration(seconds: 5);
++    });
++
++    // Le transport simulé du canal ne couvre pas à lui seul l'enregistrement
++    // de la preuve HTTP. Tous les autres appels restent aussi dans ce test.
++    void start() => http.runWithClient(w.start, () => MockClient((r) async {
++      expect(r.url.path, '/api/device-proof');
++      return http.Response('{}', 200);
++    }));
++
++
++    test('ordre suivi : reçu avant import, puis appliqué avec sa révision', () async {
++      final Completer<void> importing = Completer<void>();
++      final Completer<void> finish = Completer<void>();
++      final Completer<void> applied = Completer<void>();
++      final List<String> states = <String>[];
++      w.onChange = () async {
++        importing.complete();
++        await finish.future;
++        RemoteSourceRepository.lastConfigRev = 42;
++      };
++      w.clientFactory = () => MockClient((http.Request r) async {
++        expect(r.headers['X-Device-Secret']?.length, greaterThanOrEqualTo(32));
++        if (r.method == 'POST') {
++          final Map body = jsonDecode(r.body) as Map;
++          final Map ack = (body['orders'] as List).single as Map;
++          states.add('${ack['state']}');
++          expect(r.body.contains('password'), isFalse);
++          if (ack['state'] == 'applied') {
++            expect(ack['config_rev'], 42);
++            applied.complete();
++          }
++          return http.Response(jsonEncode(<String,Object>{'results': <Object>[
++            <String,Object?>{'order_id': ack['order_id'], 'status': 200, 'state': ack['state']},
++          ]}), 200);
++        }
++        if (r.url.queryParameters['after'] == '12') return http.Response('{}', 404);
++        return http.Response('{"box":[{"id":12,"kind":"source","order_id":"ord_fixture1234"}]}', 200);
++      });
++      start();
++      await importing.future.timeout(const Duration(seconds: 1));
++      await Future<void>.delayed(const Duration(milliseconds: 20));
++      expect(states, <String>['received']);
++      finish.complete();
++      await applied.future.timeout(const Duration(seconds: 1));
++      await Future<void>.delayed(const Duration(milliseconds: 20));
++      expect(states, <String>['received','applied']);
++      expect((await SharedPreferences.getInstance()).getInt(_cursorKey('MK:30:70:0E:D7:5B')),12);
++    });
++
++    test('HTTP 200 avec refus d’accusé ne consomme pas l’ordre', () async {
++      int finals = 0;
++      final List<String?> cursors = <String?>[];
++      final Completer<void> firstAck = Completer<void>();
++      final Completer<void> completed = Completer<void>();
++      w.clientFactory = () => MockClient((http.Request r) async {
++        if (r.method == 'POST') {
++          final Map ack = ((jsonDecode(r.body) as Map)['orders'] as List).single as Map;
++          final bool failed = ack['state'] == 'applied' && ++finals == 1;
++          if (failed) firstAck.complete();
++          return http.Response(jsonEncode(<String,Object>{'results': <Object>[
++            <String,Object?>{'order_id':ack['order_id'],'status':failed ? 500 : 200,
++              'state':ack['state'],if(failed)'error':'ack_failed'},
++          ]}),200);
++        }
++        cursors.add(r.url.queryParameters['after']);
++        if (r.url.queryParameters['after'] == '12') { completed.complete(); return http.Response('{}',404); }
++        return http.Response('{"box":[{"id":12,"kind":"activate","order_id":"ord_fixture1234"}]}',200);
++      });
++      start();
++      await firstAck.future.timeout(const Duration(seconds:1));
++      expect((await SharedPreferences.getInstance()).getInt(_cursorKey('MK:30:70:0E:D7:5B')),isNull);
++      await completed.future.timeout(const Duration(seconds:12));
++      await Future<void>.delayed(const Duration(milliseconds: 50));
++      expect(cursors,<String>['0','0','12']);
++      expect(syncs,3);
++    });
+
+     test('« Effacer les listes » au panel → relecture immédiate, pas au bout de 60 s', () async {
+       final Completer<void> panelClick = Completer<void>();
+@@ -104,7 +184,7 @@ void main() {
+           200,
+         );
+       });
+-      w.start();
++      start();
+       await Future<void>.delayed(const Duration(milliseconds: 100));
+       expect(syncs, 0, reason: 'rien tant que le panel n’a rien envoyé');
+
+@@ -163,7 +243,7 @@ void main() {
+           );
+         });
+
+-        w.start();
++        start();
+         await firstAttempt.future.timeout(const Duration(seconds: 1));
+         final SharedPreferences prefs = await SharedPreferences.getInstance();
+         expect(
+@@ -171,9 +251,9 @@ void main() {
+           isNull,
+           reason: 'recevoir un ordre ne prouve pas son application',
+         );
+-        await retried.future.timeout(const Duration(seconds: 4));
++        await retried.future.timeout(const Duration(seconds: 7));
+         await Future<void>.delayed(const Duration(milliseconds: 50));
+-        expect(afters, <String>['0', '0', '12']);
++        expect(afters, <String>['0', '0']);
+         expect(syncs, 2);
+         expect(prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')), 12);
+       },
+@@ -208,14 +288,15 @@ void main() {
+           return http.Response('{}', 404);
+         });
+
+-        w.start();
+-        await secondIdentitySeen.future.timeout(const Duration(seconds: 1));
++        start();
++        await secondIdentitySeen.future.timeout(const Duration(seconds: 12));
++        await Future<void>.delayed(const Duration(milliseconds: 50));
+         expect(requests, <String>[
+           '/api/box/wait/$firstMac?after=500',
+           '/api/box/wait/$nextMac?after=0',
+           '/api/box/wait/$nextMac?after=1',
+         ]);
+-        expect(syncs, 2);
++        expect(syncs, 3);
+         expect(prefs.getInt(_cursorKey(nextMac)), 1);
+         expect(prefs.getInt(_cursorKey(firstMac)), 500);
+       },
+@@ -232,7 +313,7 @@ void main() {
+         (http.Request r) async =>
+             http.Response('{"box":[{"id":12,"kind":"source_clear"}]}', 200),
+       );
+-      w.start();
++      start();
+       await started.future.timeout(const Duration(seconds: 1));
+       w.stop();
+       finish.complete();
+@@ -246,17 +327,17 @@ void main() {
+     });
+
+     test(
+-      'serveur sans canal (404) : l’écoute s’arrête, pas de boucle',
++      'serveur sans canal (404) : le repli lit encore le statut',
+       () async {
+         int calls = 0;
+         w.clientFactory = () => MockClient((http.Request r) async {
+           calls++;
+           return http.Response('{}', 404);
+         });
+-        w.start();
++        start();
+         await Future<void>.delayed(const Duration(milliseconds: 200));
+         expect(calls, 1);
+-        expect(syncs, 0);
++        expect(syncs, 1);
+       },
+     );
+
+diff --git a/test/free_play/cloud_backup_consent_test.dart b/test/free_play/cloud_backup_consent_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..905cec0293b302948acf9903a8acfe5c6ed8799c
+--- /dev/null
++++ b/test/free_play/cloud_backup_consent_test.dart
+@@ -0,0 +1,21 @@
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/update/build_flags.dart';
++import 'package:tv_king/features/playlists/data/cloud_backup_repository.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  test('le lecteur Play ne sauvegarde pas les accès sans choix explicite', () async {
++    SharedPreferences.setMockInitialValues(<String, Object>{'backup.restored.v1': true});
++    final backup = CloudBackupRepository.instance;
++    expect(await backup.backupEnabled(), isFalse);
++    await backup.debugUpload();
++    await backup.restoreIfNeeded();
++    await backup.setBackupEnabled(true);
++    expect(await backup.backupEnabled(), isTrue);
++    await backup.setBackupEnabled(false);
++    expect(await backup.backupEnabled(), isFalse);
++    await backup.debugUpload();
++  }, skip: !kIsPlayBuild);
++}
+diff --git a/test/free_play/panel_roundtrip_test.dart b/test/free_play/panel_roundtrip_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..ae1b6d89f33b2f170b8ae7e55ac43475ee937858
+--- /dev/null
++++ b/test/free_play/panel_roundtrip_test.dart
+@@ -0,0 +1,267 @@
++import 'dart:convert';
++
++import 'package:flutter/services.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:package_info_plus/package_info_plus.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/panel_live_wait.dart';
++import 'package:tv_king/core/backend/backend_hosts.dart';
++import 'package:tv_king/features/device/data/device_identity.dart';
++import 'package:tv_king/features/subscription/data/subscription_state.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  test('une confirmation perdue est rejouée par HTTP avant le signal WebSocket suivant', () async {
++    const mac = 'MK:FA:00:00:00:01';
++    const channel = MethodChannel('com.manzilionellm.tvking/device');
++    final messenger =
++        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
++    messenger.setMockMethodCallHandler(
++      channel,
++      (call) async => call.method == 'getDeviceInfo'
++          ? <String, String>{'model': 'test'}
++          : 'fixture-phone',
++    );
++    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
++    SharedPreferences.setMockInitialValues({'device.virtual_mac.v1': mac});
++    PackageInfo.setMockInitialValues(
++      appName: '7 MOTION',
++      packageName: 'com.manzilionellm.tvking',
++      version: '1.0',
++      buildNumber: '1',
++      buildSignature: '',
++    );
++    DeviceIdentity.instance.debugResetCache();
++    final state = SubscriptionState.instance;
++    await state.resetForTesting();
++    addTearDown(state.resetForTesting);
++    final panel = PanelLiveWait.instance;
++    final originalClient = panel.clientFactory;
++    addTearDown(() {
++      panel.stop();
++      panel.clientFactory = originalClient;
++    });
++    final calls = <String>[];
++    bool rejectFirst = true;
++    bool forceFailed = false;
++    bool frozen = false;
++    final body0 = {'id': 1, 'kind': 'source', 'order_id': 'ord_00000001'};
++    final body1 = {'id': 2, 'kind': 'suspend', 'order_id': 'ord_00000002'};
++    http.Response reply(Object data) => http.Response(jsonEncode(data), 200);
++    Future<http.Response> handler(http.Request request) async {
++      expect(request.url.host, 'api.zuno8k.com');
++      final path = request.url.path;
++      if (path == '/api/device-proof') return reply({'ok': true});
++      if (path == '/api/heartbeat') {
++        final body = jsonDecode(request.body) as Map<String, dynamic>;
++        expect(body['mac'], mac);
++        expect(body['platform'], 'mobile');
++        expect(body['store'], const bool.fromEnvironment('PLAY_BUILD'));
++        return reply({
++          'exists': true,
++          'paid': true,
++          'status': 'active',
++          'frozen': frozen,
++        });
++      }
++      if (path == '/api/device-source/$mac') {
++        calls.add('sources');
++        return reply({'rev': 9, 'sources': <Object?>[], 'source': null});
++      }
++      if (path == '/api/box/wait/$mac') {
++        calls.add('replay');
++        expect(request.url.queryParameters['after'], '0');
++        return reply({
++          'box': [body0, body1],
++        });
++      }
++      if (path == '/api/box/ack/$mac') {
++        expect(request.headers['X-Device-Secret'], isNotEmpty);
++        final acknowledgements =
++            (jsonDecode(request.body) as Map<String, dynamic>)['orders']
++                as List;
++        final results = <Object>[];
++        for (final ack in acknowledgements.cast<Map<String, dynamic>>()) {
++          final id = ack['order_id'];
++          final status = ack['state'];
++          final reject = status == 'applied' && rejectFirst;
++          if (reject) rejectFirst = false;
++          calls.add('$id:$status:${reject ? 503 : 200}');
++          if (id == 'ord_00000001' && status == 'applied')
++            expect(ack['config_rev'], 9);
++          if (id == 'ord_00000006') {
++            if (status == 'failed') {
++              expect(ack['error_code'], 'update_managed_by_play');
++              expect(forceFailed, isFalse);
++              forceFailed = true;
++              return http.Response('', 503); // Le Worker a persisté le refus.
++            }
++            expect(status, 'received');
++            results.add({
++              'order_id': id,
++              'status': 200,
++              'state': forceFailed ? 'failed' : 'expired',
++            });
++            continue;
++          }
++          results.add({
++            'order_id': id,
++            'status': reject ? 503 : 200,
++            'state': status,
++          });
++        }
++        return reply({'results': results});
++      }
++      throw StateError('Requête inattendue $path');
++    }
++
++    panel.clientFactory = () => MockClient(handler);
++    await http.runWithClient(() async {
++      Map<String, dynamic> frame(Map<String, Object?> event) => {
++        'mac': mac,
++        'seq': event['id'],
++        'type': event['kind'],
++        'order_id': event['order_id'],
++      };
++      expect(BackendHosts.current, BackendHosts.primary);
++      await expectLater(
++        panel.acceptSocketFrame(frame(body0)),
++        throwsStateError,
++      );
++      expect(await panel.cursorFor(mac), 0);
++      await panel.acceptSocketFrame(frame(body1));
++      expect(calls, contains('replay'));
++      expect(
++        calls,
++        containsAllInOrder([
++          'ord_00000001:applied:503',
++          'replay',
++          'ord_00000001:applied:200',
++          'ord_00000002:applied:200',
++        ]),
++      );
++      expect(await panel.cursorFor(mac), 2);
++      final count = calls.length;
++      await panel.acceptSocketFrame(frame(body0));
++      expect(calls.length, count);
++      frozen = true;
++      await panel.acceptSocketFrame({
++        'seq': 3,
++        'mac': mac,
++        'type': 'suspend',
++        'order_id': 'ord_00000003',
++      });
++      expect(state.remote.frozen, isTrue);
++      final readsWhileFrozen = calls.where((call) => call == 'sources').length;
++      await panel.acceptSocketFrame({
++        'seq': 4,
++        'mac': mac,
++        'type': 'source',
++        'order_id': 'ord_00000005',
++      });
++      expect(calls, contains('ord_00000005:failed:200'));
++      frozen = false;
++      await panel.acceptSocketFrame({
++        'seq': 5,
++        'mac': mac,
++        'type': 'resume',
++        'order_id': 'ord_00000004',
++      });
++      expect(state.remote.frozen, isFalse);
++      expect(
++        calls.where((call) => call == 'sources').length,
++        greaterThan(readsWhileFrozen),
++      );
++      expect(
++        (await SharedPreferences.getInstance()).getInt(liveWaitCursorKey(mac)),
++        5,
++      );
++      if (const bool.fromEnvironment('PLAY_BUILD')) {
++        final forceUpdate = {
++          'mac': mac,
++          'seq': 6,
++          'type': 'force_update',
++          'order_id': 'ord_00000006',
++        };
++        await expectLater(
++          panel.acceptSocketFrame(forceUpdate),
++          throwsStateError,
++        );
++        expect(await panel.cursorFor(mac), 5);
++        await panel.acceptSocketFrame(forceUpdate);
++        expect(forceFailed, isTrue);
++        expect(await panel.cursorFor(mac), 6);
++        expect(calls, isNot(contains('ord_00000006:applied:200')));
++      }
++    }, () => MockClient(handler));
++  });
++
++  test(
++    'un journal de 32 signaux est confirmé en lots acceptés par le Worker',
++    () async {
++      const mac = 'MK:FA:00:00:00:02';
++      SharedPreferences.setMockInitialValues({'device.virtual_mac.v1': mac});
++      DeviceIdentity.instance.debugResetCache();
++      final panel = PanelLiveWait.instance;
++      final previousChange = panel.onChange;
++      final previousClient = panel.clientFactory;
++      addTearDown(() {
++        panel.stop();
++        panel.onChange = previousChange;
++        panel.clientFactory = previousClient;
++      });
++      final batches = <int>[];
++      final orders = List.generate(
++        32,
++        (i) => {
++          'id': i + 1,
++          'kind': 'activate',
++          'order_id': 'ord_${(i + 1).toString().padLeft(8, '0')}',
++        },
++      );
++      panel.onChange = () async {};
++      Future<http.Response> handler(http.Request r) async {
++        if (r.url.path == '/api/device-proof') return http.Response('{}', 200);
++        if (r.method == 'GET')
++          return http.Response(jsonEncode({'box': orders}), 200);
++        final rows = (jsonDecode(r.body)['orders'] as List)
++            .cast<Map<String, dynamic>>();
++        batches.add(rows.length);
++        expect(rows.length, lessThanOrEqualTo(20));
++        return http.Response(
++          jsonEncode({
++            'results': rows
++                .map(
++                  (row) => {
++                    'order_id': row['order_id'],
++                    'status': 200,
++                    'state': row['state'],
++                  },
++                )
++                .toList(),
++          }),
++          200,
++        );
++      }
++
++      panel.clientFactory = () => MockClient(handler);
++      await http.runWithClient(() async {
++        final first = {
++          'mac': mac,
++          'seq': 32,
++          'type': 'activate',
++          'order_id': 'ord_00000032',
++        };
++        await Future.wait([
++          panel.acceptSocketFrame(first),
++          panel.acceptSocketFrame(first),
++        ]);
++        expect(await panel.cursorFor(mac), 32);
++        expect(batches, [20, 20, 12, 12]);
++      }, () => MockClient(handler));
++    },
++  );
++}
+diff --git a/test/free_play/panel_settings_refresh_test.dart b/test/free_play/panel_settings_refresh_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..5fed16d99115805b6743b01ba016fb0a0c850525
+--- /dev/null
++++ b/test/free_play/panel_settings_refresh_test.dart
+@@ -0,0 +1,125 @@
++import 'dart:convert';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/branding/brand_config.dart';
++import 'package:tv_king/features/theme/data/remote_theme_repository.dart';
++import 'package:tv_king/features/pricing/data/pricing_repository.dart';
++import 'package:tv_king/features/simple_home/data/home_layout_repository.dart';
++import 'package:tv_king/features/country_home/data/featured_repository.dart';
++import 'package:tv_king/features/ads/data/startup_ad_repository.dart';
++import 'package:tv_king/features/feedback/data/feedback_repository.dart';
++import 'package:tv_king/features/playlists/data/default_servers.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
++  final Map<String, Future<void> Function()> readers =
++      <String, Future<void> Function()>{
++        'thème': () => RemoteThemeRepository.fetchAndApply(strict: true),
++        'tarifs': () => PricingRepository.fetch(strict: true),
++        'accueil': () => HomeLayoutRepository.instance.refresh(strict: true),
++        'vedette': () => FeaturedRepository.instance.refresh(strict: true),
++        'publicité': () async {
++          await StartupAdRepository.instance.fetch(strict: true);
++        },
++        'avis': () => FeedbackRepository.instance.reload(strict: true),
++        'serveurs': () async {
++          await DefaultServersApi.fetch(forceRefresh: true, strict: true);
++        },
++      };
++  for (final entry in readers.entries) {
++    test(
++      '${entry.key} : une panne HTTP ou un JSON invalide ne vaut pas application',
++      () async {
++        for (final response in <http.Response>[
++          http.Response('indisponible', 503),
++          http.Response('[]', 200),
++        ]) {
++          await expectLater(
++            http.runWithClient(
++              entry.value,
++              () => MockClient((_) async => response),
++            ),
++            throwsA(anyOf(isA<StateError>(), isA<FormatException>())),
++          );
++        }
++      },
++    );
++  }
++  test(
++    'les valeurs distantes remplacent les réglages courants sans redémarrage',
++    () async {
++      final data = <String, Object>{
++        '/api/theme': <String, Object>{
++          'appName': 'Nom du panel',
++          'accent': '#884422',
++        },
++        '/api/pricing': <String, Object>{
++          'currency': '€',
++          'yearly': '7',
++          'lifetime': '15',
++          'trialDays': 0,
++          'promoEnabled': false,
++        },
++        '/api/home-layout': <String, Object>{
++          'items': <Object>[
++            <String, Object>{
++              'key': 'recent',
++              'position': 0,
++              'enabled': true,
++              'ribbon': 'Nouveau',
++              'featured': false,
++            },
++          ],
++        },
++        '/api/featured': <String, Object>{
++          'name': 'Chaîne locale',
++          'note': 'À voir',
++        },
++        '/api/ad': <String, Object>{
++          'enabled': false,
++          'url': '',
++          'skip': 9,
++          'freq': 'daily',
++        },
++        '/api/feedback-prompt': <String, Object>{
++          'enabled': true,
++          'message': 'Votre avis',
++        },
++        '/api/servers': <String, Object>{
++          'servers': <Object>[
++            <String, Object>{
++              'id': 'fixture',
++              'label': 'Fixture',
++              'url': 'https://example.invalid',
++            },
++          ],
++        },
++      };
++      await http.runWithClient(
++        () async {
++          for (final reader in readers.values) {
++            await reader();
++          }
++        },
++        () => MockClient(
++          (request) async => http.Response.bytes(
++            utf8.encode(jsonEncode(data[request.url.path])),
++            200,
++            headers: {'content-type': 'application/json; charset=utf-8'},
++          ),
++        ),
++      );
++      expect(BrandConfig.instance.appName, 'Nom du panel');
++      expect(PricingRepository.current.yearly, '7');
++      expect(HomeLayoutRepository.instance.config('recent')?.ribbon, 'Nouveau');
++      expect(FeaturedRepository.instance.note, 'À voir');
++      expect(StartupAdRepository.instance.config.skip, 9);
++      expect(FeedbackRepository.instance.message, 'Votre avis');
++      expect((await DefaultServersApi.fetch()).single.id, 'fixture');
++    },
++  );
++}
+diff --git a/test/free_play/player_entry_test.dart b/test/free_play/player_entry_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..94c437475afe358c4e9650127f4010c782690801
+--- /dev/null
++++ b/test/free_play/player_entry_test.dart
+@@ -0,0 +1,101 @@
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/app/panel_live_wait.dart';
++import 'package:tv_king/core/update/build_flags.dart';
++import 'package:tv_king/features/playlists/presentation/free_player_sources.dart';
++import 'package:tv_king/features/subscription/data/subscription_state.dart';
++import 'package:tv_king/l10n/generated/app_localizations.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++
++  setUp(() {
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      'device.virtual_mac.v1': 'MK:01:23:45:67:89',
++    });
++  });
++
++  test('expiration allows personal playback; an explicit suspension survives offline', () async {
++    final sub = SubscriptionState.instance;
++    await sub.resetForTesting();
++    await sub.initialize();
++    for (final reason in ['expired', 'loaned', 'frozen', 'banned']) {
++      await sub.markBlockedFromSource(reason);
++      final suspended = reason == 'frozen' || reason == 'banned';
++      expect(sub.shouldBlockUser, suspended);
++      expect(sub.canStream, !suspended);
++      sub.simulateOfflineForTesting();
++      expect(sub.shouldBlockUser, suspended);
++      expect(sub.canStream, !suspended);
++    }
++    await sub.markBlockedFromSource('expired');
++    expect(sub.canStream, isTrue);
++  }, skip: !kIsPlayBuild);
++
++  for (final xtream in [false, true]) {
++    testWidgets('opens the correct personal source form: xtream=$xtream', (
++      tester,
++    ) async {
++      await _showEntry(tester);
++      await tester.tap(find.text(xtream ? 'Xtream Codes' : 'Add an M3U list'));
++      await tester.pumpAndSettle();
++      expect(find.text(xtream ? 'Xtream server' : 'M3U URL'), findsOneWidget);
++      expect(find.text(xtream ? 'M3U URL' : 'Xtream server'), findsNothing);
++      if (xtream) {
++        expect(
++          tester
++              .widgetList<TextField>(find.byType(TextField))
++              .where((field) => field.obscureText),
++          hasLength(1),
++        );
++      }
++    }, skip: !kIsPlayBuild);
++  }
++
++  testWidgets('panel confirms explicit refresh and reports failure on retry', (
++    tester,
++  ) async {
++    final panel = PanelLiveWait.instance;
++    final original = panel.onChange;
++    addTearDown(() => panel.onChange = original);
++    bool succeeds = true;
++    var calls = 0;
++    panel.onChange = () async {
++      calls++;
++      if (!succeeds) throw StateError('offline');
++    };
++    await _showEntry(tester);
++    await tester.tap(find.text('Device management'));
++    await tester.pumpAndSettle();
++    expect(find.text('01:23:45:67:89'), findsOneWidget);
++    final context = tester.element(find.byType(FreePlayerPanelTile));
++    final strings = AppLocalizations.of(context);
++    expect(find.text(strings.freePanelSynced), findsNothing);
++    await tester.tap(find.text(strings.buttonSyncNow));
++    await tester.pumpAndSettle();
++    expect(find.text(strings.freePanelSynced), findsOneWidget);
++    succeeds = false;
++    await tester.tap(find.text(strings.buttonSyncNow));
++    await tester.pumpAndSettle();
++    expect(calls, 2);
++    expect(find.text(strings.freePanelSynced), findsNothing);
++    expect(find.text(strings.playlistResyncFailed), findsOneWidget);
++  }, skip: !kIsPlayBuild);
++}
++
++Future<void> _showEntry(WidgetTester tester) async {
++  tester.view.physicalSize = const Size(700, 1100);
++  tester.view.devicePixelRatio = 1;
++  addTearDown(tester.view.resetPhysicalSize);
++  addTearDown(tester.view.resetDevicePixelRatio);
++  await tester.pumpWidget(
++    const MaterialApp(
++      locale: Locale('en'),
++      localizationsDelegates: AppLocalizations.localizationsDelegates,
++      supportedLocales: AppLocalizations.supportedLocales,
++      home: Scaffold(body: SingleChildScrollView(child: FreePlayerSources())),
++    ),
++  );
++  await tester.pumpAndSettle();
++}

@@ -16,7 +16,8 @@
 //  derniers messages (consultable depuis un écran de diagnostic) + un
 //  `debugPrint`. Le branchement Firebase Crashlytics est ajouté dans une
 //  surcouche optionnelle (cf. `crash_reporting_firebase.dart`) qui se
-//  contente d'appeler `attachBackend()` au démarrage si elle est présente.
+//  contente d'appeler `attachBackend()` après la première image si elle est
+//  présente. Son initialisation n'est jamais une condition de démarrage de l'UI.
 // =========================================================
 import 'package:flutter/foundation.dart';
 
@@ -50,8 +51,8 @@ class CrashReporting {
 
   /// Init best-effort. Ne fait (volontairement) presque rien ici : la couche
   /// locale n'a rien à initialiser. La surcouche Firebase, si elle existe,
-  /// appellera `attachBackend()` juste après. On garde la méthode `async`
-  /// pour que le branchement Firebase (qui EST async) reste transparent.
+  /// appellera `attachBackend()` séparément après la première image. Cette
+  /// méthode ne dépend jamais de la disponibilité du backend distant.
   Future<void> initialize() async {
     _ready = true;
   }

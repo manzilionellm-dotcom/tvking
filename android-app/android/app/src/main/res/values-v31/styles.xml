@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash système Android 12+ : même noir que l'app, cercle d'icône
+         fondu dans le fond (pas un disque blanc autour du lanceur). -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/zuno_splash</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/zuno_splash</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@color/zuno_splash</item>
+    </style>
+</resources>

@@ -28,8 +28,9 @@ Android tue puis relance le process. Si le démarrage refait aussitôt l'action
 qui a planté → **boucle infinie**. `BootGuard` compte les lancements
 rapprochés ; au 3ᵉ en moins de 20 s il passe en **MODE SANS ÉCHEC** : on
 **saute le ré-import distant** (l'étape la plus gourmande), l'app ouvre sur le
-**cache** → la boucle est cassée. Un démarrage stable (8 s) remet le compteur
-à zéro. Le ré-import auto côté écran Direct est aussi **borné** (6 essais max).
+**cache** → la boucle est cassée. Sur TV, le délai de stabilité de huit secondes
+commence après la première rasterisation Flutter ; son expiration remet le
+compteur à zéro. Le ré-import auto côté écran Direct est aussi **borné** (6 essais max).
 
 > 🔎 Pour connaître la **vraie cause** du crash natif (OOM ? codec ?), il faut
 > **Crashlytics activé** (`GOOGLE_SERVICES_JSON`) ou un `adb logcat` sur la box.
@@ -95,7 +96,9 @@ d'erreur du lecteur → message à l'utilisateur, pas de crash.
    (`com.manzilionellm.tvking`, `…prive`), télécharger `google-services.json`.
 2. Déposer son **contenu** dans le secret GitHub `GOOGLE_SERVICES_JSON`.
 3. Relancer un build : les workflows écrivent le fichier et appliquent le
-   plugin Gradle ; `attachCrashlytics()` s'active au démarrage.
+   plugin Gradle ; `attachCrashlytics()` est ensuite tenté après la première
+   rasterisation Flutter, sans bloquer le bootstrap. Le journal local reste
+   disponible avant l'interface.
 
 Sans ces étapes : aucun changement de comportement, build vert, journal local
 uniquement (`CrashReporting.recentErrors`).

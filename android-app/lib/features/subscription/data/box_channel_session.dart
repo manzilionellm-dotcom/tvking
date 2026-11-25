@@ -25,11 +25,16 @@ class BoxChannelSession {
     required this.mac,
     required this.onFrame,
     required this.alive,
+    this.onConnectionChanged,
   });
 
   final String mac;
   final Future<void> Function(BoxChannelFrame frame) onFrame;
   final bool Function() alive;
+
+  /// Réveille le filet HTTP dès qu'une prise tombe, sans attendre que
+  /// l'autre boucle réseau constate indirectement la coupure.
+  final void Function(bool open)? onConnectionChanged;
 
   /// Dernier numéro appliqué. Un signal déjà vu ne se rejoue pas.
   int seq = 0;
@@ -37,6 +42,12 @@ class BoxChannelSession {
   /// Vrai tant que la prise est ouverte. La veille s'en sert
   /// pour ne pas doubler avec l'attente longue.
   bool open = false;
+
+  void _setOpen(bool value) {
+    if (open == value) return;
+    open = value;
+    onConnectionChanged?.call(value);
+  }
 
   bool _stopped = false;
   WebSocket? _socket;
@@ -64,7 +75,7 @@ class BoxChannelSession {
             .timeout(const Duration(seconds: 8));
         _socket = socket;
         if (!_going()) break;
-        open = true;
+        _setOpen(true);
         delaySeconds = 1;
         hello = Timer.periodic(const Duration(seconds: 25), (_) {
           try {
@@ -85,7 +96,7 @@ class BoxChannelSession {
         if (kDebugMode) debugPrint('[Canal] $e');
       } finally {
         hello?.cancel();
-        open = false;
+        _setOpen(false);
         try {
           await _socket?.close();
         } catch (_) {

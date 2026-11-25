@@ -1,0 +1,290 @@
+name: 7 MOTION mobile gesture compatibility (no release)
+'on':
+  push:
+    branches:
+    - feature/mobile-back-gestures-20261019
+permissions:
+  contents: read
+env:
+  SOURCE_SHA: ${{ github.sha }}
+jobs:
+  test-apk:
+    name: Tests Flutter et APK debug isolé
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: phone
+    steps:
+    - name: Récupérer la correction exacte
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ env.SOURCE_SHA }}
+        path: mission
+        persist-credentials: false
+    - name: Récupérer la base mobile validée sans fusion
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+        path: phone
+        persist-credentials: false
+    - name: Appliquer la base et toutes les corrections mobiles
+      run: 'set -euo pipefail
+
+        [ "$(git rev-parse HEAD)" = "37fdf3305c5de9d35e20fd6567df38008fc7a7ee" ]
+
+        git apply --check ../mission/patches/mobile-sport-gratuit.patch
+
+        git apply ../mission/patches/mobile-sport-gratuit.patch
+
+        git apply --check ../mission/patches/mobile-radio.patch
+
+        git apply ../mission/patches/mobile-radio.patch
+
+        git apply --check ../mission/patches/mobile-panel-sync.patch
+
+        git apply ../mission/patches/mobile-panel-sync.patch
+
+        git apply --check ../mission/patches/mobile-identity.patch
+
+        git apply ../mission/patches/mobile-identity.patch
+
+        git apply --check ../mission/patches/mobile-stability.patch
+
+        git apply ../mission/patches/mobile-stability.patch
+
+        git apply --check ../mission/android-app/ci/mobile/adult-classification.patch
+
+        git apply ../mission/android-app/ci/mobile/adult-classification.patch
+
+        git apply --check ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+
+        git apply ../mission/android-app/ci/mobile/player-terminal-fallback.patch
+
+        git diff --check
+
+        git apply --check ../mission/android-app/ci/mobile/mobile-back-gestures.patch
+
+        git apply ../mission/android-app/ci/mobile/mobile-back-gestures.patch
+
+        git diff --check
+
+        '
+    - name: Setup Java 17 (Temurin)
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Setup Flutter
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: false
+        pub-cache: false
+    - name: Print exact Flutter version
+      run: 'flutter --version
+
+        dart --version
+
+        '
+    - name: Generate native Android folder
+      run: flutter create . --platforms=android --org com.manzilionellm.tvking --project-name
+        tv_king
+    - name: Fixer minSdk 24 (téléphone — requis par ffmpeg_kit)
+      run: "python3 - <<'PYEOF'\nimport re, glob\ncands = glob.glob(\"android/app/build.gradle.kts\"\
+        ) + glob.glob(\"android/app/build.gradle\")\nif not cands:\n    raise SystemExit(\"\
+        build.gradle introuvable après flutter create\")\nf = cands[0]\ns = open(f).read()\n\
+        if re.search(r'minSdk\\s*=\\s*flutter\\.minSdkVersion', s):\n    s = re.sub(r'minSdk\\\
+        s*=\\s*flutter\\.minSdkVersion', 'minSdk = 24', s)\nelif re.search(r'minSdkVersion\\\
+        s+flutter\\.minSdkVersion', s):\n    s = re.sub(r'minSdkVersion\\s+flutter\\\
+        .minSdkVersion', 'minSdkVersion 24', s)\nelif re.search(r'minSdk\\s*=\\s*\\\
+        d+', s):\n    s = re.sub(r'minSdk\\s*=\\s*\\d+', 'minSdk = 24', s, count=1)\n\
+        elif re.search(r'minSdkVersion\\s+\\d+', s):\n    s = re.sub(r'minSdkVersion\\\
+        s+\\d+', 'minSdkVersion 24', s, count=1)\nelse:\n    raise SystemExit(\"minSdk\
+        \ introuvable dans \" + f)\nopen(f, \"w\").write(s)\nprint(\"minSdk -> 24\
+        \ dans\", f)\nPYEOF\n"
+    - name: Harmoniser le nom Android 7 MOTION
+      run: "MANIFEST=android/app/src/main/AndroidManifest.xml\nif [ -f \"$MANIFEST\"\
+        \ ]; then\n  sed -i 's|android:label=\"tv_king\"|android:label=\"7 MOTION\"\
+        |g' \"$MANIFEST\"\n  echo \"--- Patched manifest ---\"\n  grep 'android:label'\
+        \ \"$MANIFEST\" || true\nfi\n"
+    - name: Patch AndroidManifest for network (cleartext HTTP + INTERNET)
+      run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"\
+        $MANIFEST\" ]; then\n  echo \"❌ Manifest manquant — flutter create a-t-il\
+        \ tourné ?\"\n  exit 1\nfi\n\n# 1. Permission INTERNET — enfant de <manifest>\n\
+        if ! grep -q 'android.permission.INTERNET' \"$MANIFEST\"; then\n  sed -i '/<manifest\
+        \ /a\\    <uses-permission android:name=\"android.permission.INTERNET\"/>'\
+        \ \"$MANIFEST\"\n  echo \"✓ permission INTERNET ajoutée\"\nelse\n  echo \"\
+        ⊙ permission INTERNET déjà présente\"\nfi\n\n# 2. usesCleartextTraffic=\"\
+        true\" — attribut de <application>\nif ! grep -q 'usesCleartextTraffic' \"\
+        $MANIFEST\"; then\n  sed -i 's|<application|<application\\n        android:usesCleartextTraffic=\"\
+        true\"|' \"$MANIFEST\"\n  echo \"✓ android:usesCleartextTraffic=\\\"true\\\
+        \" ajouté (HTTP IPTV en clair autorisé)\"\nelse\n  echo \"⊙ usesCleartextTraffic\
+        \ déjà présent\"\nfi\n\n# 3. REQUEST_INSTALL_PACKAGES — permet à l'updater\
+        \ in-app de\n#    lancer l'installation du nouvel APK sans navigateur externe\n\
+        #    (mise à jour par-dessus, sans désinstallation).\nif ! grep -q 'REQUEST_INSTALL_PACKAGES'\
+        \ \"$MANIFEST\"; then\n  sed -i '/<manifest /a\\    <uses-permission android:name=\"\
+        android.permission.REQUEST_INSTALL_PACKAGES\"/>' \"$MANIFEST\"\n  echo \"\
+        ✓ permission REQUEST_INSTALL_PACKAGES ajoutée\"\nelse\n  echo \"⊙ permission\
+        \ REQUEST_INSTALL_PACKAGES déjà présente\"\nfi\n\necho \"--- Manifest réseau\
+        \ patché ---\"\ngrep -nE 'INTERNET|usesCleartextTraffic|REQUEST_INSTALL_PACKAGES|<application'\
+        \ \"$MANIFEST\" || true\n"
+    - name: Patch AndroidManifest for privacy (allowBackup=false)
+      run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"\
+        $MANIFEST\" ]; then\n  echo \"❌ Manifest manquant — flutter create a-t-il\
+        \ tourné ?\"\n  exit 1\nfi\nif ! grep -q 'allowBackup' \"$MANIFEST\"; then\n\
+        \  sed -i 's|<application|<application\\n        android:allowBackup=\"false\"\
+        |' \"$MANIFEST\"\n  echo \"✓ android:allowBackup=\\\"false\\\" ajouté (base\
+        \ playlists/identifiants hors backup)\"\nelse\n  echo \"⊙ allowBackup déjà\
+        \ présent\"\nfi\ngrep -nE 'allowBackup|<application' \"$MANIFEST\" || true\n"
+    - name: Patch AndroidManifest for Android TV (leanback)
+      run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"\
+        $MANIFEST\" ]; then\n  echo \"❌ Manifest manquant — flutter create a-t-il\
+        \ tourné ?\"\n  exit 1\nfi\n\n# 1+2. uses-feature — injectés juste après <manifest\
+        \ ...>\nif ! grep -q 'android.software.leanback' \"$MANIFEST\"; then\n  sed\
+        \ -i '/<manifest /a\\    <uses-feature android:name=\"android.software.leanback\"\
+        \ android:required=\"false\"/>\\n    <uses-feature android:name=\"android.hardware.touchscreen\"\
+        \ android:required=\"false\"/>' \"$MANIFEST\"\n  echo \"✓ uses-feature leanback\
+        \ + touchscreen ajoutés\"\nelse\n  echo \"⊙ uses-feature leanback déjà présent\
+        \ (re-run)\"\nfi\n\n# 3. LEANBACK_LAUNCHER — injecté après LAUNCHER existant\n\
+        if ! grep -q 'LEANBACK_LAUNCHER' \"$MANIFEST\"; then\n  sed -i 's|<category\
+        \ android:name=\"android.intent.category.LAUNCHER\"/>|<category android:name=\"\
+        android.intent.category.LAUNCHER\"/>\\n                <category android:name=\"\
+        android.intent.category.LEANBACK_LAUNCHER\"/>|' \"$MANIFEST\"\n  echo \"✓\
+        \ catégorie LEANBACK_LAUNCHER ajoutée\"\nelse\n  echo \"⊙ LEANBACK_LAUNCHER\
+        \ déjà présent\"\nfi\n\n# 4. android:banner — sur <application>\nif ! grep\
+        \ -q 'android:banner' \"$MANIFEST\"; then\n  sed -i 's|android:icon=\"@mipmap/ic_launcher\"\
+        |android:icon=\"@mipmap/ic_launcher\"\\n        android:banner=\"@mipmap/ic_launcher\"\
+        |' \"$MANIFEST\"\n  echo \"✓ android:banner ajouté (pointe vers le launcher\
+        \ icon)\"\nelse\n  echo \"⊙ android:banner déjà présent\"\nfi\n\necho \"---\
+        \ Manifest patché ---\"\ncat \"$MANIFEST\"\n"
+    - name: Apply Google Cast SDK overlay
+      run: bash android_overlay/google_cast/apply_cast_patch.sh
+    - name: FLAG_SECURE OFF (l'image doit sortir)
+      run: python3 ci/clear_secure_flag.py
+    - name: Patch AndroidManifest for Picture-in-Picture
+      run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif [ ! -f \"\
+        $MANIFEST\" ]; then\n  echo \"❌ Manifest manquant\"; exit 1\nfi\nif ! grep\
+        \ -q 'supportsPictureInPicture' \"$MANIFEST\"; then\n  # Insère les 2 attributs\
+        \ APRÈS android:name=\".MainActivity\"\n  # qui est toujours présent (généré\
+        \ par flutter create).\n  sed -i 's|android:name=\".MainActivity\"|android:name=\"\
+        .MainActivity\"\\n            android:supportsPictureInPicture=\"true\"\\\
+        n            android:resizeableActivity=\"true\"|' \"$MANIFEST\"\n  echo \"\
+        ✓ PiP attributes ajoutés sur MainActivity\"\nelse\n  echo \"⊙ PiP déjà patché\
+        \ (re-run)\"\nfi\ngrep -A2 'supportsPictureInPicture' \"$MANIFEST\" || true\n"
+    - name: Get dependencies
+      run: flutter pub get
+    - name: Patch screen_brightness_android build.gradle
+      run: "set -e\nFILE=$(find ~/.pub-cache/hosted/pub.dev -path \"*/screen_brightness_android-*/android/build.gradle\"\
+        \ 2>/dev/null | head -1)\nif [ -z \"$FILE\" ]; then\n  echo \"⊙ screen_brightness_android\
+        \ pas dans pub-cache, skip\"\n  exit 0\nfi\necho \"Patching $FILE\"\nexport\
+        \ PATCH_FILE=\"$FILE\"\n# Dump diagnostique : montre ce qu'il y a dans le\
+        \ fichier\n# autour de la ligne 52 (l'erreur disait line: 52).\necho \"=====\
+        \ ORIGINAL build.gradle (lignes 40-65) =====\"\nsed -n '40,65p' \"$FILE\"\n\
+        echo \"===== fin dump =====\"\npython3 << 'PYEOF'\nimport os, re\nfile = os.environ['PATCH_FILE']\n\
+        with open(file) as f:\n    lines = f.readlines()\n# Parseur ligne-par-ligne\
+        \ qui retire tout bloc `kotlin {...}`\n# quelle que soit l'indentation et\
+        \ même s'il y a des\n# accolades imbriquées. On compte les `{` et `}` pour\n\
+        # trouver la fin réelle du bloc.\nkotlin_block_re = re.compile(r'^\\s*kotlin\\\
+        s*\\{')\nout = []\nin_kotlin = False\ndepth = 0\nremoved = 0\nfor line in\
+        \ lines:\n    if not in_kotlin:\n        if kotlin_block_re.match(line):\n\
+        \            in_kotlin = True\n            depth = line.count('{') - line.count('}')\n\
+        \            removed += 1\n            if depth <= 0:\n                in_kotlin\
+        \ = False  # bloc sur une seule ligne\n            continue\n        out.append(line)\n\
+        \    else:\n        depth += line.count('{') - line.count('}')\n        removed\
+        \ += 1\n        if depth <= 0:\n            in_kotlin = False\nif removed\
+        \ > 0:\n    with open(file, 'w') as f:\n        f.writelines(out)\n    print(f'✓\
+        \ retiré {removed} ligne(s) du bloc kotlin{{}}')\nelse:\n    print('⊙ aucun\
+        \ bloc kotlin{} trouvé (peut-être déjà fixé)')\nPYEOF\necho \"===== APRÈS\
+        \ patch (lignes 40-65) =====\"\nsed -n '40,65p' \"$FILE\"\necho \"===== fin\
+        \ dump =====\"\n"
+    - name: Generate AppLocalizations from .arb files
+      run: flutter gen-l10n
+    - name: Generate launcher icons (7 MOTION)
+      run: dart run flutter_launcher_icons
+    - name: Préparer les composants Android des notifications
+      run: 'set -euo pipefail
+
+        python3 -m venv "$RUNNER_TEMP/mobile-audit"
+
+        "$RUNNER_TEMP/mobile-audit/bin/pip" install androguard==4.1.3 numpy==2.2.6
+
+        "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/prepare_notifications.py'
+    - name: Patch build.gradle.kts for notifications (desugaring)
+      run: "set -e\nF=android/app/build.gradle.kts\npython3 << 'PYEOF'\nf = \"android/app/build.gradle.kts\"\
+        \ns = open(f).read()\nif 'isCoreLibraryDesugaringEnabled' not in s:\n    s\
+        \ = s.replace(\n        'compileOptions {',\n        'compileOptions {\\n\
+        \        isCoreLibraryDesugaringEnabled = true',\n        1)\n    print('desugaring\
+        \ active')\nelse:\n    print('desugaring deja actif')\nif 'desugar_jdk_libs'\
+        \ not in s:\n    s = s.rstrip() + ('\\n\\ndependencies {\\n'\n        '  \
+        \  coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.4\")\\n'\n\
+        \        '}\\n')\n    print('dep desugar ajoutee')\nelse:\n    print('dep\
+        \ desugar deja presente')\nopen(f, 'w').write(s)\nPYEOF\necho \"----- build.gradle.kts\
+        \ (queue) -----\"\ntail -n 14 \"$F\"\n"
+    - name: Patch AndroidManifest for notifications
+      run: "set -e\nMANIFEST=android/app/src/main/AndroidManifest.xml\nif ! grep -q\
+        \ 'POST_NOTIFICATIONS' \"$MANIFEST\"; then\n  sed -i '/<manifest /a\\    <uses-permission\
+        \ android:name=\"android.permission.POST_NOTIFICATIONS\"/>\\n    <uses-permission\
+        \ android:name=\"android.permission.RECEIVE_BOOT_COMPLETED\"/>' \"$MANIFEST\"\
+        \n  echo \"✓ permissions notifications ajoutées\"\nelse\n  echo \"⊙ permissions\
+        \ notif déjà présentes\"\nfi\n"
+    - name: Analyse et vrais tests du téléphone
+      run: 'set -euo pipefail
+
+        if git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
+        exit 1; fi
+
+        rm -f test/widget_test.dart
+
+        flutter analyze --no-fatal-infos --no-fatal-warnings
+
+        flutter test --reporter expanded
+
+        '
+    - name: Isoler cette installation de test
+      run: 'python3 - <<''PYTEST''
+
+        from pathlib import Path
+
+        p=Path(''android/app/build.gradle.kts'')
+
+        s=p.read_text()
+
+        s=s.replace(''applicationId = "com.manzilionellm.tvking.tv_king"'', ''applicationId
+        = "com.manzilionellm.tvking.tv_king.gesturetest"'')
+
+        assert ''applicationId = "com.manzilionellm.tvking.tv_king.gesturetest"''
+        in s
+
+        p.write_text(s)
+
+        p=Path(''android/app/src/main/AndroidManifest.xml'')
+
+        s=p.read_text().replace(''android:label="7 MOTION"'',''android:label="7 MOTION
+        TEST GESTES"'')
+
+        p.write_text(s)
+
+        PYTEST
+
+        '
+    - name: Construire un APK debug sans clé de publication
+      run: 'set -euo pipefail
+
+        flutter build apk --debug --target-platform android-arm64 --target=lib/main.dart
+        --build-number="$(date +%s)" --dart-define=APP_BUILD_LABEL=TESTGESTES --dart-define=GIT_SHA=${{
+        env.SOURCE_SHA }}
+
+        cp build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/7motion-gestures-test.apk
+
+        sha256sum build/app/outputs/flutter-apk/7motion-gestures-test.apk
+
+        '
+    - name: Conserver APK de test
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: 7motion-gestures-debug-${{ github.sha }}
+        path: phone/build/app/outputs/flutter-apk/7motion-gestures-test.apk
+        if-no-files-found: error
+        retention-days: 7

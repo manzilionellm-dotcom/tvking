@@ -1,0 +1,50 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:tvking/features/ads/presentation/seven_motion_ads.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  const channel = MethodChannel('7motion/admob');
+  final messenger =
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+
+  Future<void> mount(WidgetTester tester, {bool enabled = true}) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: SevenMotionAdsBanner(enabled: enabled)),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+  testWidgets('absence du SDK ou annonces désactivées : aucun emplacement',
+      (tester) async {
+    await mount(tester);
+    expect(find.byType(AndroidView), findsNothing);
+    expect(find.byType(TextButton), findsNothing);
+    final calls = <String>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      return <String, bool>{'banner': true, 'privacy': true};
+    });
+    await mount(tester, enabled: false);
+    expect(calls, isEmpty);
+    expect(find.byType(TextButton), findsNothing);
+  });
+
+  testWidgets('choix privés accessibles quand aucune publicité ne peut être chargée',
+      (tester) async {
+    final calls = <String>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call.method);
+      return <String, bool>{'banner': false, 'privacy': true};
+    });
+    await mount(tester);
+    expect(calls, ['prepare']);
+    expect(find.byType(AndroidView), findsNothing);
+    await tester.tap(find.text('Ad privacy options'));
+    await tester.pumpAndSettle();
+    expect(calls, ['prepare', 'privacy']);
+  });
+}

@@ -20,6 +20,8 @@ import '../../../core/support/vip_help_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/legal_disclaimer.dart';
+import '../../../core/update/build_flags.dart';
+import '../../../core/update/play_store_update.dart';
 import '../../device/presentation/device_id_card.dart';
 import '../data/update_checker.dart';
 
@@ -45,10 +47,20 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _checkForUpdates() async {
+    if (_checking) return;
     setState(() {
       _checking = true;
       _checkError = null;
     });
+    if (kIsPlayBuild) {
+      final bool opened = await openPlayStoreUpdate();
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        if (!opened) _checkError = context.l10n.updatePlayStoreUnavailable;
+      });
+      return;
+    }
     final UpdateInfo? info = await UpdateChecker.instance.check();
     if (!mounted) return;
     setState(() {
@@ -260,7 +272,9 @@ class _AboutScreenState extends State<AboutScreen> {
                         : const Icon(Icons.refresh_rounded, size: 18),
                     label: Text(_checking
                         ? context.l10n.aboutChecking
-                        : context.l10n.aboutCheckUpdates),
+                        : kIsPlayBuild
+                            ? context.l10n.updateOpenPlayStore
+                            : context.l10n.aboutCheckUpdates),
                   ),
                 ],
               ),

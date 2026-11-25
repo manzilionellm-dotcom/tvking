@@ -64,5 +64,26 @@ void main() {
       LiveBarSlots.count(showStart: true, showSubs: true, showFollow: true),
       7,
     );
+    // Pause s'insère après Favori. Sans elle, rien ne bouge.
+    expect(LiveBarSlots.pause(false), isNull);
+    expect(LiveBarSlots.pause(true), 3);
+    expect(LiveBarSlots.follow(true, showPause: true), 4);
+    expect(
+      LiveBarSlots.engine(
+        showStart: true,
+        showSubs: true,
+        showFollow: true,
+        showPause: true,
+      ),
+      7,
+    );
+    expect(
+      LiveBarSlots.count(
+        showStart: false,
+        showSubs: false,
+        showPause: true,
+      ),
+      5,
+    );
   });
 }

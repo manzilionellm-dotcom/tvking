@@ -197,15 +197,24 @@ abstract final class _ChannelComputedCache {
   // Nom curé (présentable) caché par id — voir Channel.cleanName.
   static final Map<String, String> cleanNames = <String, String>{};
 
-  /// À appeler quand on supprime une playlist : on nettoie les
-  /// entrées orphelines pour ne pas faire de fuite mémoire.
-  static void invalidate(Iterable<String> idsToRemove) {
-    for (final String id in idsToRemove) {
-      genres.remove(id);
-      countries.remove(id);
-      qualities.remove(id);
-      cleanNames.remove(id);
-    }
+  /// Plus grande des quatre tables (elles sont remplies ensemble).
+  static int get size {
+    int n = genres.length;
+    if (countries.length > n) n = countries.length;
+    if (qualities.length > n) n = qualities.length;
+    if (cleanNames.length > n) n = cleanNames.length;
+    return n;
+  }
+
+  /// Ne garde que les identifiants de [keep]. Remplace l'ancien
+  /// `invalidate`, qui n'était appelé nulle part : les entrées des listes
+  /// supprimées ou remplacées restaient toute la session (~50 000 par
+  /// catalogue, plusieurs Mo sur une box à 1 Go).
+  static void retain(Set<String> keep) {
+    genres.removeWhere((String id, _) => !keep.contains(id));
+    countries.removeWhere((String id, _) => !keep.contains(id));
+    qualities.removeWhere((String id, _) => !keep.contains(id));
+    cleanNames.removeWhere((String id, _) => !keep.contains(id));
   }
 }
 
@@ -249,6 +258,22 @@ abstract final class ChannelPrecompute {
     final bool known = _ChannelComputedCache.countries.containsKey(c.id);
     return (known: known, country: known ? _ChannelComputedCache.countries[c.id] : null);
   }
+
+  /// Élague le cache quand il dépasse NETTEMENT le catalogue affiché
+  /// (+20 % et +1 000 entrées) : après une suppression, un changement de
+  /// source ou une actualisation qui change les identifiants. En régime
+  /// normal (même catalogue), aucun travail : un simple test de taille.
+  static void retainOnly(List<Channel> current) {
+    final int limit = current.length + current.length ~/ 5 + 1000;
+    if (_ChannelComputedCache.size <= limit) return;
+    _ChannelComputedCache.retain(<String>{
+      for (final Channel c in current) c.id,
+    });
+  }
+
+  /// Taille du cache (tests).
+  @visibleForTesting
+  static int get debugCacheSize => _ChannelComputedCache.size;
 
   /// Pré-calcule nom curé / genre / pays / qualité pour toutes les chaînes
   /// pas encore en cache, par tranches de [_kChunk] dans un isolate.

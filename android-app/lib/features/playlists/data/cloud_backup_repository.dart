@@ -12,10 +12,10 @@
 //  re-téléchargent depuis la source à la restauration).
 //
 //  Stratégie sûre (anti-perte de données) :
-//    - UPLOAD : à chaque changement (debounce 5 s), MAIS jamais si la
-//      liste locale est vide → on n'écrase pas un bon backup par du
-//      vide (une désinstallation/effacement local ne détruit pas le
-//      backup cloud).
+//    - UPLOAD : à chaque changement (debounce 5 s). Une base neuve vide
+//      ne remplace pas une sauvegarde. Une suppression volontaire, elle,
+//      envoie aussi l’état vide et ses empreintes de refus : conserver
+//      l’ancienne sauvegarde ferait revenir ce que l’utilisateur a effacé.
 //    - RESTORE : uniquement si AUCUNE playlist locale n'existe (donc
 //      typiquement un 1er lancement après réinstallation). On ne
 //      touche jamais à des données déjà présentes.
@@ -38,6 +38,7 @@ import '../../device/data/device_secret.dart';
 import '../../subscription/data/subscription_backend.dart';
 import '../domain/playlist.dart';
 import 'favorites_repository.dart';
+import 'deleted_sources.dart';
 import 'playlist_repository.dart';
 
 class CloudBackupRepository {
@@ -77,16 +78,31 @@ class CloudBackupRepository {
   }
 
   /// Envoie l'instantané courant au backend (best-effort).
-  Future<void> _upload() async {
+  Future<void> _uploadQueue = Future<void>.value();
+
+  // Les instantanés sont lus DANS la file : une requête ancienne lente ne
+  // peut pas finir après la sauvegarde d'une suppression plus récente.
+  Future<void> _upload() {
+    final Future<void> next = _uploadQueue.then((_) => _uploadSnapshot());
+    _uploadQueue = next;
+    return next;
+  }
+
+  @visibleForTesting
+  Future<void> uploadForTesting() => _upload();
+
+  Future<void> _uploadSnapshot() async {
     try {
       final List<Playlist> playlists =
           await PlaylistRepository.instance.getAllPlaylists();
-      // Garde-fou : ne jamais écraser le backup par du vide.
-      if (playlists.isEmpty) return;
+      final Set<String> deleted = await DeletedSources.read();
+      // Vide initial != suppression volontaire de la dernière liste.
+      if (playlists.isEmpty && deleted.isEmpty) return;
 
       final String mac = await DeviceIdentity.instance.mac;
       final Map<String, Object?> data = <String, Object?>{
-        'v': 1,
+        'v': 2,
+        'deleted_source_hashes': deleted.toList(),
         'playlists': playlists
             .map((Playlist p) {
               final Map<String, Object?> m = p.toMap();
@@ -149,6 +165,11 @@ class CloudBackupRepository {
       final Object? data = body['data'];
       if (data is! Map) return;
 
+      // Les refus passent AVANT les sources, y compris après réinstallation.
+      // Une sauvegarde v1 sans ce champ respecte les refus locaux existants.
+      final Object? deleted = data['deleted_source_hashes'];
+      if (deleted is List) await DeletedSources.restoreHashes(deleted);
+
       // ----- Playlists -----
       final List<dynamic> pls =
           (data['playlists'] as List<dynamic>?) ?? const <dynamic>[];
@@ -165,6 +186,7 @@ class CloudBackupRepository {
             final String pass = (m['xtream_password'] as String?) ?? '';
             if (server.isEmpty || user.isEmpty) continue;
             await PlaylistRepository.instance.addXtreamPlaylist(
+              restoreDeleted: false,
               name: name,
               serverUrl: server,
               username: user,
@@ -175,6 +197,7 @@ class CloudBackupRepository {
             final String url = (m['m3u_url'] as String?) ?? '';
             if (url.isEmpty) continue;
             await PlaylistRepository.instance.addM3uPlaylist(
+              restoreDeleted: false,
               name: name,
               url: url,
               epgUrl: m['epg_url'] as String?,

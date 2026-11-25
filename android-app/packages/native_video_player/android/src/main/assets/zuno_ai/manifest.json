@@ -1,0 +1,24 @@
+{
+  "model": "ArtCNN_C4F16",
+  "upstreamCommit": "f606e1f0ba7e6f0ab55049f33dac4d854819b00b",
+  "modelSha256": "7a6436299b8c757dbb7084ac39a25c310db1941133e73d1ee3e74c8b3bddc1ca",
+  "pipelineSha256": "e93b490f33c147abcb6b3e11dd44038dcde80d953b361c48c325a502f74afcef",
+  "scale": 2,
+  "referenceWidth": 16,
+  "referenceHeight": 12,
+  "denoiseStrength": 0.15,
+  "files": {
+    "vertex.glsl": "23af1ee163d80d18392c128944411e5c4e9f1ef51c574e8dc381d5c30600ade6",
+    "denoise.glsl": "d61d6c86b69539ca5a6278eae938645040ec5c2b2cf0b00c2a132694cecbc5c6",
+    "conv0.glsl": "2bc5cfbd0a54b8ab0625a5572085e8264e458507648599efb1bf28ab067f9413",
+    "conv1.glsl": "07fc9a36dc468219e9fce209866e8bc79ba5cb2374cdeab6d4821895fcc36144",
+    "conv2.glsl": "2735bf625794a848f6b24d67dcfee2311b354e566d6818e5fffd5c00dd73d326",
+    "conv3.glsl": "dd0ad3d3680419f48208574c0bd4e8e39452f9456067a91a24080fcb3a0c7f97",
+    "conv4.glsl": "9fd683cdc867b380de7f583f77e9e42f47464af37342e848714a59130659a938",
+    "conv5.glsl": "da710ca4d24367d0ea7703ffb6fa660692de90e6c1bcd3c587202b1907a5d3b8",
+    "conv6.glsl": "1e14d209601996fba8bd5eb12548adf0f1cb4cb7659d32476f1f85ea555fa7f1",
+    "composite.glsl": "9cfae5a7977808b52d841c4c5c1c0ead55648feb5e3174e019452992c6b1d3ec",
+    "reference-input.rgba": "3f4987233ee2ca2612e15135a9b694d39fd4cbe142cac20f181f257149b2db58",
+    "reference-output.rgba": "a61c66257482bea95568748fd3fef3bac42fd4643aea5e56d7ed159e6125c4af"
+  }
+}

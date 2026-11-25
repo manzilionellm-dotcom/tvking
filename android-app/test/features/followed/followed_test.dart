@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tv_king/core/i18n/locale_repository.dart';
 import 'package:tv_king/features/followed/domain/show_clock.dart';
 import 'package:tv_king/features/followed/domain/show_lines.dart';
 import 'package:tv_king/features/followed/domain/show_taste.dart';
@@ -417,8 +418,16 @@ void main() {
   });
 
   group('phrases', () {
-    test('les 16 langues ont une phrase, l\'inconnu retombe sur le français',
-        () {
+    test('toutes les langues ont une phrase, repli anglais', () {
+      expect(
+          kFollowedLanguages,
+          LocaleRepository.supportedLocales
+              .map((locale) => locale.languageCode)
+              .toSet());
+      expect(followedWord('so', 'row'), 'Barnaamijyadaada');
+      expect(startsInLine('so', 'BBC', 5),
+          'BBC waxay bilaabmaysaa 5 daqiiqo gudahood');
+      expect(leadHint('so'), isNot(leadHint('fr')));
       for (final String code in kFollowedLanguages) {
         expect(startsInLine(code, 'Journal', 5), isNotEmpty);
         expect(startedAgoLine(code, 'Journal', 5), isNotEmpty);
@@ -429,8 +438,7 @@ void main() {
         expect(followedWord(code, 'replay'), isNotEmpty);
         expect(followedWord(code, 'row'), isNotEmpty);
       }
-      expect(
-          startsInLine('xx', 'Journal', 5), 'Journal commence dans 5 minutes');
+      expect(startsInLine('xx', 'Journal', 5), 'Journal starts in 5 minutes');
       expect(followedWord('en', 'row'), 'Your shows');
       expect(leadLine('fr', 5), contains('5'));
     });

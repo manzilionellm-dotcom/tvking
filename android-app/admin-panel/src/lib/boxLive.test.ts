@@ -1,7 +1,7 @@
 // Preuve du texte affiché dans le panel, sans navigateur.
 //   node --experimental-strip-types src/lib/boxLive.test.ts
 import assert from 'node:assert/strict';
-import { appliedPhrase, indexByMac, liveSummary } from './boxLive.ts';
+import { appliedPhrase, indexByMac, kindLabel, liveSummary, PANEL_LIVE_MS } from './boxLive.ts';
 
 const clock = () => '12:03:04';
 
@@ -28,6 +28,9 @@ const waiting = liveSummary({
 assert.equal(waiting, 'hors ligne · en attente : suspension');
 
 assert.equal(appliedPhrase(0, clock), 'appliqué à 12:03:04');
+assert.equal(kindLabel('banner'), 'bannière');
+assert.equal(kindLabel('ad'), 'publicité');
+assert.ok(PANEL_LIVE_MS > 0 && PANEL_LIVE_MS <= 2000);
 
 const indexed = indexByMac([
   { mac: 'MK:AA:BB:CC:DD:01', online: true, last_seen_at: 1 },

@@ -1,0 +1,402 @@
+name: 7 MOTION mobile — régressions du téléphone
+
+on:
+  push:
+    branches: ['feature/7motion-panel-sync', 'feature/7motion-foot-upcoming-20261020', 'feature/7motion-player-zap-20261020', 'feature/playlist-delete-definitive-20261026', 'feature/7motion-play-panel-update-20261101']
+  pull_request:
+    paths:
+      - 'patches/mobile-panel-sync.patch'
+      - 'patches/mobile-sport-gratuit.patch'
+      - 'patches/mobile-radio.patch'
+      - 'patches/mobile-identity.patch'
+      - 'patches/mobile-stability.patch'
+      - 'android-app/ci/mobile/**'
+      - 'android-app/lib/features/ads/**'
+      - 'android-app/lib/features/simple_home/data/announcement_repository.dart'
+      - 'android-app/lib/features/simple_home/presentation/widgets/announcement*'
+      - 'android-app/lib/features/device/data/device_identity.dart'
+      - 'android-app/lib/features/subscription/data/subscription_backend.dart'
+      - 'android-app/lib/main.dart'
+      - 'android-app/packages/tvking_device/**'
+      - 'android-app/android_overlay/google_cast/MainActivity.kt'
+      - 'android-app/test/features/ads/**'
+      - 'android-app/test/features/simple_home/**'
+      - 'android-app/test/features/device/device_info_retry_test.dart'
+      - 'android-app/test/features/subscription/heartbeat_device_kind_test.dart'
+      - '.github/workflows/mobile-panel-sync-tests.yml'
+      - '.github/workflows/build-7motion-sport-test.yml'
+
+# Tests du vrai code mobile préparé par la chaîne de livraison. Aucun
+# secret de signature ni droit de publication n'est nécessaire ici.
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-panel-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [reviewed, play]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - name: Récupérer le candidat mobile déjà testé sur Android
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.edition == 'play' && '8ea5a55075d8b5ad334643b780067c486a917f61' || '69eee01d24f50d5e516935b94a189f791de0837c' }}
+          path: mobile-reviewed
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Préparer le code mobile sans fusionner la lignée TV
+        working-directory: phone
+        run: |
+          if [[ "${{ matrix.edition }}" == "play" ]]; then
+            bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../mobile-reviewed
+          else
+            bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+          fi
+          python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
+          if [[ "${{ matrix.edition }}" == "play" ]]; then
+            flutter pub get --enforce-lockfile
+          else
+            flutter pub get
+          fi
+          flutter gen-l10n
+      - name: Vérifier la numérotation des APK publiés
+        working-directory: phone
+        run: bash ci/build_label_test.sh
+      - name: Vérifier la classification du matériel sans appareil client
+        if: matrix.edition == 'reviewed'
+        working-directory: phone
+        run: bash ci/test-device-hardware-kind.sh
+      - name: Analyser le code mobile complet
+        working-directory: phone
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Vérifier les gestes et les actions utilisateur corrigés
+        if: matrix.edition == 'reviewed'
+        working-directory: phone
+        run: flutter test --reporter expanded test/core/settled_page_view_test.dart test/features/playlists/library_refresh_test.dart test/features/playlists/import_return_test.dart
+      - name: Vérifier les régressions et la suite mobile complète
+        working-directory: phone
+        run: |
+          mkdir -p build/premium-captures
+          flutter test --reporter expanded --dart-define=PREMIUM_CAPTURE_DIR=build/premium-captures
+      - name: Vérifier le lecteur gratuit, ses sources et la communication avec le panel
+        if: matrix.edition == 'play'
+        working-directory: phone
+        run: |
+          bash ../mission/android-app/ci/mobile/free/prepare-sources.sh
+          flutter gen-l10n
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          bash ../mission/android-app/ci/mobile/free/test-release.sh
+      - name: Conserver les captures du vrai accueil mobile
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: 7motion-premium-preview-${{ matrix.edition }}
+          path: phone/build/premium-captures/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+  android-ads:
+    name: Compiler la bannière AdMob avec les identifiants Google de test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Tester la configuration et compiler le pont Android
+        run: |
+          python3 -B -m unittest discover -s android-app/ci/mobile/free/ads -p test_prepare_ads.py
+          bash android-app/ci/mobile/free/ads/smoke_android.sh
+
+  android-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - &checkout_mission
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: mission
+          persist-credentials: false
+      - &checkout_reviewed_play
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 8ea5a55075d8b5ad334643b780067c486a917f61
+          path: production
+          persist-credentials: false
+      - &checkout_phone
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+          path: phone
+          persist-credentials: false
+      - &java_phone
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - &flutter_phone
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - &android_sdk
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Vérifier le rendu sur le téléphone Android avec deux mires locales
+        working-directory: phone
+        run: |
+          bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../production
+          python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libpulse0 python3-pil
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          bash ../mission/android-app/ci/mobile/novatube_video/android-playback-test.sh
+      - name: Conserver les trois captures de l’écran Android
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-mobile-video
+          path: phone/build/video-captures/*.png
+          if-no-files-found: error
+          retention-days: 14
+
+  free-play-apk:
+    name: APK de test complet 7 MOTION gratuit (arm64)
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.base.ref == 'ccr-b93e1afd-gwirw0' &&
+      (github.head_ref == 'feature/7motion-free-player-admob-20261125' ||
+       github.head_ref == 'feature/7motion-performance-20261125' ||
+       github.head_ref == 'fix/7motion-startup-20261125' ||
+       github.head_ref == 'fix/7motion-scroll-20261125' ||
+       github.head_ref == 'fix/7motion-swipe-20261125') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      artifact_id: ${{ steps.apk_output.outputs.artifact-id }}
+      apk_sha256: ${{ steps.verify_apk.outputs.apk_sha256 }}
+    env:
+      QA_MODE: ${{ github.head_ref == 'feature/7motion-free-player-admob-20261125' && 'debug' || 'release' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: phone
+    steps:
+      - *checkout_mission
+      - *checkout_reviewed_play
+      - *checkout_phone
+      - *java_phone
+      - *flutter_phone
+      - *android_sdk
+      - name: Choisir le paquet et la version de test
+        run: |
+          if [[ "$GITHUB_HEAD_REF" == fix/7motion-swipe-20261125 ]]; then
+            {
+              echo 'QA_VERSION=0.4.4'
+              echo "QA_BUILD_NUMBER=$(date +%s)"
+              echo 'QA_PACKAGE=com.manzilionellm.tvking.qa.swipe'
+              echo 'QA_ARTIFACT=7motion-swipe-qa'
+            } >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_HEAD_REF" == fix/7motion-scroll-20261125 ]]; then
+            {
+              echo 'QA_VERSION=0.4.3'
+              echo "QA_BUILD_NUMBER=$(date +%s)"
+              echo 'QA_PACKAGE=com.manzilionellm.tvking.qa.scroll'
+              echo 'QA_ARTIFACT=7motion-scroll-qa'
+            } >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_HEAD_REF" == fix/7motion-startup-20261125 ]]; then
+            {
+              echo 'QA_VERSION=0.4.2'
+              echo "QA_BUILD_NUMBER=$(date +%s)"
+              echo 'QA_PACKAGE=com.manzilionellm.tvking.qa.startup'
+              echo 'QA_ARTIFACT=7motion-startup-qa'
+            } >> "$GITHUB_ENV"
+          elif [[ "$QA_MODE" == release ]]; then
+            # Même convention d’horodatage que le canal mobile, espace de paquet séparé.
+            {
+              echo 'QA_VERSION=0.4.1'
+              echo "QA_BUILD_NUMBER=$(date +%s)"
+              echo 'QA_PACKAGE=com.manzilionellm.tvking.qa.perf'
+              echo 'QA_ARTIFACT=7motion-performance-qa'
+            } >> "$GITHUB_ENV"
+          else
+            {
+              echo 'QA_VERSION=0.4.0'
+              echo "QA_BUILD_NUMBER=$GITHUB_RUN_NUMBER"
+              echo 'QA_PACKAGE=com.manzilionellm.tvking.qa'
+              echo 'QA_ARTIFACT=7motion-free-qa'
+            } >> "$GITHUB_ENV"
+          fi
+      - &assemble_qa_phone
+        name: Assembler les sources du téléphone, du lecteur et du panel
+        run: |
+          recipe=../mission/android-app/ci/mobile
+          bash "$recipe/free/assemble-qa-sources.sh" "$recipe" ../production
+      - &prepare_qa_android
+        name: Préparer Android avec les annonces de test et la signature debug
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qa-python"
+          source "$RUNNER_TEMP/qa-python/bin/activate"
+          pip install PyYAML==6.0.2 numpy==2.2.6
+          keytool -genkeypair -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 30 \
+            -keystore "$RUNNER_TEMP/7motion-qa.jks" -storetype JKS -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+          args=(--mode "$QA_MODE")
+          if [[ "${QA_PACKAGE:-}" == com.manzilionellm.tvking.qa.startup ]]; then args+=(--startup); fi
+          if [[ "${QA_PACKAGE:-}" == com.manzilionellm.tvking.qa.scroll ]]; then args+=(--scroll); fi
+          if [[ "${QA_PACKAGE:-}" == com.manzilionellm.tvking.qa.swipe ]]; then args+=(--swipe); fi
+          python ../mission/android-app/ci/mobile/free/prepare_qa_android.py "${args[@]}"
+      - name: Vérifier les parcours du lecteur et du panel et compiler l’APK
+        run: |
+          bash ../mission/android-app/ci/mobile/free/test-release.sh
+          flutter build apk "--$QA_MODE" --no-pub --no-tree-shake-icons --target-platform android-arm64 --split-per-abi \
+            --dart-define=PLAY_BUILD=true --build-name="$QA_VERSION" --build-number="$QA_BUILD_NUMBER" \
+            --target=lib/main.dart
+      - name: Contrôler le paquet, la signature, les annonces et l’architecture
+        id: verify_apk
+        run: |
+          apk="build/app/outputs/flutter-apk/app-arm64-v8a-$QA_MODE.apk"
+          tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$tools/aapt2" dump badging "$apk" > "$RUNNER_TEMP/qa-package"
+          grep -F "package: name='$QA_PACKAGE'" "$RUNNER_TEMP/qa-package"
+          if [[ "$QA_PACKAGE" == com.manzilionellm.tvking.qa.startup ]]; then
+            grep -Fx "application-label:'7 MOTION Test'" "$RUNNER_TEMP/qa-package"
+          fi
+          if [[ "$QA_PACKAGE" == com.manzilionellm.tvking.qa.scroll ]]; then
+            grep -Fx "application-label:'7 MOTION Test 0.4.3'" "$RUNNER_TEMP/qa-package"
+          fi
+          if [[ "$QA_PACKAGE" == com.manzilionellm.tvking.qa.swipe ]]; then
+            grep -Fx "application-label:'7 MOTION Test 0.4.4'" "$RUNNER_TEMP/qa-package"
+          fi
+          grep -F "versionName='$QA_VERSION'" "$RUNNER_TEMP/qa-package"
+          # Flutter ajoute 2000 au code des APK ARM64 avec --split-per-abi.
+          grep -F "versionCode='$((QA_BUILD_NUMBER + 2000))'" "$RUNNER_TEMP/qa-package"
+          grep -Fx "native-code: 'arm64-v8a'" "$RUNNER_TEMP/qa-package"
+          if [[ "$QA_MODE" == release ]]; then
+            if grep -Fxq 'application-debuggable' "$RUNNER_TEMP/qa-package"; then exit 1; fi
+            unzip -Z1 "$apk" > "$RUNNER_TEMP/qa-entries"
+            grep -Fx 'lib/arm64-v8a/libapp.so' "$RUNNER_TEMP/qa-entries"
+            if grep -Fxq 'assets/flutter_assets/kernel_blob.bin' "$RUNNER_TEMP/qa-entries"; then exit 1; fi
+          else
+            grep -Fx 'application-debuggable' "$RUNNER_TEMP/qa-package"
+          fi
+          "$tools/apksigner" verify --print-certs-pem "$apk" > "$RUNNER_TEMP/qa-cert.pem"
+          openssl x509 -in "$RUNNER_TEMP/qa-cert.pem" -outform DER -out "$RUNNER_TEMP/qa-signer.der"
+          keytool -exportcert -alias androiddebugkey -keystore "$RUNNER_TEMP/7motion-qa.jks" \
+            -storepass android -file "$RUNNER_TEMP/qa-expected.der"
+          cmp "$RUNNER_TEMP/qa-signer.der" "$RUNNER_TEMP/qa-expected.der"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          bash ../mission/android-app/ci/mobile/verify_work_database.sh "$apk"
+          python3 ../mission/android-app/ci/mobile/free/verify_qa_ads.py "$apk" "$tools/aapt2"
+          ln "$apk" "build/$QA_ARTIFACT.apk"
+          echo "apk_sha256=$(sha256sum "$apk" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Conserver l’APK de test pendant sept jours
+        id: apk_output
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ${{ env.QA_ARTIFACT }}
+          path: phone/build/${{ env.QA_ARTIFACT }}.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  startup-android:
+    if: github.head_ref == 'fix/7motion-startup-20261125'
+    needs: free-play-apk
+    uses: ./.github/workflows/7motion-delivered-apk-diagnostics.yml
+    with:
+      test_built_apk: true
+      artifact_id: ${{ needs.free-play-apk.outputs.artifact_id }}
+      apk_sha256: ${{ needs.free-play-apk.outputs.apk_sha256 }}
+
+  performance-android:
+    name: Mesurer le lancement et la première image du lecteur sur émulateur
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.base.ref == 'ccr-b93e1afd-gwirw0' &&
+      github.head_ref == 'feature/7motion-performance-20261125' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: phone
+    env:
+      QA_MODE: release
+    steps:
+      - *checkout_mission
+      - name: Charger la recette exacte de l’artefact 0.4.0 signé
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 77fdc0d69fc60816ec4a1d3a9f828a0a075930ec
+          path: baseline-recipe
+          persist-credentials: false
+      - *checkout_reviewed_play
+      - *checkout_phone
+      - *java_phone
+      - *flutter_phone
+      - *android_sdk
+      - name: Isoler le cache temporaire de la compilation de mesure
+        run: echo "GRADLE_USER_HOME=$RUNNER_TEMP/benchmark-gradle" >> "$GITHUB_ENV"
+      - *assemble_qa_phone
+      - *prepare_qa_android
+      - name: Compiler les deux versions du téléphone x86-64 en AOT
+        run: |
+          free="$GITHUB_WORKSPACE/mission/android-app/ci/mobile/free"
+          source "$RUNNER_TEMP/qa-python/bin/activate"
+          git worktree add --detach "$GITHUB_WORKSPACE/baseline-phone" HEAD
+          (
+            cd "$GITHUB_WORKSPACE/baseline-phone"
+            bash "$free/assemble-qa-sources.sh" ../baseline-recipe/android-app/ci/mobile ../production
+            python "$free/prepare_qa_android.py" --mode release
+          )
+          for sample in before after; do
+            if [[ "$sample" == before ]]; then cd "$GITHUB_WORKSPACE/baseline-phone"; version=0.4.0
+            else cd "$GITHUB_WORKSPACE/phone"; version=0.4.1; fi
+            python3 "$free/performance/instrument.py"
+            flutter build apk --release --no-pub --no-tree-shake-icons --target-platform android-x64 --split-per-abi \
+              --dart-define=PLAY_BUILD=true --build-name="$version" --build-number="$GITHUB_RUN_NUMBER"
+            mv build/app/outputs/flutter-apk/app-x86_64-release.apk "$RUNNER_TEMP/phone-$sample.apk"
+            flutter clean
+          done
+          (cd android && ./gradlew --stop)
+          rm -rf "$RUNNER_TEMP/benchmark-gradle"
+      - name: Mesurer trois lancements et trois ouvertures du flux local
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libpulse0 python3-pil
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          bash ../mission/android-app/ci/mobile/free/performance/measure.sh
+      - name: Conserver les mesures et la capture du lecteur
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-performance-mesures
+          path: phone/build/performance/
+          if-no-files-found: warn
+          retention-days: 14

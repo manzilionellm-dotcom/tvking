@@ -21,3 +21,6 @@
 /// `--dart-define=PLAY_BUILD=true`). `false` pour l'APK sideload GitHub.
 const bool kIsPlayBuild =
     bool.fromEnvironment('PLAY_BUILD', defaultValue: false);
+
+/// Offre gratuite de la fiche ZUNO sur Google Play.
+const bool kFreeZunoPlayer = kIsPlayBuild && bool.fromEnvironment('ZUNO_FREE_PLAYER');

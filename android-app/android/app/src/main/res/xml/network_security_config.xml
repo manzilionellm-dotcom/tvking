@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTP clair autorisé pour les serveurs IPTV saisis par le client
+     (connexion Xtream et lecture). Un lien https:// continue en TLS :
+     cette autorisation ne réécrit aucun schéma. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

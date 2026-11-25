@@ -35,6 +35,45 @@ void main() {
     expect(UpdateManifest.tryParse(complet, currentBuild: 20), isNull);
   });
 
+  test('types invalides et nombres fractionnaires refusés sans exception', () {
+    for (final String field in <String>['versionCode', 'size']) {
+      for (final Object bad in <Object>[
+        '20',
+        true,
+        20.5,
+        double.nan,
+        double.infinity
+      ]) {
+        expect(
+            UpdateManifest.tryParse(<String, Object?>{
+              ...complet,
+              field: bad,
+            }, currentBuild: 10),
+            isNull);
+      }
+    }
+    expect(
+        UpdateManifest.tryParse(<Object, Object>{1: 'value'}, currentBuild: 10),
+        isNull);
+  });
+
+  test('un installateur exige un lien HTTPS sans identifiants ni fragment', () {
+    for (final String bad in <String>[
+      'file:///tmp/app.apk',
+      'http://example.test/app.apk',
+      'https://user:password@example.test/app.apk',
+      'https://example.test/app.apk#fragment',
+      '/app.apk',
+    ]) {
+      expect(
+          UpdateManifest.tryParse(<String, Object?>{
+            ...complet,
+            'url': bad,
+          }, currentBuild: 10),
+          isNull);
+    }
+  });
+
   test('taille exacte exigée', () {
     expect(
       apkSizeMatches(received: 100, expected: 100, contentLength: 100),

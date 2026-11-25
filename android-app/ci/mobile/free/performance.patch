@@ -1,0 +1,3563 @@
+diff --git a/lib/core/playback/stream_slot.dart b/lib/core/playback/stream_slot.dart
+index 4c27b2ae921d21e5a6641fc6aebb5b8de2980faf..656eff8eb952e72523a8ff473fb39e240d4939fe 100644
+--- a/lib/core/playback/stream_slot.dart
++++ b/lib/core/playback/stream_slot.dart
+@@ -131,6 +131,18 @@ class StreamSlot {
+   /// Plusieurs détenteurs d'un même groupe non-solo peuvent le posséder.
+   bool owns(Object owner) => _holders[owner]?.ownsSlot ?? false;
+
++  /// Un travail de fond ne démonte jamais un lecteur. Inscription et test
++  /// sont synchrones : une nouvelle lecture pourra immédiatement le révoquer.
++  bool tryStartBackground(Object owner, StreamTeardown stop) {
++    if (_pendingClaims != 0 ||
++        _holders.values.any((_Holder h) => h.ownsSlot || h.isHandOff)) {
++      return false;
++    }
++    register(owner, teardown: stop, label: 'Guide XMLTV');
++    _holders[owner]!.ownsSlot = true;
++    return true;
++  }
++
+   /// Retire un consommateur (dispose de l'écran). Ne démonte rien : l'écran
+   /// qui part a déjà fait son ménage. Révoque aussi ses demandes en attente.
+   void unregister(Object owner) {
+diff --git a/lib/core/support/support_choice_sheet.dart b/lib/core/support/support_choice_sheet.dart
+index 51ee5832e604e930f36b559f92306f9950b49e91..050f6094b166d20bbe25dc98b0a681c1c5bc6a07 100644
+--- a/lib/core/support/support_choice_sheet.dart
++++ b/lib/core/support/support_choice_sheet.dart
+@@ -36,9 +36,11 @@ import 'vip_support.dart';
+ Future<void> showSupportChoiceSheet(
+   BuildContext context, {
+   String? customMessage,
++  bool useRootNavigator = false,
+ }) {
+   return showModalBottomSheet<void>(
+     context: context,
++    useRootNavigator: useRootNavigator,
+     backgroundColor: Colors.transparent,
+     isScrollControlled: true,
+     builder: (BuildContext sheetCtx) => _SupportChoiceSheet(
+@@ -62,7 +64,8 @@ class _SupportChoiceSheet extends StatelessWidget {
+           borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+         ),
+         padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+-        child: Column(
++        child: SingleChildScrollView(
++          child: Column(
+           mainAxisSize: MainAxisSize.min,
+           crossAxisAlignment: CrossAxisAlignment.start,
+           children: <Widget>[
+@@ -135,6 +138,7 @@ class _SupportChoiceSheet extends StatelessWidget {
+               ),
+             ),
+           ],
++          ),
+         ),
+       ),
+     );
+diff --git a/lib/features/cast/data/stream_probe.dart b/lib/features/cast/data/stream_probe.dart
+index 230e9804e3d38a8d4e40605202fb4ad8d13684d7..f0c7926aa497dbdd0c97283b67944d840e9d6ddf 100644
+--- a/lib/features/cast/data/stream_probe.dart
++++ b/lib/features/cast/data/stream_probe.dart
+@@ -30,6 +30,7 @@ import 'dart:io';
+
+ import 'package:flutter/foundation.dart';
+
++import '../../player/data/local_stream_relay.dart';
+ import '../../../core/observability/structured_logger.dart';
+
+ /// Résultat d'un pré-vol. Tout `null` veut dire "non déterminé".
+@@ -50,6 +51,9 @@ class StreamProbeResult {
+   });
+
+   /// URL d'origine envoyée par l'app.
++  /// Un HTTP 200 du clip de refus du fournisseur ne valide aucune chaîne.
++  bool get providerPlaceholder => LocalStreamRelay.isBlockedPlaceholder(finalUrl);
++
+   final String originalUrl;
+
+   /// URL après résolution de tous les redirects. Si pas de redirect,
+@@ -295,16 +299,23 @@ class StreamProbe {
+   Future<UserAgentProbeResult> probeUserAgents(
+     String url, {
+     required List<String> candidates,
++    bool Function()? isCancelled,
++    Duration? budget,
+     Duration timeout = const Duration(seconds: 6),
+   }) async {
+     final Map<String, StreamProbeResult> attempts =
+         <String, StreamProbeResult>{};
+     String? working;
++    final Stopwatch elapsed = Stopwatch()..start();
+     for (final String ua in candidates) {
+       if (ua.trim().isEmpty || attempts.containsKey(ua)) continue;
+-      final StreamProbeResult r =
+-          await _probeOnce(url, timeout: timeout, userAgent: ua);
++      final Duration? remaining = budget == null ? null : budget - elapsed.elapsed;
++      if (isCancelled?.call() == true || (remaining != null && remaining <= Duration.zero)) break;
++      final StreamProbeResult r = await _probeOnce(
++        url, timeout: timeout, userAgent: ua, stopAfter: remaining,
++      );
+       attempts[ua] = r;
++      if (r.providerPlaceholder) break;
+       if (r.success && _looksLikeRealMedia(r)) {
+         working = ua;
+         break; // 1re signature qui marche suffit — inutile de tester le reste
+@@ -333,6 +344,7 @@ class StreamProbe {
+     Duration timeout = const Duration(seconds: 6),
+     int maxRedirects = 5,
+     String? userAgent,
++    Duration? stopAfter,
+   }) async {
+     // Phase 1+/B3 (2026-06-01) : strip d'un eventuel `?` de fin
+     // (cas observe sur les URLs Xtream "http://.../live/USER/PASS/ID.ts?").
+@@ -354,6 +366,10 @@ class StreamProbe {
+       ..badCertificateCallback =
+           ((X509Certificate cert, String host, int port) => true);
+
++    // Un budget de calibration coupe réellement la socket et la boucle de
++    // signatures ; un timeout sur la Future seule continuerait en arrière-plan.
++    final Timer? deadline = stopAfter == null
++        ? null : Timer(stopAfter, () => client.close(force: true));
+     String currentUrl = url;
+     int redirects = 0;
+
+@@ -366,6 +382,15 @@ class StreamProbe {
+         // un seul aller-retour. Le serveur renvoie 206 Partial Content
+         // ou 200 (s'il ignore le Range), dans les deux cas on lit
+         // juste les headers puis on drain.
++        if (LocalStreamRelay.isBlockedPlaceholder(currentUrl)) {
++          return StreamProbeResult(
++            originalUrl: url,
++            finalUrl: currentUrl,
++            success: false,
++            errorReason: 'Le fournisseur renvoie un clip de remplacement',
++            redirectCount: redirects,
++          );
++        }
+         final HttpClientRequest req =
+             await client.getUrl(uri).timeout(timeout);
+         req.followRedirects = false;
+@@ -377,8 +402,8 @@ class StreamProbe {
+         // --- Redirect ? ---
+         if (resp.statusCode >= 300 && resp.statusCode < 400) {
+           final String? loc = resp.headers.value(HttpHeaders.locationHeader);
+-          // Vider le body pour libérer la connexion
+-          await resp.drain<void>();
++          // Une redirection peut elle aussi transporter un corps sans fin.
++          await resp.listen(null, cancelOnError: true).cancel();
+           if (loc == null) {
+             return StreamProbeResult(
+               originalUrl: url,
+@@ -526,6 +551,7 @@ class StreamProbe {
+         timeToFirstByte: sw.elapsedMilliseconds,
+       );
+     } finally {
++      deadline?.cancel();
+       client.close(force: true);
+     }
+   }
+diff --git a/lib/features/channels/domain/channel_genre.dart b/lib/features/channels/domain/channel_genre.dart
+index 5c29fa2dd6844462bff3b3dde77e721d95b2fd09..68bf007fd2929a59b159814a8006b1429d077781 100644
+--- a/lib/features/channels/domain/channel_genre.dart
++++ b/lib/features/channels/domain/channel_genre.dart
+@@ -207,34 +207,35 @@ abstract final class ChannelClassifier {
+   //  Internes
+   // ============================================================
+
+-  static String _normalize(String s) {
+-    String out = s.toLowerCase();
+-    const Map<String, String> accents = <String, String>{
+-      'à': 'a',
+-      'á': 'a',
+-      'â': 'a',
+-      'ä': 'a',
+-      'è': 'e',
+-      'é': 'e',
+-      'ê': 'e',
+-      'ë': 'e',
+-      'ì': 'i',
+-      'í': 'i',
+-      'î': 'i',
+-      'ï': 'i',
+-      'ò': 'o',
+-      'ó': 'o',
+-      'ô': 'o',
+-      'ö': 'o',
+-      'ù': 'u',
+-      'ú': 'u',
+-      'û': 'u',
+-      'ü': 'u',
+-      'ç': 'c',
+-      'ñ': 'n',
+-    };
+-    accents.forEach((String k, String v) => out = out.replaceAll(k, v));
+-    return out;
++  static const Map<String, String> _accents = <String, String>{
++    'à': 'a',
++    'á': 'a',
++    'â': 'a',
++    'ä': 'a',
++    'è': 'e',
++    'é': 'e',
++    'ê': 'e',
++    'ë': 'e',
++    'ì': 'i',
++    'í': 'i',
++    'î': 'i',
++    'ï': 'i',
++    'ò': 'o',
++    'ó': 'o',
++    'ô': 'o',
++    'ö': 'o',
++    'ù': 'u',
++    'ú': 'u',
++    'û': 'u',
++    'ü': 'u',
++    'ç': 'c',
++    'ñ': 'n',
++  };
++  static final RegExp _accentPattern = RegExp('[${_accents.keys.join()}]');
++
++  static String _normalize(String value) {
++    final text = value.toLowerCase();
++    return text.replaceAllMapped(_accentPattern, (match) => _accents[match[0]]!);
+   }
+
+   static bool _containsAny(String text, List<String> keywords) {
+@@ -248,12 +249,21 @@ abstract final class ChannelClassifier {
+   /// Évite que "sport" matche dans "transport".
+   static bool _containsAsToken(String text, String needle) {
+     if (needle.isEmpty) return false;
+-    final RegExp pattern = RegExp(
+-      r'(^|[^a-z0-9])' + RegExp.escape(needle) + r'($|[^a-z0-9])',
+-    );
+-    return pattern.hasMatch(text);
++    int start = text.indexOf(needle);
++    while (start >= 0) {
++      final end = start + needle.length;
++      if ((start == 0 || !_asciiAlphaNumeric(text.codeUnitAt(start - 1))) &&
++          (end == text.length || !_asciiAlphaNumeric(text.codeUnitAt(end)))) {
++        return true;
++      }
++      start = text.indexOf(needle, start + 1);
++    }
++    return false;
+   }
+
++  static bool _asciiAlphaNumeric(int code) =>
++      (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
++
+   static bool _isInternationalIndicator(String text) {
+     // Si on trouve plusieurs marqueurs de pays différents,
+     // c'est probablement une catégorie "international".
+@@ -535,69 +545,69 @@ abstract final class ChannelClassifier {
+   static List<String> _patternsForCountry(String code) {
+     switch (code) {
+       case 'fr':
+-        return <String>['fr', 'france', 'francais', 'french'];
++        return const <String>['fr', 'france', 'francais', 'french'];
+       case 'us':
+-        return <String>['us', 'usa', 'united states', 'american', 'amer'];
++        return const <String>['us', 'usa', 'united states', 'american', 'amer'];
+       case 'uk':
+-        return <String>['uk', 'gb', 'united kingdom', 'british', 'england'];
++        return const <String>['uk', 'gb', 'united kingdom', 'british', 'england'];
+       case 'de':
+-        return <String>['de', 'german', 'deutsch', 'germany'];
++        return const <String>['de', 'german', 'deutsch', 'germany'];
+       case 'it':
+-        return <String>['it', 'italy', 'italian', 'italia'];
++        return const <String>['it', 'italy', 'italian', 'italia'];
+       case 'es':
+-        return <String>['es', 'spain', 'spanish', 'espanol', 'espana'];
++        return const <String>['es', 'spain', 'spanish', 'espanol', 'espana'];
+       case 'pt':
+-        return <String>['pt', 'portugal', 'portuguese'];
++        return const <String>['pt', 'portugal', 'portuguese'];
+       case 'be':
+-        return <String>['be', 'belgium', 'belgique'];
++        return const <String>['be', 'belgium', 'belgique'];
+       case 'ch':
+-        return <String>['ch', 'swiss', 'switzerland', 'suisse'];
++        return const <String>['ch', 'swiss', 'switzerland', 'suisse'];
+       case 'ca':
+-        return <String>['ca', 'canada', 'canadian'];
++        return const <String>['ca', 'canada', 'canadian'];
+       case 'br':
+-        return <String>['br', 'brazil', 'brasil'];
++        return const <String>['br', 'brazil', 'brasil'];
+       case 'mx':
+-        return <String>['mx', 'mexico', 'mexique'];
++        return const <String>['mx', 'mexico', 'mexique'];
+       case 'ar':
+-        return <String>['ar', 'argentina'];
++        return const <String>['ar', 'argentina'];
+       case 'sa':
+-        return <String>['sa', 'saudi', 'arabia', 'arabic', 'arab'];
++        return const <String>['sa', 'saudi', 'arabia', 'arabic', 'arab'];
+       case 'tr':
+-        return <String>['tr', 'turkey', 'turkish', 'turk'];
++        return const <String>['tr', 'turkey', 'turkish', 'turk'];
+       case 'gr':
+-        return <String>['gr', 'greece', 'greek'];
++        return const <String>['gr', 'greece', 'greek'];
+       case 'pl':
+-        return <String>['pl', 'poland', 'polish'];
++        return const <String>['pl', 'poland', 'polish'];
+       case 'ru':
+-        return <String>['ru', 'russia', 'russian'];
++        return const <String>['ru', 'russia', 'russian'];
+       case 'nl':
+-        return <String>['nl', 'netherlands', 'dutch', 'holland'];
++        return const <String>['nl', 'netherlands', 'dutch', 'holland'];
+       case 'jp':
+-        return <String>['jp', 'japan', 'japanese'];
++        return const <String>['jp', 'japan', 'japanese'];
+       case 'kr':
+-        return <String>['kr', 'korea', 'korean'];
++        return const <String>['kr', 'korea', 'korean'];
+       case 'cn':
+-        return <String>['cn', 'china', 'chinese'];
++        return const <String>['cn', 'china', 'chinese'];
+       case 'in':
+-        return <String>['in', 'india', 'indian', 'hindi'];
++        return const <String>['in', 'india', 'indian', 'hindi'];
+       case 'au':
+-        return <String>['au', 'australia', 'australian'];
++        return const <String>['au', 'australia', 'australian'];
+       case 'se':
+-        return <String>['se', 'sweden', 'swedish'];
++        return const <String>['se', 'sweden', 'swedish'];
+       case 'no':
+-        return <String>['no', 'norway', 'norwegian'];
++        return const <String>['no', 'norway', 'norwegian'];
+       case 'dk':
+-        return <String>['dk', 'denmark', 'danish'];
++        return const <String>['dk', 'denmark', 'danish'];
+       case 'fi':
+-        return <String>['fi', 'finland', 'finnish'];
++        return const <String>['fi', 'finland', 'finnish'];
+       case 'ma':
+-        return <String>['ma', 'morocco', 'maroc', 'marocain'];
++        return const <String>['ma', 'morocco', 'maroc', 'marocain'];
+       case 'dz':
+-        return <String>['dz', 'algeria', 'algerie'];
++        return const <String>['dz', 'algeria', 'algerie'];
+       case 'tn':
+-        return <String>['tn', 'tunisia', 'tunisie'];
++        return const <String>['tn', 'tunisia', 'tunisie'];
+       case 'eg':
+-        return <String>['eg', 'egypt', 'egypte'];
++        return const <String>['eg', 'egypt', 'egypte'];
+       default:
+         return <String>[code];
+     }
+diff --git a/lib/features/device/data/device_identity.dart b/lib/features/device/data/device_identity.dart
+index 26a4d77861700592dc6f631190484c8376a8e7ae..a98daf0961627acb30dfe8cd70cb71de0b02a661 100644
+--- a/lib/features/device/data/device_identity.dart
++++ b/lib/features/device/data/device_identity.dart
+@@ -20,6 +20,7 @@
+ //       communiquer à son revendeur
+ // =========================================================
+
++import 'dart:async';
+ import 'dart:convert';
+ import 'dart:math';
+
+@@ -40,6 +41,10 @@ class DeviceIdentity extends ChangeNotifier {
+       MethodChannel('com.manzilionellm.tvking/device');
+
+   String? _cached;
++  Completer<String>? _loadingMac;
++  Future<void>? _writes;
++
++  String? get cachedMac => _cached;
+
+   /// Renvoie le MAC virtuel.
+   ///
+@@ -52,15 +57,45 @@ class DeviceIdentity extends ChangeNotifier {
+   ///      qui évite que le client perde son activation en réinstallant.
+   ///   3. Si l'ANDROID_ID est indisponible (erreur, plateforme non
+   ///      Android), repli sur une MAC aléatoire (ancien comportement).
+-  Future<String> get mac async {
+-    if (_cached != null) return _cached!;
+-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+-    final String? stored = prefs.getString(_kKey);
+-    if (stored != null && _isValid(stored)) {
+-      _cached = stored;
+-      return stored;
++  Future<String> get mac {
++    final Completer<String>? pending = _loadingMac;
++    if (pending != null) return pending.future;
++    if (_writes == null && _cached != null) return Future<String>.value(_cached!);
++    final Completer<String> loading = _loadingMac = Completer<String>();
++    if (_writes == null) unawaited(_loadMac(loading));
++    return loading.future;
++  }
++
++  bool _ownsLookup(Completer<String> loading) =>
++      identical(_loadingMac, loading) && _writes == null;
++
++  Future<void> _loadMac(Completer<String> loading) async {
++    try {
++      final SharedPreferences prefs = await SharedPreferences.getInstance();
++      if (!_ownsLookup(loading)) return;
++      final String? stored = prefs.getString(_kKey);
++      if (stored != null && _isValid(stored)) {
++        _cached = stored;
++        notifyListeners();
++        if (_ownsLookup(loading)) {
++          _loadingMac = null;
++          loading.complete(stored);
++        }
++        return;
++      }
++      final String? androidId = await _stableDeviceId();
++      if (!_ownsLookup(loading)) return;
++      final String derived = await _deriveMac(androidId);
++      if (_ownsLookup(loading)) await _store(derived);
++    } catch (error, stack) {
++      if (_ownsLookup(loading)) {
++        _loadingMac = null;
++        loading.completeError(error, stack);
++      }
+     }
+-    final String? androidId = await _stableDeviceId();
++  }
++
++  Future<String> _deriveMac(String? androidId) async {
+     String seed = (androidId ?? '').trim();
+     if (seed.isEmpty) {
+       // REPLI DURCI (anti-reset d'essai) : si l'ANDROID_ID manque (rare :
+@@ -79,10 +114,7 @@ class DeviceIdentity extends ChangeNotifier {
+         info['sdk'] ?? '',
+       ].where((String s) => s.trim().isNotEmpty).join('|').trim();
+     }
+-    final String derived = seed.isNotEmpty ? _macFromSeed(seed) : _generate();
+-    await prefs.setString(_kKey, derived);
+-    _cached = derived;
+-    return derived;
++    return seed.isNotEmpty ? _macFromSeed(seed) : _generate();
+   }
+
+   /// Lit l'ANDROID_ID via le channel natif. `null` si indisponible.
+@@ -176,11 +208,8 @@ class DeviceIdentity extends ChangeNotifier {
+   /// avancés, prévenir l'utilisateur que ses associations admin
+   /// seront perdues).
+   Future<String> regenerate() async {
+-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+     final String fresh = _generate();
+-    await prefs.setString(_kKey, fresh);
+-    _cached = fresh;
+-    notifyListeners();
++    await _store(fresh);
+     return fresh;
+   }
+
+@@ -213,12 +242,44 @@ class DeviceIdentity extends ChangeNotifier {
+   Future<bool> adopt(String raw) async {
+     final String next = normalizeMac(raw);
+     if (!_isValidStatic(next)) return false;
+-    if (_cached == next) return false;
+-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+-    await prefs.setString(_kKey, next);
+-    _cached = next;
+-    notifyListeners();
+-    return true;
++    return _store(next);
++  }
++
++  // Une réattribution peut arriver pendant la lecture native du premier MAC.
++  // Les écritures se suivent dans l'ordre de demande, indépendamment de ce canal.
++  Future<bool> _store(String next) {
++    final Future<bool> saved = (_writes ?? Future<void>.value()).then((_) async {
++      if (_cached == next) return false;
++      final SharedPreferences prefs = await SharedPreferences.getInstance();
++      try {
++        if (!await prefs.setString(_kKey, next)) {
++          throw StateError('Échec de sauvegarde du MAC');
++        }
++      } catch (_) {
++        // SharedPreferences change son cache avant la réponse de la plateforme.
++        await prefs.reload();
++        rethrow;
++      }
++      _cached = next;
++      notifyListeners();
++      return true;
++    });
++    late final Future<void> tail;
++    tail = saved.then<void>((_) {
++      if (!identical(_writes, tail)) return;
++      _writes = null;
++      final Completer<String>? loading = _loadingMac;
++      _loadingMac = null;
++      loading?.complete(_cached!);
++    }, onError: (Object error, StackTrace stack) {
++      if (!identical(_writes, tail)) return;
++      _writes = null;
++      final Completer<String>? loading = _loadingMac;
++      _loadingMac = null;
++      loading?.completeError(error, stack);
++    });
++    _writes = tail;
++    return saved;
+   }
+
+   /// Lit `{ new_mac }` depuis un payload Worker (heartbeat, source, RT).
+@@ -234,6 +295,8 @@ class DeviceIdentity extends ChangeNotifier {
+   @visibleForTesting
+   void debugResetCache() {
+     _cached = null;
++    _info = null;
++    _androidIdCache = null;
+   }
+
+   // ============================================================
+diff --git a/lib/features/epg/data/epg_repository.dart b/lib/features/epg/data/epg_repository.dart
+index 627b6d5978c46d977ffd4a48232f984b74ed5b0f..94740fe79df4eb2a751bce8700a7a53f01a47f6d 100644
+--- a/lib/features/epg/data/epg_repository.dart
++++ b/lib/features/epg/data/epg_repository.dart
+@@ -28,6 +28,7 @@ import '../../playlists/data/playlist_database.dart';
+ import '../domain/epg_program.dart';
+ import 'epg_alias_index.dart';
+ import 'epg_id.dart';
++import 'idle_epg_sync.dart';
+ import 'epg_import_stats.dart';
+ import 'xmltv_parser.dart';
+ import 'xmltv_transport.dart';
+@@ -346,6 +347,7 @@ class EpgRepository {
+   /// chaînes actuellement connues pour économiser stockage et CPU.
+   Future<int> downloadAndImport({
+     required String url,
++    bool whenIdle = false,
+     Set<String>? knownChannelIds,
+     http.Client? httpClient,
+     void Function(int progressBytes)? onProgress,
+@@ -357,8 +359,13 @@ class EpgRepository {
+     _syncTail = finished.future;
+     await previous;
+     try {
+-      return await _downloadAndImport(url: url, knownChannelIds: knownChannelIds,
+-          httpClient: httpClient, onProgress: onProgress);
++      Future<int> importWith(http.Client? client) => _downloadAndImport(
++            url: url, knownChannelIds: knownChannelIds,
++            httpClient: client, onProgress: onProgress);
++      if (whenIdle) {
++        return await IdleEpgSync().run(importWith);
++      }
++      return await importWith(httpClient);
+     } finally {
+       finished.complete();
+     }
+diff --git a/lib/features/epg/data/idle_epg_sync.dart b/lib/features/epg/data/idle_epg_sync.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..2ba4c9460b5245eb8c77d462e330bbed962bc276
+--- /dev/null
++++ b/lib/features/epg/data/idle_epg_sync.dart
+@@ -0,0 +1,60 @@
++import 'dart:async';
++
++import 'package:flutter/foundation.dart';
++import 'package:http/http.dart' as http;
++
++import '../../../core/playback/stream_slot.dart';
++import '../../vod/data/vod_download_service.dart';
++
++/// Le guide automatique emprunte la ligne après une période calme. Une lecture
++/// qui démarre ferme aussitôt le client HTTP XMLTV, même en pleine réponse.
++class IdleEpgSync {
++  IdleEpgSync({
++    ValueListenable<bool>? playback,
++    this.quietPeriod = const Duration(seconds: 15),
++    http.Client Function()? clientFactory,
++  }) : playback = playback ?? VodDownloadService.instance.playbackSignal,
++       clientFactory = clientFactory ?? http.Client.new;
++
++  final ValueListenable<bool> playback;
++  final Duration quietPeriod;
++  final http.Client Function() clientFactory;
++
++  Future<T> run<T>(Future<T> Function(http.Client) download) async {
++    final StreamSlot slot = StreamSlot.instance;
++    final Object owner = Object();
++    while (true) {
++      // Plusieurs imports sont déjà sérialisés dans EpgRepository. Un seul
++      // travail attend ici et le premier clic sur une chaîne garde la priorité.
++      await Future<void>.delayed(quietPeriod);
++      if (playback.value) continue;
++      http.Client? client;
++      bool interrupted = false;
++      void stop() {
++        interrupted = true;
++        client?.close();
++        client = null;
++      }
++
++      if (!slot.tryStartBackground(owner, () async => stop())) continue;
++      void onPlayback() {
++        if (playback.value) stop();
++      }
++
++      playback.addListener(onPlayback);
++      try {
++        final http.Client connection = clientFactory();
++        client = connection;
++        return await download(connection);
++      } catch (_) {
++        if (!interrupted) rethrow;
++        // Le lecteur a la priorité. La reprise XMLTV est sérialisée et son
++        // import SQLite est idempotent si un premier lot était déjà écrit.
++      } finally {
++        playback.removeListener(onPlayback);
++        slot.unregister(owner);
++        client?.close();
++      }
++    }
++  }
++}
+diff --git a/lib/features/player/data/hls_preflight.dart b/lib/features/player/data/hls_preflight.dart
+index b17681458bc3f7b84ce182bddf54658ef937ac2e..1b99e552addb75e198e59aed70f2b37719b378f0 100644
+--- a/lib/features/player/data/hls_preflight.dart
++++ b/lib/features/player/data/hls_preflight.dart
+@@ -51,38 +51,6 @@ class HlsPreflight {
+   static void _log(String message, {String level = 'info'}) =>
+       StreamDiagnostics.instance.recordEvent('hls', message, level: level);
+
+-  /// Résout la chaîne de redirections d'une playlist (panel → CDN
+-  /// tokenisé) et renvoie l'URL FINALE — celle qu'il faut donner à mpv
+-  /// pour que les URIs RELATIVES des segments se résolvent contre la
+-  /// bonne base (et que le token soit dans l'URL de travail). Renvoie
+-  /// `null` en cas d'échec (l'appelant garde l'URL d'origine).
+-  static Future<String?> resolveFinalPlaylistUrl(String url) async {
+-    final HttpClient client = HttpClient()
+-      ..connectionTimeout = kTimeout
+-      ..userAgent = PlayerSettings.instance.userAgent
+-      ..badCertificateCallback =
+-          ((X509Certificate cert, String host, int port) => true);
+-    installDohResolution(client); // DNS FAI bloqué → DoH
+-    try {
+-      final HttpClientRequest req =
+-          await client.getUrl(Uri.parse(url)).timeout(kTimeout);
+-      req.followRedirects = true;
+-      req.maxRedirects = 8;
+-      final HttpClientResponse resp = await req.close().timeout(kTimeout);
+-      await resp.listen(null, cancelOnError: true).cancel();
+-      if (resp.statusCode >= 400) return null;
+-      if (resp.redirects.isEmpty) return url;
+-      return Uri.parse(url)
+-          .resolveUri(resp.redirects.last.location)
+-          .toString();
+-    } catch (e) {
+-      _log('Résolution de redirection impossible : $e', level: 'warn');
+-      return null;
+-    } finally {
+-      client.close(force: true);
+-    }
+-  }
+-
+   /// Sonde de DIAGNOSTIC (fire-and-forget) : suit la chaîne
+   /// playlist → (master ?) → media playlist → 1er segment, en suivant
+   /// les redirections et en préservant les query/tokens, et journalise
+diff --git a/lib/features/player/data/local_stream_relay.dart b/lib/features/player/data/local_stream_relay.dart
+index 22b0b1159f1249173a4fa039adff058d82e82826..e74005b9137a376bda2f5b4fd10c56aad546139f 100644
+--- a/lib/features/player/data/local_stream_relay.dart
++++ b/lib/features/player/data/local_stream_relay.dart
+@@ -171,13 +171,25 @@ class LocalStreamRelay {
+   Future<void> closeSession(String realUrl) async {
+     final _RelaySession? s = _sessions[realUrl];
+     if (s == null || s.recordSink != null) return;
++    await _closePlaybackSession(s);
++  }
++
++  final Set<Future<void>> _closingPlaybacks = {};
++
++  /// Le client HTTP doit couper la socket avant d'attendre son abonnement :
++  /// un serveur silencieux peut ne jamais envoyer l'octet suivant.
++  Future<void> _closePlaybackSession(_RelaySession session) async {
++    final sub = session.sub;
++    session.sub = null;
++    _closeSession(session);
++    if (sub == null) return;
++    final closing = Future<void>.sync(sub.cancel).catchError((Object _) {});
++    _closingPlaybacks.add(closing);
+     try {
+-      await s.sub?.cancel();
+-    } catch (_) {
+-      // best-effort : abonnement upstream déjà mort.
++      await closing;
++    } finally {
++      _closingPlaybacks.remove(closing);
+     }
+-    s.sub = null;
+-    _closeSession(s);
+   }
+
+   /// Nombre de connexions AMONT actuellement ouvertes par le relais (une au
+@@ -279,6 +291,7 @@ class LocalStreamRelay {
+     //  L'écran capture [sessionGeneration] au DÉBUT de sa fermeture et ne
+     //  touche plus à ce qui est né après.
+     if (upToGeneration == null) _currentPlaybackUrl = keepRealUrl;
++    final closing = _closingPlaybacks.toList();
+     for (final _RelaySession s
+         in List<_RelaySession>.from(_sessions.values)) {
+       if (s.realUrl == keepRealUrl) continue;
+@@ -294,15 +307,9 @@ class LocalStreamRelay {
+         'Changement de chaîne → session précédente fermée '
+             '(${StreamDiagnostics.maskCredentials(s.realUrl)})',
+       );
+-      // Annulation PROPRE du fetch amont en vol AVANT la fermeture du reste.
+-      try {
+-        await s.sub?.cancel();
+-      } catch (_) {
+-        // best-effort : abonnement upstream déjà mort.
+-      }
+-      s.sub = null;
+-      _closeSession(s);
++      closing.add(_closePlaybackSession(s));
+     }
++    await Future.wait(closing);
+   }
+
+   /// URLs de playlists dont la preuve brute a déjà été journalisée (mpv
+@@ -364,9 +371,11 @@ class LocalStreamRelay {
+       up.followRedirects = true;
+       up.maxRedirects = 8;
+       final HttpClientResponse resp = await up.close();
+-      final Uri finalUri = resp.redirects.isEmpty
+-          ? Uri.parse(realUrl)
+-          : Uri.parse(realUrl).resolveUri(resp.redirects.last.location);
++      // Chaque Location relative prend pour base le saut précédent.
++      final Uri finalUri = resp.redirects.fold<Uri>(
++        Uri.parse(realUrl),
++        (base, hop) => base.resolveUri(hop.location),
++      );
+       final String raw = await resp
+           .transform(const Utf8Decoder(allowMalformed: true))
+           .join();
+@@ -817,6 +826,7 @@ class LocalStreamRelay {
+   }
+
+   Future<void> _connectUpstream(_RelaySession session) async {
++    if (session.closed) return;
+     //  2.5 — GÉNÉRATION DE CONNEXION. Deux chemins pouvaient ouvrir l'amont
+     //  en même temps : la reconnexion différée (back-off) ET le watchdog de
+     //  silence, dont la ronde n'était pas suspendue pendant le back-off.
+@@ -899,6 +909,8 @@ class LocalStreamRelay {
+     String url,
+   ) async {
+     session.lastUpstreamStatus = null; // nouvelle tentative
++    final int generation = session.connectGeneration;
++    HttpClient? transport;
+     try {
+       try {
+         session.client?.close(force: true);
+@@ -920,9 +932,10 @@ class LocalStreamRelay {
+             ((X509Certificate cert, String host, int port) => true);
+       installDohResolution(session.client!); // DNS FAI bloqué → DoH
+
+-      final HttpClientRequest cReq =
+-          await session.client!.getUrl(Uri.parse(url));
+-      cReq.followRedirects = true;
++      final HttpClient client = session.client!;
++      transport = client;
++      final HttpClientRequest cReq = await client.getUrl(Uri.parse(url));
++      cReq.followRedirects = false;
+       cReq.maxRedirects = 8;
+       cReq.headers.set(HttpHeaders.acceptHeader, '*/*');
+
+@@ -932,8 +945,24 @@ class LocalStreamRelay {
+       // `close()` jusqu'à idleTimeout (10 min) — la remontée d'échec et la
+       // cascade de variantes du lecteur restaient bloquées. On borne donc
+       // l'attente des en-têtes à 20 s : au-delà, on considère l'upstream mort.
+-      final HttpClientResponse cResp =
+-          await cReq.close().timeout(const Duration(seconds: 20));
++      Uri address = Uri.parse(url);
++      final HttpClientResponse cResp = await (() async {
++        var response = await cReq.close();
++        while (response.isRedirect) {
++          final location = response.headers.value(HttpHeaders.locationHeader);
++          if (location == null || response.redirects.length >= cReq.maxRedirects) {
++            throw RedirectException('Redirection manquante ou excessive', response.redirects);
++          }
++          address = address.resolve(location);
++          // Une Location explicite suffit à identifier le remplacement :
++          // ne pas télécharger ou décoder le clip noir lui-même.
++          if (isBlockedPlaceholder(address.toString())) return response;
++          await response.drain<void>();
++          response = await response.redirect(null, address);
++        }
++        return response;
++      })().timeout(const Duration(seconds: 20));
++      if (generation != session.connectGeneration) return null;
+       session.lastUpstreamStatus = cResp.statusCode;
+       final String upstreamMime =
+           cResp.headers.contentType?.mimeType.toLowerCase() ?? '';
+@@ -943,9 +972,7 @@ class LocalStreamRelay {
+       // (+ URL finale si le serveur a redirigé, + MIME). C'est LA donnée
+       // qui manquait pour diagnostiquer un écran noir : l'écran debug
+       // caché la montre telle quelle.
+-      final String finalUrl = cResp.redirects.isEmpty
+-          ? url
+-          : cResp.redirects.last.location.toString();
++      final String finalUrl = address.toString();
+       StreamDiagnostics.instance.recordHttp(
+         status: cResp.statusCode,
+         finalUrl: finalUrl,
+@@ -957,7 +984,7 @@ class LocalStreamRelay {
+       // répond alors 200 + vidéo valide → le lecteur jouerait un écran noir en
+       // silence. On le DÉTECTE pour l'écrire noir sur blanc et couper la
+       // tempête de reconnexions (cf. _abortIfLineDead).
+-      if (_isBlockedPlaceholder(finalUrl)) {
++      if (isBlockedPlaceholder(finalUrl)) {
+         StreamDiagnostics.instance.recordUpstreamPlaceholder(finalUrl);
+         session.upstreamPlaceholder = true;
+         // Ne jamais décoder le clip de remplacement comme une vraie chaîne.
+@@ -1020,6 +1047,8 @@ class LocalStreamRelay {
+       }
+       return cResp;
+     } catch (e) {
++      transport?.close(force: true);
++      if (generation != session.connectGeneration) return null;
+       if (kDebugMode) debugPrint('[Relay] _openUpstream KO: $e');
+       StreamDiagnostics.instance.recordHttp(
+         error: 'connexion upstream impossible : $e',
+@@ -1074,7 +1103,7 @@ class LocalStreamRelay {
+   /// `true` si l'URL finale est un flux « écran noir » de fournisseur (ligne
+   /// expirée/bloquée). Noms de fichiers connus, jamais un numéro de chaîne
+   /// légitime (`1562532.ts`). Volontairement STRICT pour zéro faux positif.
+-  static bool _isBlockedPlaceholder(String finalUrl) {
++  static bool isBlockedPlaceholder(String finalUrl) {
+     const Set<String> names = <String>{
+       'black.ts', 'blocked.ts', 'expired.ts', 'offline.ts', 'noaccess.ts',
+       'no_access.ts', 'unavailable.ts', 'notavailable.ts', 'blackscreen.ts',
+@@ -1274,6 +1303,7 @@ class LocalStreamRelay {
+   /// Reconnexion upstream avec back-off, tant qu'il reste des
+   /// consommateurs et qu'on n'a pas trop échoué d'affilée.
+   Future<void> _scheduleReconnect(_RelaySession session) async {
++    if (session.closed) return;
+     // Plus personne n'écoute → inutile de reconnecter.
+     if (!session.hasConsumers) {
+       _maybeCloseSession(session);
+@@ -1389,6 +1419,10 @@ class LocalStreamRelay {
+   }
+
+   void _closeSession(_RelaySession session) {
++    if (session.closed) return;
++    session.closed = true;
++    // Une réponse tardive de ce client ne peut plus reprendre le registre.
++    ++session.connectGeneration;
+     session.lingerTimer?.cancel();
+     session.lingerTimer = null;
+     session.stallTimer?.cancel();
+@@ -1472,6 +1506,7 @@ class _RelaySession {
+
+   /// Numéro de la tentative de connexion amont en cours ; une réponse
+   /// d'une tentative plus ancienne est jetée (voir _connectUpstream).
++  bool closed = false;
+   int connectGeneration = 0;
+
+   /// `true` si la dernière réponse amont était une PAGE (HTML/texte/JSON)
+diff --git a/lib/features/player/data/playback_transition.dart b/lib/features/player/data/playback_transition.dart
+index de0770222470d473519e8fb4ecf5a47d2891038d..03de4af1532a590547a906ca55e36ce6484fb3ff 100644
+--- a/lib/features/player/data/playback_transition.dart
++++ b/lib/features/player/data/playback_transition.dart
+@@ -27,3 +27,14 @@ Future<bool> preparePlaybackTransition({
+   await waitForSlot();
+   return !isCancelled();
+ }
++
++/// Les chemins zap, diagnostic et fermeture attendent tous le même arrêt.
++/// La prochaine ouverture du moteur démarre un nouveau cycle.
++class PlaybackStop {
++  Future<void>? _stopped;
++
++  Future<void> run(Future<void> Function() stop) =>
++      _stopped ??= Future<void>.sync(stop);
++
++  void reset() => _stopped = null;
++}
+diff --git a/lib/features/player/data/stream_blocked_fallback.dart b/lib/features/player/data/stream_blocked_fallback.dart
+index 283fca73306082cb570d70fdf3ac3f7db5a7afd0..5b81365de7b28a4959a958bca2ba457441262762 100644
+--- a/lib/features/player/data/stream_blocked_fallback.dart
++++ b/lib/features/player/data/stream_blocked_fallback.dart
+@@ -595,7 +595,8 @@ class StreamBlockedFallback {
+         password: src.xtreamPassword!,
+         timeout: const Duration(seconds: 6),
+       );
+-      final XtreamAccountInfo info = await client.fetchAccountInfo();
++      final XtreamAccountInfo info =
++          await client.fetchAccountInfo().whenComplete(client.dispose);
+       final int? max = info.maxConnections;
+       final int? active = info.activeCons;
+       if (max == null || active == null || max <= 0) return null;
+@@ -634,7 +635,7 @@ class StreamBlockedFallback {
+       );
+       // `fetchAccountInfo` alimente lui-même StreamDiagnostics : le message
+       // affiché à la fin des essais reprendra ces chiffres.
+-      await client.fetchAccountInfo();
++      await client.fetchAccountInfo().whenComplete(client.dispose);
+     } catch (e) {
+       _log('[458] compteurs du compte illisibles ($e) — sans conséquence');
+     }
+@@ -717,12 +718,14 @@ class StreamBlockedFallback {
+     Duration budget = const Duration(seconds: 10),
+     Duration pollEvery = const Duration(milliseconds: 1600),
+     bool Function()? isCancelled,
++    Future<void>? cancelled,
+     Future<XtreamAccountInfo> Function()? probeOverride,
+   }) async {
+     void log(String m, {String level = 'info'}) =>
+         StreamDiagnostics.instance.recordEvent('preflight', m, level: level);
+     if (isCancelled?.call() ?? false) return;
+     final Stopwatch elapsed = Stopwatch()..start();
++    XtreamClient? client;
+     bool expired = false;
+     bool shouldStop() => expired || (isCancelled?.call() ?? false);
+     try {
+@@ -735,7 +738,7 @@ class StreamBlockedFallback {
+             src.xtreamPassword == null) {
+           return; // pas une source Xtream : rien à mesurer
+         }
+-        final XtreamClient client = XtreamClient(
++        client = XtreamClient(
+           serverUrl: src.xtreamServer!,
+           username: src.xtreamUsername!,
+           password: src.xtreamPassword!,
+@@ -783,7 +786,11 @@ class StreamBlockedFallback {
+       // Compter seulement les sondages pouvait transformer 10 s annoncées
+       // en plus de 30 s. Future.timeout repose sur un Timer : cette borne
+       // est aussi exercée avec l’horloge contrôlée des tests fakeAsync.
+-      await poll().timeout(budget, onTimeout: () {
++      final work = poll();
++      final waiting = cancelled == null
++          ? work
++          : Future.any<void>([work, cancelled]);
++      await waiting.timeout(budget, onTimeout: () {
+         expired = true;
+         if (!(isCancelled?.call() ?? false)) {
+           log(
+@@ -804,6 +811,8 @@ class StreamBlockedFallback {
+             level: 'warn');
+       }
+     } finally {
++      expired = true;
++      client?.dispose();
+       elapsed.stop();
+     }
+   }
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index fcf01d1af0c6650806cb616e401dd94bc493840e..3069ca7f9359f81e25330c1b8b408047645bf527 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -157,12 +157,41 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// prochaine ouverture doit alors passer par le recyclage (une
+   /// instance jamais ouverte est neuve : rien à fermer).
+   bool _playerOpenedOnce = false;
++  final PlaybackStop _playbackStop = PlaybackStop();
++  bool _openedViaStreamRelay = false;
++
++  void _beginPlayerOpen({bool viaStreamRelay = false}) {
++    _openedViaStreamRelay = viaStreamRelay;
++    _playbackStop.reset();
++    _playerOpenedOnce = true;
++  }
++
++  Future<void> _stopCurrentPlayer() {
++    final player = _player;
++    final engine = _phoneVideo == null ? 'mpv' : 'Media3';
++    return _playbackStop.run(() async {
++      final elapsed = Stopwatch()..start();
++      await player.stop().timeout(const Duration(seconds: 5));
++      StreamDiagnostics.instance.recordEvent(
++        'player', 'Arrêt $engine confirmé en ${elapsed.elapsedMilliseconds} ms',
++      );
++    });
++  }
++
+
+   /// SÉRIALISATION des ouvertures : chaque _openMedia s'enchaîne à la
+   /// précédente — JAMAIS deux lectures en vol (comptes 1-connexion).
+   /// `_openGeneration` invalide les ouvertures dépassées par un zap.
+   Future<void> _openChain = Future<void>.value();
+   int _openGeneration = 0;
++  Completer<void>? _slotProbeCancelled;
++
++  int _nextOpenGeneration() {
++    _slotProbeCancelled?.complete();
++    _slotProbeCancelled = null;
++    return ++_openGeneration;
++  }
++
+   bool _playbackTerminated = false;
+   Future<void> _playerOptionsReady = Future<void>.value();
+
+@@ -435,6 +464,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// on déclenche `animateToPage` sur le PageController, qui à son
+   /// tour tire `onPageChanged`. Pour éviter de re-traiter le swipe
+   /// déjà appliqué (double `_player.open`), on flag pendant l'animation.
++  int _zapAnimationGeneration = 0;
+   bool _zapAnimating = false;
+
+   @override
+@@ -559,6 +589,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+
+   void _createPlayer() {
+     _playerEpoch++;
++    _playbackStop.reset();
+     _playerOpenedOnce = false;
+     // Configure le Player avec un buffer généreux (pour 4K/8K)
+     final settings = PlayerSettings.instance;
+@@ -579,6 +610,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       _playerOptionsReady = _applyMpvOptions();
+     }
+
++    StreamDiagnostics.instance.recordEvent(
++      'player', 'Moteur créé : ${_phoneVideo == null ? 'mpv' : 'Media3'}',
++    );
+     _attachPlayerListeners();
+
+     // Restaure la dernière vitesse (une instance neuve repart à 1.0).
+@@ -853,14 +887,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// de sessions et son intention de lecture appartiennent encore à cet
+   /// écran. Une fin de stop tardive ne ferme jamais le prochain relais.
+   Future<void> _stopPlaybackNetwork({required bool closeRelay}) {
+-    final Player stoppedPlayer = _player;
+     final Future<void> relayClosed = closeRelay
+         ? LocalStreamRelay.instance.closeOtherPlaybacks('')
+         : Future<void>.value();
+     return Future.wait<void>(<Future<void>>[
+       () async {
+         try {
+-          await stoppedPlayer.stop().timeout(const Duration(seconds: 5));
++          await _stopCurrentPlayer();
+         } catch (e) {
+           StreamDiagnostics.instance.recordEvent(
+               'player', 'Arrêt du moteur incomplet : $e',
+@@ -886,7 +919,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   void _onSlotRevoked() {
+     if (_slotRevoked || _disposing) return;
+     _slotRevoked = true;
+-    ++_openGeneration;
++    _nextOpenGeneration();
+     _playbackTerminated = true;
+     _playbackEvidence.revoke();
+     _fallback.detach();
+@@ -1035,8 +1068,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     }
+     _subs.clear();
+     final Player old = _player;
++    bool stopConfirmed = false;
+     try {
+-      await old.stop().timeout(const Duration(seconds: 5));
++      await _stopCurrentPlayer();
++      stopConfirmed = true;
+     } catch (_) {
+       // On continue le recyclage quoi qu'il arrive, mais un stop() qui
+       // échoue/expire = connexions potentiellement fuitées → boîte noire.
+@@ -1048,24 +1083,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     final int stopMs = sw.elapsedMilliseconds;
+     StreamDiagnostics.instance.recordEvent(
+       'player',
+-      'session fermée (attendue) en $stopMs ms',
++      'Attente résiduelle de l’arrêt avant remplacement : $stopMs ms',
+     );
+-    try {
+-      await old.dispose().timeout(const Duration(seconds: 5));
+-    } catch (_) {
+-      // Idem : un dispose() qui expire = instance mpv qui traîne
+-      // (RAM/fd). On ne bloque pas le zap, mais on TRACE.
+-      StructuredLogger.instance.warn(
+-        domain: 'player',
+-        event: 'recycle.dispose_fail',
+-      );
++    final native = _phoneVideo;
++    final String previousEngine = native == null ? 'mpv' : 'Media3';
++    // Media3 invalide l'epoch, arrête et vide son média sur « silence ».
++    // Son setUrl réutilise ensuite la Surface et ignore les anciens callbacks.
++    // mpv conserve son recyclage complet contre les fuites de sockets FFmpeg.
++    // Un PageView tactile déplace la vidéo d'une page à l'autre : sa
++    // nouvelle AndroidView exige son propre canal, même pour deux directs.
++    final reuse = stopConfirmed && _openedViaStreamRelay && _screenActive &&
++        _zapPageController == null && !_audioOnly && !CastManager.instance.isCasting &&
++        native != null && !native.vod && widget.overrideUrl == null &&
++        _currentChannel.isLive && _useNativeVideo;
++    if (reuse) {
++      _playerOpenedOnce = false;
++      _attachPlayerListeners();
++    } else {
++      try {
++        await old.dispose().timeout(const Duration(seconds: 5));
++      } catch (_) {
++        StructuredLogger.instance.warn(domain: 'player', event: 'recycle.dispose_fail');
++      }
++      if (!_screenActive) return;
++      _createPlayer();
+     }
+-    //  2.6 — deux `await` viennent de passer (jusqu'à 10 s) : si l'écran a
+-    //  été quitté entre-temps, créer un lecteur NEUF ici en ferait un
+-    //  orphelin que personne ne fermera — une instance mpv et, dès son
+-    //  prochain open, une connexion fournisseur que rien ne rend.
+-    if (!_screenActive) return;
+-    _createPlayer();
+     // ÉTAT DE LECTURE remis à neuf AVANT que les listeners de la nouvelle
+     // instance n'émettent (M1) : sinon le watchdog lisait la position 0 de
+     // l'instance NEUVE tout en croyant `_isPlaying == true` (valeur héritée
+@@ -1078,10 +1120,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     _watchdogGoodTicks = 0;
+     StreamDiagnostics.instance.recordEvent(
+       'player',
+-      'instance mpv recréée en ${sw.elapsedMilliseconds - stopMs} ms '
+-          '(jetable — parade au « Leaking nested connections » de FFmpeg)',
++      reuse
++          ? 'Media3 conservé avec sa surface après arrêt confirmé'
++          : '$previousEngine libéré, moteur ${_phoneVideo == null ? 'mpv' : 'Media3'} '
++              'créé en ${sw.elapsedMilliseconds - stopMs} ms',
+     );
+-    // Le widget Video doit remonter sur le NOUVEAU controller.
++    // Seule une nouvelle instance a besoin de remonter son contrôleur.
+     if (mounted) setState(() {});
+   }
+
+@@ -1130,37 +1174,34 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   ///   - le PageView TikTok via `_onZapPageChanged` (index déjà borné)
+   ///
+   /// Si un PageController est actif (mode TikTok), on lui demande
+-  /// d'animer la transition, ce qui déclenchera `onPageChanged` qui
+-  /// appellera `_applyZap`. Sinon on appelle `_applyZap` direct.
++  /// d'animer la transition pendant que l'ancien flux se ferme.
+   void _zapTo(int newIndex) {
+     if (widget.zapPlaylist == null) return;
+     final List<Channel> list = widget.zapPlaylist!;
+     if (list.isEmpty) return;
+     final int wrapped = ((newIndex % list.length) + list.length) % list.length;
+
+-    if (_zapPageController != null && _zapPageController!.hasClients) {
+-      // Animation fluide TikTok-style. `_zapAnimating` empêche le
+-      // double-firing de `onPageChanged` pendant l'animation : au
+-      // wrap-around (⏮ sur la 1re chaîne → dernière), `animateToPage`
+-      // traverse TOUTES les pages intermédiaires et chaque
+-      // `onPageChanged` déclencherait un `_player.open` inutile.
+-      // On ignore donc les pages traversées et on applique le zap
+-      // UNE seule fois, à la fin de l'animation.
+-      _zapAnimating = true;
+-      _zapPageController!
+-          .animateToPage(
+-            wrapped,
+-            duration: const Duration(milliseconds: 280),
+-            curve: Curves.easeOutCubic,
+-          )
+-          .whenComplete(() {
+-            _zapAnimating = false;
+-            _applyZap(wrapped);
+-          });
+-    } else {
+-      // Mode TV ou playlist absente → bascule direct.
+-      _applyZap(wrapped);
++    // La durée de l'animation ne s'ajoute pas au debounce du réseau.
++    // Le prochain appui part immédiatement de la sélection affichée.
++    _applyZap(wrapped);
++    final controller = _zapPageController;
++    if (controller == null || !controller.hasClients ||
++        !_screenActive || _currentChannel.id != list[wrapped].id) {
++      return;
+     }
++    final generation = ++_zapAnimationGeneration;
++    _zapAnimating = true;
++    unawaited(controller.animateToPage(wrapped,
++        duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic,
++    ).whenComplete(() {
++      if (generation != _zapAnimationGeneration || !_screenActive) return;
++      _zapAnimating = false;
++      // Si l'utilisateur a interrompu le mouvement, retenir la page visible.
++      if (controller.hasClients) {
++        final settled = controller.page?.round();
++        if (settled != null && settled != wrapped) _applyZap(settled);
++      }
++    }));
+   }
+
+   /// Applique réellement le changement de chaîne. Tirée par `_zapTo`
+@@ -1182,9 +1223,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     if (_isRecording) {
+       _stopRecording();
+     }
+-    // Pendant les 400 ms de debounce, les images de l’ancien lecteur
++    // La vidange de l'ancien flux peut commencer pendant le debounce.
++    // Le nouvel amont reste soumis à la même barrière de fermeture.
++    if (_ownsPlayback && _playerOpenedOnce && !CastManager.instance.isCasting) {
++      _playbackTerminated = true;
++      unawaited(_stopPlaybackNetwork(closeRelay: true));
++    }
++    // Pendant le debounce, les images de l’ancien lecteur
+     // arrivent encore. Elles ne prouvent rien sur la chaîne sélectionnée.
+-    ++_openGeneration; // invalide aussi une ouverture encore en attente
++    _nextOpenGeneration(); // invalide aussi une ouverture encore en attente
+     _playbackEvidence.revoke();
+     setState(() {
+       _currentChannel = next;
+@@ -1416,7 +1463,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// identifiée (message générique conservé).
+   String _blockMessage(String fallback) {
+     final StreamDiagnostics d = StreamDiagnostics.instance;
+-    switch (d.blockReason) {
++    switch (d.blockReasonForUrl(_effectiveUrl)) {
+       case StreamBlockReason.expired:
+         final DateTime? x = d.xtreamExpDate;
+         // GARDE-FOU (photo client du 18/08) : ne JAMAIS annoncer « expiré le
+@@ -1434,7 +1481,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+           formatJour(dernierJourCouvert(x)),
+         );
+       case StreamBlockReason.providerBlocked:
+-        return context.l10n.playerBlockedProvider;
++        return d.placeholderStream
++            ? context.l10n.playerPlaceholderChannel
++            : context.l10n.playerBlockedProvider;
+       case StreamBlockReason.maxConnections:
+         // DÉCISION PROPRIÉTAIRE (21/08, parité TV) : « je veux plus voir ce
+         // message ». L'accusation « un autre écran regarde déjà » était
+@@ -1456,7 +1505,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// récent est abandonnée (garde de génération, journalisée).
+   Future<void> _openMedia(String realUrl) {
+     if (!_screenActive) return _openChain;
+-    final int gen = ++_openGeneration;
++    final int gen = _nextOpenGeneration();
+     _userPaused = false;
+     _playbackTerminated = true;
+     _playbackEvidence.revoke();
+@@ -1580,8 +1629,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       },
+       waitForSlot: () async {
+         if (isLocal) return;
+-        await StreamBlockedFallback.awaitProviderSlot(_currentChannel,
+-            isCancelled: () => _openCancelled(gen) || !_ownsPlayback);
++        // Une sélection plus récente doit pouvoir interrompre immédiatement
++        // le contrôle API de l'ancienne, même si le serveur tarde à répondre.
++        final cancel = Completer<void>();
++        _slotProbeCancelled = cancel;
++        try {
++          await StreamBlockedFallback.awaitProviderSlot(_currentChannel,
++              isCancelled: () => _openCancelled(gen) || !_ownsPlayback,
++              cancelled: cancel.future);
++        } finally {
++          if (identical(_slotProbeCancelled, cancel)) _slotProbeCancelled = null;
++        }
+       },
+     );
+     if (!ready) return;
+@@ -1683,7 +1741,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     );
+     _armStartupTimeout();
+     if (widget.overrideUrl != null) {
+-      _playerOpenedOnce = true;
++      _beginPlayerOpen();
+       _player.open(Media(realUrl));
+       return;
+     }
+@@ -1708,34 +1766,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // centaines de ms suffit au refus (parité TV 19/08).
+       await LocalStreamRelay.instance.closeOtherPlaybacks(realUrl);
+       if (_openCancelled(gen) || !_ownsPlayback) return;
+-      // Redirection (panel → CDN tokenisé) RÉSOLUE AVANT mpv : certains
+-      // empilements ffmpeg résolvent mal les URIs RELATIVES des
+-      // segments après une redirection de playlist (base URL = l'URL
+-      // d'origine au lieu de la finale). On donne à mpv l'URL FINALE,
+-      // token compris — plus d'ambiguïté de base. Best-effort : en cas
+-      // de pépin on ouvre l'URL d'origine, comme avant.
+-      String hlsUrl = realUrl;
+-      final String? finalUrl =
+-          await HlsPreflight.resolveFinalPlaylistUrl(realUrl);
+-      if (_openCancelled(gen) || !_ownsPlayback) return;
+-      if (finalUrl != null && finalUrl != realUrl) {
+-        StreamDiagnostics.instance.recordEvent(
+-          'hls',
+-          'Redirection résolue AVANT mpv → base des segments = URL finale '
+-              '${StreamDiagnostics.maskCredentials(finalUrl)} '
+-              '(token conservé)',
+-        );
+-        hlsUrl = finalUrl;
+-      }
+-      // CAUSE RACINE terrain (logs mpv « Reading plaintext playlist » /
+-      // « Failed to recognize file format » sur segments TS pourtant
+-      // valides) : la playlist du panel n'a pas #EXTM3U en position 0
+-      // (BOM/blancs/CR, voire balise absente). mpv lit donc la PLAYLIST
+-      // NORMALISÉE par le relais local (route /hls : re-téléchargée à
+-      // chaque poll live, #EXTM3U garanti, URIs de segments ABSOLUES →
+-      // les octets vidéo partent en DIRECT vers le CDN).
++      // La route locale suit les redirections et normalise le document lors
++      // du premier GET du lecteur. Une sonde préalable téléchargeait le même
++      // manifeste deux fois et pouvait consommer un jeton à usage unique.
+       final String normalizedUrl = await LocalStreamRelay.instance
+-          .hlsPlaylistUrlFor(hlsUrl,
++          .hlsPlaylistUrlFor(realUrl,
+               isCancelled: () => _openCancelled(gen) || !_ownsPlayback);
+       if (_openCancelled(gen) || !_ownsPlayback) return;
+       // FILET : force le démuxeur HLS de ffmpeg sur ce contenu, au cas
+@@ -1750,7 +1785,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // (la fermeture attendue a déjà eu lieu dans _recyclePlayer :
+       // l'instance est NEUVE, aucune socket précédente à chevaucher)
+       if (_openCancelled(gen) || !_ownsPlayback) return;
+-      _playerOpenedOnce = true;
++      _beginPlayerOpen();
+       _player.open(Media(normalizedUrl));
+       return;
+     }
+@@ -1788,7 +1823,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       final (String openUrl, Map<String, String>? headers) =
+           await _vodDirectTarget(realUrl);
+       if (_openCancelled(gen) || !_ownsPlayback) return;
+-      _playerOpenedOnce = true;
++      _beginPlayerOpen();
+       _player.open(Media(openUrl, httpHeaders: headers));
+       // FILET « jamais bloqué » (terrain 2026-07-18) : si la lecture
+       // directe ne produit AUCUNE image en quelques secondes, on lance
+@@ -1826,14 +1861,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+           realUrl,
+           isCancelled: () => _openCancelled(gen) || !_ownsPlayback);
+       if (_openCancelled(gen) || !_ownsPlayback) return;
+-      _playerOpenedOnce = true;
++      _beginPlayerOpen(viaStreamRelay: true);
+       _player.open(Media(localUrl));
+     } catch (e) {
+       // Si le relais ne démarre pas (cas improbable), on retombe sur la
+       // lecture directe pour ne jamais priver l'utilisateur de l'image.
+       debugPrint('[Player] relais indisponible, lecture directe: $e');
+       if (_openCancelled(gen) || !_ownsPlayback) return;
+-      _playerOpenedOnce = true;
++      _beginPlayerOpen();
+       _player.open(Media(realUrl));
+     }
+   }
+@@ -1901,8 +1936,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+
+   /// Callback du `PageView` quand l'utilisateur a fini un swipe vertical.
+   /// Pendant un zap par BOUTON (`_zapTo` → `animateToPage`), les pages
+-  /// traversées sont ignorées : le zap final est appliqué par le
+-  /// `whenComplete` de l'animation (cf. `_zapTo`).
++  /// traversées sont ignorées : la sélection a déjà été appliquée au clic.
+   void _onZapPageChanged(int newIndex) {
+     if (_zapAnimating) return;
+     _applyZap(newIndex);
+@@ -2435,7 +2469,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+         PipService.instance.onPipControl == _handlePipControl;
+     final List<Object> holds = _downloadHolds.toList(growable: false);
+     _disposing = true;
+-    ++_openGeneration;
++    _nextOpenGeneration();
+     _playbackTerminated = true;
+     _playbackEvidence.revoke();
+     _audioSession.open();
+@@ -2561,15 +2595,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // celle-ci se fermait encore ; et la session du RELAIS (live TS)
+     // survivait à la fermeture de l'écran jusqu'à son idleTimeout de
+     // 10 min — le correctif TV 533d6f0 n'avait jamais été porté ici.
+-    // handOff : la fermeture complète devient un détenteur de TRANSITION
+-    // que le prochain claim() attend (plafonné, fail-open), chaque étape
+-    // horodatée dans la Boîte noire.
++    // Le prochain claim attend la relève réseau. Sur un flux direct,
++    // la destruction du décodeur fait aussi partie de cette barrière.
+     final Player player = _player;
+     final DateTime exitAt = DateTime.now();
+     StreamDiagnostics.instance.recordEvent(
+       'creneau',
+       'Sortie du lecteur (${_currentChannel.isLive ? 'direct' : 'film'}) → '
+-          'fermeture réseau lancée (stop mpv puis session relais)',
++          'fermeture réseau lancée (arrêt du moteur et du relais)',
+     );
+     // Une sortie d'écran déjà révoqué n'a aucun droit sur le relais
+     // global actuel. La fermeture de sa propre session a été capturée
+@@ -2588,12 +2621,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+         'creneau',
+         'Fermeture réseau du lecteur terminée en '
+             '${DateTime.now().difference(exitAt).inMilliseconds} ms '
+-            '(stop mpv + session relais + dispose)',
++            '(arrêt du moteur + session relais + destruction)',
+       );
+     }();
+     if (wasOwner) {
+-      StreamSlot.instance
+-          .handOff(this, shutdown, label: 'fermeture lecteur quitté');
++      // Si le lecteur ouvrait directement un flux ou ses segments HLS,
++      // sa destruction complète reste indispensable à la relève.
++      final release = !_openedViaStreamRelay ? shutdown : networkClosed.then<void>((_) async {
++        try {
++          // Une fois le moteur arrêté et son relais fermé, détruire la
++          // surface de cet écran ne consomme plus la connexion fournisseur.
++          await _stopCurrentPlayer();
++        } catch (_) {
++          // Un stop non confirmé garde la destruction complète comme barrière.
++          await shutdown;
++        }
++      });
++      StreamSlot.instance.handOff(this, release, label: 'fermeture lecteur quitté');
+     } else {
+       StreamSlot.instance.unregister(this);
+     }
+@@ -2902,7 +2946,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     if (!_ownsPlayback) return;
+     final List<Object> holds = _downloadHolds.toList(growable: false);
+     _playbackTerminated = true;
+-    _openGeneration++;
++    _nextOpenGeneration();
+     _fallback.stopRecovery();
+     _playbackEvidence.revoke();
+     _startupTimer?.cancel();
+@@ -2914,12 +2958,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     _isBuffering = false;
+     _weakConnection = false;
+     PipService.instance.setPlaybackActive(false);
+-    final Player stoppedPlayer = _player;
+     final Future<void> relayClosed =
+         LocalStreamRelay.instance.closeOtherPlaybacks('');
+     final Future<void> stopped = () async {
+       try {
+-        await stoppedPlayer.stop().timeout(const Duration(seconds: 5));
++        await _stopCurrentPlayer();
+         StreamDiagnostics.instance.recordEvent(
+             'player', 'Arrêt du moteur confirmé après le verdict définitif');
+       } catch (e) {
+@@ -2965,7 +3008,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     final bool networkContent = !PrivacyShield.isLocalUrl(_effectiveUrl);
+     if (s.blocksNetworkPlayback && !_shieldBlocked && networkContent) {
+       _shieldBlocked = true;
+-      ++_openGeneration;
++      _nextOpenGeneration();
+       _playbackTerminated = true;
+       _playbackEvidence.revoke();
+       _fallback.stopRecovery();
+diff --git a/lib/features/playlists/data/m3u_fetcher.dart b/lib/features/playlists/data/m3u_fetcher.dart
+index 08afcdfc520063b9186224c1c410c26b4518dd38..d25a51f5aa4f5b1ed9ac7160f65c8c1eb94f8ba4 100644
+--- a/lib/features/playlists/data/m3u_fetcher.dart
++++ b/lib/features/playlists/data/m3u_fetcher.dart
+@@ -27,6 +27,7 @@ import 'dart:convert';
+ import 'dart:isolate';
+ import 'dart:typed_data';
+
++import 'package:crypto/crypto.dart';
+ import 'package:flutter/foundation.dart';
+ import 'package:http/http.dart' as http;
+
+@@ -37,6 +38,16 @@ import 'iptv_http.dart';
+ import 'playlist_import_limits.dart';
+ import 'source_link_utils.dart';
+
++/// Les validateurs HTTP s’appliquent à la représentation servie à cet agent.
++/// Le digest permet aussi de reconnaître un corps HTTP 200 inchangé.
++typedef M3uValidators = ({
++  String agent,
++  String? etag,
++  String? modified,
++  String digest,
++});
++typedef M3uDownload = ({String? body, M3uValidators validators});
++
+ abstract final class M3uFetcher {
+   /// UA « navigateur » historique, gardé comme DERNIER recours dans la
+   /// rotation. Certains serveurs préfèrent au contraire une signature
+@@ -53,7 +64,7 @@ abstract final class M3uFetcher {
+   /// l'utilisateur (c'est elle qui débloque sa source en général), puis
+   /// tous les présets de lecteurs connus (VLC, ExoPlayer/IBO, OkHttp,
+   /// Smarters, TiviMate, Kodi, Lavf…), enfin notre UA navigateur.
+-  static List<String> _candidateUserAgents(String? preferred) {
++  static List<String> _candidateUserAgents(String? preferred, String? previous) {
+     final List<String> list = <String>[];
+     void add(String? ua) {
+       if (ua == null) return;
+@@ -64,6 +75,7 @@ abstract final class M3uFetcher {
+
+     add(preferred);
+     add(PlayerSettings.instance.userAgent);
++    add(previous);
+     for (final String v in PlayerSettings.userAgentPresets.values) {
+       add(v);
+     }
+@@ -90,6 +102,18 @@ abstract final class M3uFetcher {
+     http.Client? httpClient,
+     String? preferredUserAgent,
+     void Function(int received, int? total)? onBytes,
++  }) async {
++    return (await fetchCatalogue(url, httpClient: httpClient,
++      preferredUserAgent: preferredUserAgent, onBytes: onBytes)).body!;
++  }
++
++  static final RegExp _directive = RegExp(r'#EXT(?:M3U|INF)', caseSensitive: false);
++
++  static Future<M3uDownload> fetchCatalogue(String url, {
++    http.Client? httpClient,
++    String? preferredUserAgent,
++    void Function(int received, int? total)? onBytes,
++    M3uValidators? previous,
+   }) async {
+     // Filet défensif : complète http:// si absent (le schéma est
+     // normalement déjà garanti par l'appelant via `SourceLinkUtils`, cf.
+@@ -104,7 +128,7 @@ abstract final class M3uFetcher {
+     final bool owns = httpClient == null;
+
+     try {
+-      final List<String> userAgents = _candidateUserAgents(preferredUserAgent);
++      final List<String> userAgents = _candidateUserAgents(preferredUserAgent, previous?.agent);
+       // Mémorise la dernière erreur la plus parlante pour le message final.
+       Object? lastError;
+
+@@ -125,11 +149,29 @@ abstract final class M3uFetcher {
+               'Accept': '*/*',
+               'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+               'Connection': 'keep-alive',
++              if (previous?.agent == ua && previous?.etag != null)
++                'If-None-Match': previous!.etag!,
++              if (previous?.agent == ua && previous?.modified != null)
++                'If-Modified-Since': previous!.modified!,
+             });
+           final http.StreamedResponse resp =
+               await client.send(req).timeout(_timeout);
+
++          final bool forbidReuse = resp.headers['cache-control']?.toLowerCase().split(',')
++                  .any((value) => value.trim() == 'no-store') == true ||
++              resp.headers['vary']?.split(',').any((value) => value.trim() == '*') == true;
++          if (resp.statusCode == 304 && previous != null && previous.agent == ua &&
++              (previous.etag != null || previous.modified != null)) {
++            await resp.stream.listen(null).cancel();
++            return (body: null, validators: (
++              agent: ua,
++              etag: forbidReuse ? null : resp.headers['etag'] ?? previous.etag,
++              modified: forbidReuse ? null : resp.headers['last-modified'] ?? previous.modified,
++              digest: previous.digest,
++            ));
++          }
+           if (resp.statusCode != 200) {
++            await resp.stream.listen(null).cancel();
+             // Serveur qui refuse cette signature (souvent 403 / 401 /
+             // un code maison comme 884). On essaie la signature suivante.
+             lastError = Exception(l10nNow.m3uHttpError(resp.statusCode, url));
+@@ -147,7 +189,13 @@ abstract final class M3uFetcher {
+           final Uint8List bytes =
+               await _readCapped(resp.stream, DeviceMemory.m3uByteCap, onBytes, total)
+                   .timeout(_timeout);
+-          final String body = await _decodeBytesInBackground(bytes);
++          final decoded = await _decodeBytesInBackground(bytes, previous?.digest);
++          final M3uValidators validators = (agent: ua,
++            etag: forbidReuse ? null : resp.headers['etag'],
++            modified: forbidReuse ? null : resp.headers['last-modified'],
++            digest: decoded.$2);
++          final body = decoded.$1;
++          if (body == null) return (body: null, validators: validators);
+           final String head = body.trimLeft();
+           if (head.isEmpty) {
+             lastError = Exception(l10nNow.m3uEmptyResponse(url));
+@@ -160,10 +208,8 @@ abstract final class M3uFetcher {
+           // JSON au lieu d'une playlist. Sans #EXTM3U/#EXTINF ni la
+           // moindre URL de flux, on considère cette signature comme un
+           // échec et on tente la suivante.
+-          final String headUpper = head.toUpperCase();
+           final bool looksHtml = head.startsWith('<');
+-          final bool looksM3u = headUpper.contains('#EXTM3U') ||
+-              headUpper.contains('#EXTINF') ||
++          final bool looksM3u = _directive.hasMatch(head) ||
+               head.contains('://') ||
+               // Même repli que M3uParser._looksLikeUrl : playlist « brute »
+               // de chemins SANS schéma mais avec extension média connue —
+@@ -187,7 +233,7 @@ abstract final class M3uFetcher {
+               '« $ua » (les précédentes étaient bloquées).',
+             );
+           }
+-          return body;
++          return (body: body, validators: validators);
+         } on PlaylistImportTooLarge {
+           // Source trop volumineuse : la taille ne dépend PAS de la signature
+           // → inutile de retenter d'autres UA. On remonte l'erreur claire à l'UI.
+@@ -298,21 +344,21 @@ abstract final class M3uFetcher {
+   /// Latin-1, qui re-décode tout). Les octets partent en O(1) via
+   /// [TransferableTypedData] ; la String revient sans copie (Isolate.exit).
+   /// Petits corps : décodage inline — l'isolate coûterait plus qu'il ne rend.
+-  static Future<String> _decodeBytesInBackground(Uint8List bytes) {
+-    const int inlineMax = 256 * 1024; // 256 Ko ≈ < 5 ms de décodage
+-    if (bytes.length <= inlineMax) {
+-      return Future<String>.value(_m3uDecodeEntry(bytes));
+-    }
+-    return compute(
+-      _m3uDecodeTransferableEntry,
+-      TransferableTypedData.fromList(<Uint8List>[bytes]),
+-    );
++  static Future<(String?, String)> _decodeBytesInBackground(
++      Uint8List bytes, String? previousDigest) async {
++    if (bytes.length <= 32 * 1024) return _decodeIfChanged(bytes, previousDigest);
++    return compute(_m3uDecodeTransferableEntry,
++        (TransferableTypedData.fromList(<Uint8List>[bytes]), previousDigest));
+   }
+ }
+
+-/// Entrée isolate du décodage (top-level = requis par `compute`).
+-String _m3uDecodeTransferableEntry(TransferableTypedData data) =>
+-    _m3uDecodeEntry(data.materialize().asUint8List());
++(String?, String) _m3uDecodeTransferableEntry((TransferableTypedData, String?) args) =>
++    _decodeIfChanged(args.$1.materialize().asUint8List(), args.$2);
++
++(String?, String) _decodeIfChanged(Uint8List bytes, String? previousDigest) {
++  final String digest = sha256.convert(bytes).toString();
++  return (digest == previousDigest ? null : _m3uDecodeEntry(bytes), digest);
++}
+
+ /// Décodage UTF-8 → Latin-1 fallback + BOM strip.
+ /// On travaille sur les octets bruts (jamais `body`) pour avoir le
+diff --git a/lib/features/playlists/data/m3u_parser.dart b/lib/features/playlists/data/m3u_parser.dart
+index 77743ba62833035fb5108007f10061221a80a3dc..03e43bb32ddbd6546b6d2bb82e4b41a8a63905e7 100644
+--- a/lib/features/playlists/data/m3u_parser.dart
++++ b/lib/features/playlists/data/m3u_parser.dart
+@@ -110,16 +110,19 @@ class _M3uLineConsumer {
+     final String line = raw.trim();
+     if (line.isEmpty) return null;
+
+-    if (line.toUpperCase().startsWith('#EXTM3U')) return null;
++    final String directive = line.codeUnitAt(0) == 35
++        ? line.substring(0, line.length < 8 ? line.length : 8).toUpperCase()
++        : '';
++    if (directive.startsWith('#EXTM3U')) return null;
+
+-    if (line.toUpperCase().startsWith('#EXTINF:')) {
++    if (directive == '#EXTINF:') {
+       final _ExtInf parsed = M3uParser._parseExtInf(line);
+       _pendingAttrs = parsed.attrs;
+       _pendingName = parsed.name;
+       return null;
+     }
+
+-    if (line.toUpperCase().startsWith('#EXTGRP:')) {
++    if (directive == '#EXTGRP:') {
+       // Group title sur ligne séparée — s'applique à la prochaine
+       // chaîne (variante M3U_PLUS).
+       _pendingGroup = line.substring('#EXTGRP:'.length).trim();
+@@ -394,6 +397,10 @@ abstract final class M3uParser {
+     return false;
+   }
+
++  static final RegExp _quotedAttribute =
++      RegExp(r'''([a-zA-Z0-9_\-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')''');
++  static final RegExp _bareAttribute = RegExp(r'([a-zA-Z0-9_\-]+)=([^\s,]+)');
++
+   /// Extrait les attributs et le nom de chaîne d'une ligne #EXTINF.
+   ///
+   /// Exemples acceptés :
+@@ -414,9 +421,7 @@ abstract final class M3uParser {
+     final Map<String, String> attrs = <String, String>{};
+
+     // Pattern 1 : `key="value"` ou `key='value'` (le plus standard)
+-    final RegExp quoted =
+-        RegExp(r'''([a-zA-Z0-9_\-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')''');
+-    for (final RegExpMatch m in quoted.allMatches(head)) {
++    for (final RegExpMatch m in _quotedAttribute.allMatches(head)) {
+       final String key = m.group(1)!.toLowerCase();
+       final String value = m.group(2) ?? m.group(3) ?? '';
+       attrs[key] = value;
+@@ -426,8 +431,7 @@ abstract final class M3uParser {
+     // espace. On ne le tente QUE si rien n'a été matché par le pattern
+     // 1 — pour éviter de re-matcher des fragments d'attribut quoted.
+     if (attrs.isEmpty) {
+-      final RegExp unquoted = RegExp(r'([a-zA-Z0-9_\-]+)=([^\s,]+)');
+-      for (final RegExpMatch m in unquoted.allMatches(head)) {
++      for (final RegExpMatch m in _bareAttribute.allMatches(head)) {
+         attrs[m.group(1)!.toLowerCase()] = m.group(2)!;
+       }
+     }
+@@ -441,10 +445,10 @@ abstract final class M3uParser {
+     bool inDouble = false;
+     bool inSingle = false;
+     for (int i = 0; i < line.length; i++) {
+-      final String c = line[i];
+-      if (c == '"' && !inSingle) inDouble = !inDouble;
+-      if (c == "'" && !inDouble) inSingle = !inSingle;
+-      if (c == ',' && !inDouble && !inSingle) return i;
++      final int c = line.codeUnitAt(i);
++      if (c == 34 && !inSingle) inDouble = !inDouble;
++      if (c == 39 && !inDouble) inSingle = !inSingle;
++      if (c == 44 && !inDouble && !inSingle) return i;
+     }
+     return -1;
+   }
+diff --git a/lib/features/playlists/data/playlist_database.dart b/lib/features/playlists/data/playlist_database.dart
+index af6b54624a2f1186ea6ed44c1d69d1c3c98f5140..4320216aba39754a29b9518cf9f2c6d22586054f 100644
+--- a/lib/features/playlists/data/playlist_database.dart
++++ b/lib/features/playlists/data/playlist_database.dart
+@@ -32,7 +32,8 @@ class PlaylistDatabase {
+   // v7 ajoute `epg_channel_id` à channels (Vague 4 : pont EPG 1:N
+   // reconstructible au resync sans re-fetch du bouquet).
+   // v9 : identifiants de chaînes distincts par source, favoris conservés.
+-  static const int _kDbVersion = 9;
++  // v10 : validateurs du catalogue M3U conservés avec sa révision locale.
++  static const int _kDbVersion = 10;
+
+   Database? _db;
+   Future<Database>? _opening;
+@@ -154,6 +155,7 @@ class PlaylistDatabase {
+     );
+
+     await _createDeletedSources(db);
++    await _createM3uCache(db);
+     if (kDebugMode) debugPrint('[DB] Schéma v$version créé.');
+   }
+
+@@ -185,6 +187,14 @@ class PlaylistDatabase {
+     await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+   }
+
++  Future<void> _createM3uCache(Database db) => db.execute('''
++    CREATE TABLE IF NOT EXISTS m3u_http_cache (
++      playlist_id INTEGER PRIMARY KEY REFERENCES playlists(id) ON DELETE CASCADE,
++      source_hash TEXT NOT NULL, channel_cap INTEGER NOT NULL,
++      user_agent TEXT NOT NULL, etag TEXT, modified TEXT, digest TEXT NOT NULL
++    )
++  ''');
++
+   Future<void> _createDeletedSources(Database db) => db.execute(
+       'CREATE TABLE IF NOT EXISTS deleted_sources (fingerprint TEXT PRIMARY KEY)');
+
+@@ -272,6 +282,7 @@ class PlaylistDatabase {
+       // (stabilité Firestick 1 Go). IDEMPOTENT comme les autres ADD COLUMN.
+       await _addColumnIfMissing(db, 'channels', 'epg_channel_id', 'TEXT');
+     }
++    if (oldVersion < 10 && newVersion >= 10) await _createM3uCache(db);
+     if (oldVersion < 9 && newVersion >= 9) {
+       await _scopeChannelIds(db);
+     }
+diff --git a/lib/features/playlists/data/playlist_repository.dart b/lib/features/playlists/data/playlist_repository.dart
+index 492f13ab4695b9b47e6c96b4cb578282b8dce258..71e9394bf99cfdc177f8d9f60434711982a744bc 100644
+--- a/lib/features/playlists/data/playlist_repository.dart
++++ b/lib/features/playlists/data/playlist_repository.dart
+@@ -20,6 +20,9 @@
+ // =========================================================
+
+ import 'dart:async';
++import 'dart:convert';
++
++import 'package:crypto/crypto.dart';
+
+ import 'package:flutter/foundation.dart';
+ import 'package:http/http.dart' as http;
+@@ -40,7 +43,6 @@ import '../../channels/domain/channel_genre.dart';
+ import '../../epg/data/epg_alias_index.dart';
+ import '../../epg/data/epg_repository.dart';
+ import '../../player/data/stream_diagnostics.dart';
+-import '../../vod/data/vod_download_service.dart';
+ import '../../vod/domain/m3u_vod_classifier.dart';
+ import '../domain/playlist.dart';
+ import 'import_progress.dart';
+@@ -837,8 +839,7 @@ class PlaylistRepository {
+       //    strip BOM + timeout 90s — gère les serveurs paranos
+       //    ou les exports Windows-1252 mal étiquetés).
+       //    La progression (octets reçus) alimente la barre vivante.
+-      if (kDebugMode) debugPrint('[Repo] GET $url');
+-      final String body = await M3uFetcher.fetch(
++      final M3uDownload downloaded = await M3uFetcher.fetchCatalogue(
+         url,
+         httpClient: client,
+         onBytes: onProgress == null
+@@ -853,10 +854,11 @@ class PlaylistRepository {
+       // 3) Parse (dans un ISOLATE → pas de gel UI) + insertion en batch.
+       //    Plafond chaînes ADAPTÉ À LA RAM passé à l'isolate (anti-OOM).
+       onProgress?.call(const ImportProgress(phase: ImportPhase.analyzing));
++      final int cap = DeviceMemory.channelCap;
+       final M3uParseResult parsed = await M3uParser.parseInBackground(
+-        body,
++        downloaded.body!,
+         playlistId: playlistId,
+-        maxChannels: DeviceMemory.channelCap,
++        maxChannels: cap,
+       );
+
+       if (parsed.channels.isEmpty) {
+@@ -870,34 +872,14 @@ class PlaylistRepository {
+         throw Exception('${l10nNow.m3uImportNoChannels}$hint');
+       }
+
+-      if (onProgress == null) {
+-        await _insertChannels(parsed.channels);
+-      } else {
+-        // PROGRESSION (fusion 2026-07-10) : mêmes écritures, découpées en
+-        // tranches pour faire monter le compteur à l'écran (« 4 231
+-        // chaînes ajoutées… ») — émises dans l'API typée ImportProgress.
+-        onProgress(ImportProgress(
+-          phase: ImportPhase.saving,
+-          channelsFound: 0,
+-        ));
+-        const int step = 500;
+-        for (int i = 0; i < parsed.channels.length; i += step) {
+-          final int end = i + step > parsed.channels.length
+-              ? parsed.channels.length
+-              : i + step;
+-          await _insertChannels(parsed.channels.sublist(i, end));
+-          onProgress(ImportProgress(
+-            phase: ImportPhase.saving,
+-            channelsFound: end,
+-          ));
+-        }
+-      }
+       final Playlist saved = newPlaylist.copyWith(
+         id: playlistId,
+         channelCount: parsed.channels.length,
+         lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
+       );
+-      await _updatePlaylistMetrics(saved);
++      onProgress?.call(const ImportProgress(phase: ImportPhase.saving, channelsFound: 0));
++      await _commitM3u(saved, downloaded.validators, cap,
++          channels: parsed.channels, onProgress: onProgress);
+       onProgress?.call(ImportProgress(
+         phase: ImportPhase.done,
+         channelsFound: parsed.channels.length,
+@@ -1004,45 +986,17 @@ class PlaylistRepository {
+   /// complète des Channel en mémoire ; il collecte juste leurs ids (légers)
+   /// pour filtrer l'EPG.
+   Future<void> _syncEpgForIds(Set<String> ids, String epgUrl) async {
+-    // BOÎTE NOIRE (enquête « connexion fantôme » 19/08) : le téléchargement
+-    // XMLTV utilise les MÊMES identifiants que les flux, et certains panels
+-    // non standard le comptent comme une connexion. On journalise début,
+-    // fin et durée pour pouvoir CORRÉLER un « limite de connexions (1/1) »
+-    // avec une synchro de guide en cours — sans supposer, en mesurant.
+-    // QUELQU'UN REGARDE (audit 19/08) : le téléchargement xmltv utilise les
+-    // mêmes identifiants que les flux et certains panels le comptent comme
+-    // une connexion — lancé au boot+10 min ou toutes les 12 h, il tombait
+-    // souvent EN PLEIN visionnage sur les lignes 1-connexion. On patiente
+-    // (vérification chaque minute, plafond 1 h puis on y va quand même :
+-    // le guide ne doit pas mourir sur une box qui joue en continu).
+-    for (int waited = 0;
+-        VodDownloadService.instance.playbackHold && waited < 60;
+-        waited++) {
+-      if (waited == 0) {
+-        StreamDiagnostics.instance.recordEvent(
+-          'epg',
+-          'Lecture en cours → synchro du guide (xmltv) différée jusqu\'à '
+-              'la fin du visionnage (ligne 1-connexion protégée)',
+-        );
+-      }
+-      await Future<void>.delayed(const Duration(minutes: 1));
+-    }
+-    final DateTime epgStart = DateTime.now();
+     final String epgHost = Uri.tryParse(epgUrl)?.host ?? '?';
+-    StreamDiagnostics.instance.recordEvent(
+-      'epg',
+-      'Téléchargement du guide (xmltv) démarré — $epgHost. Si le panel '
+-          'compte ce téléchargement comme une connexion, la ligne est '
+-          'occupée pendant toute sa durée.',
+-    );
++    final DateTime epgStart = DateTime.now();
+     try {
+       await EpgRepository.instance.downloadAndImport(
++        whenIdle: true,
+         url: epgUrl,
+         knownChannelIds: ids,
+       );
+       StreamDiagnostics.instance.recordEvent(
+         'epg',
+-        'Guide importé en '
++        'Guide disponible après '
+             '${DateTime.now().difference(epgStart).inSeconds} s ($epgHost)',
+       );
+     } catch (e) {
+@@ -1050,7 +1004,7 @@ class PlaylistRepository {
+         'epg',
+         'Échec import du guide après '
+             '${DateTime.now().difference(epgStart).inSeconds} s '
+-            '($epgHost) : $e',
++            '($epgHost) : ${e.runtimeType}',
+         level: 'warn',
+       );
+       // Pas de crash (l'EPG est optionnel) MAIS plus de silence : un
+@@ -1063,7 +1017,7 @@ class PlaylistRepository {
+         ctx: <String, Object?>{
+           'host': Uri.tryParse(epgUrl)?.host,
+           'known': ids.length,
+-          'error': e.toString(),
++          'error': e.runtimeType.toString(),
+         },
+       );
+     }
+@@ -1490,11 +1444,24 @@ class PlaylistRepository {
+     return ok;
+   }
+
+-  /// charge les nouvelles. Le `playlistId` reste le même.
+-  ///
+-  /// Retourne `true` si la sync a réussi, lance une Exception sinon.
+-  Future<bool> refreshPlaylist(Playlist playlist) async {
+-    if (playlist.id == null) return false;
++  final Map<(int, String), Future<bool>> _m3uRefreshes = {};
++
++  /// Partage une relecture en cours pour une même liste M3U.
++  Future<bool> refreshPlaylist(Playlist playlist) {
++    final id = playlist.id;
++    if (id == null) return Future.value(false);
++    final url = playlist.m3uUrl;
++    if (playlist.type != PlaylistType.m3u || url == null)
++      return _refreshPlaylist(playlist);
++    final key = (id, url);
++    return _m3uRefreshes.putIfAbsent(
++        key,
++        () => _refreshPlaylist(playlist).whenComplete(() {
++              _m3uRefreshes.remove(key);
++            }));
++  }
++
++  Future<bool> _refreshPlaylist(Playlist playlist) async {
+     // BOÎTE NOIRE : un refresh re-télécharge le catalogue (player_api pour
+     // Xtream, get.php/M3U sinon) puis relance une synchro EPG. Journalisé
+     // pour corréler d'éventuels « limite de connexions » avec ces passes
+@@ -1511,31 +1478,48 @@ class PlaylistRepository {
+       try {
+         // Même fetcher robuste qu'à l'ajout initial (Latin-1 fallback,
+         // User-Agent navigateur, strip BOM, timeout 90s).
+-        final String body = await M3uFetcher.fetch(
+-          playlist.m3uUrl!,
+-          httpClient: client,
++        final int cap = DeviceMemory.channelCap;
++        final cached = await db.rawQuery('''
++          SELECT cache.user_agent, cache.etag, cache.modified, cache.digest
++          FROM m3u_http_cache cache JOIN playlists p ON p.id = cache.playlist_id
++          WHERE p.id = ? AND cache.source_hash = ? AND cache.channel_cap = ?
++            AND p.channel_count > 0 AND p.channel_count =
++                (SELECT COUNT(*) FROM channels c WHERE c.playlist_id = p.id)
++        ''', [playlist.id, _m3uSourceHash(playlist.m3uUrl!), cap]);
++        final M3uValidators? previous = cached.isEmpty ? null : (
++          agent: cached.first['user_agent'] as String,
++          etag: cached.first['etag'] as String?,
++          modified: cached.first['modified'] as String?,
++          digest: cached.first['digest'] as String,
+         );
++        final M3uDownload downloaded = await M3uFetcher.fetchCatalogue(
++          playlist.m3uUrl!, httpClient: client, previous: previous);
++        final body = downloaded.body;
++        final synced = playlist.copyWith(lastSyncedAt: DateTime.now().millisecondsSinceEpoch);
++        if (body == null) {
++          await _commitM3u(synced, downloaded.validators, cap);
++          // Le catalogue n’a pas changé. Publier seulement la date de la source.
++          final revision = _emitRevision;
++          final playlists = await getAllPlaylists();
++          if (revision == _emitRevision) {
++            _playlistsCache = playlists;
++            if (!_playlistsController.isClosed) _playlistsController.add(playlists);
++          }
++          final epg = playlist.epgUrl;
++          if (epg != null && epg.isNotEmpty) {
++            final rows = await db.query('channels', columns: ['external_id'],
++                where: 'playlist_id = ?', whereArgs: [playlist.id]);
++            unawaited(_syncEpgForIds(rows.map((row) => row['external_id'] as String).toSet(), epg));
++          }
++          return true;
++        }
+         final M3uParseResult parsed = await M3uParser.parseInBackground(
+-          body,
+-          playlistId: playlist.id!,
+-          maxChannels: DeviceMemory.channelCap,
+-        );
++          body, playlistId: playlist.id!, maxChannels: cap);
+         if (parsed.channels.isEmpty) {
+           throw Exception(l10nNow.m3uRefreshNoChannels);
+         }
+-        // Remplace les chaînes existantes
+-        await db.delete(
+-          'channels',
+-          where: 'playlist_id = ?',
+-          whereArgs: <Object>[playlist.id!],
+-        );
+-        await _insertChannels(parsed.channels);
+-        await _updatePlaylistMetrics(
+-          playlist.copyWith(
+-            channelCount: parsed.channels.length,
+-            lastSyncedAt: DateTime.now().millisecondsSinceEpoch,
+-          ),
+-        );
++        await _commitM3u(synced, downloaded.validators, cap,
++            channels: parsed.channels, replace: true);
+         await _emitCurrentState();
+         // Vague 4 : pont M3U AVANT le XMLTV (même contrat qu'à l'ajout).
+         await _persistAliasesFromChannels(parsed.channels);
+@@ -1657,40 +1641,87 @@ class PlaylistRepository {
+     if (RepairFlags.mobileChannelMetadataLegacy) Channel.clearComputedCaches();
+   }
+
+-  /// Insert toutes les chaînes en CHUNKS de 1000 + ré-émet l'état
+-  /// après chaque chunk. Sur grosses playlists (20k+), l'utilisateur
+-  /// voit le compteur grimper en direct au lieu d'attendre 30s qu'un
+-  /// gros batch finisse.
+-  ///
+-  /// Performance comparée :
+-  ///   - Avant : 1 batch de 27 085 inserts = ~25s freeze, puis pop
+-  ///   - Après : 27 batches de 1 000 = ~25s total mais l'UI se
+-  ///     rafraîchit toutes les ~900ms (chunk + emit) — sensation
+-  ///     "ça avance" au lieu de "ça dort".
+-  Future<void> _insertChannels(List<Channel> channels) async {
+-    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+-        'sqlite.insert.start', channels: channels.length);
+-    const int chunkSize = 1000;
+-    final Database db = await PlaylistDatabase.instance.database;
+-    for (int i = 0; i < channels.length; i += chunkSize) {
+-      final int end = (i + chunkSize > channels.length)
+-          ? channels.length
+-          : i + chunkSize;
+-      final Batch batch = db.batch();
+-      for (int j = i; j < end; j++) {
+-        batch.insert('channels', _channelToMap(channels[j]));
++  String _m3uSourceHash(String url) => sha256.convert(utf8.encode(url)).toString();
++
++  Future<void> _commitM3u(Playlist playlist, M3uValidators validators, int cap,
++      {List<Channel>? channels,
++      bool replace = false,
++      ImportProgressCallback? onProgress}) async {
++    final db = await PlaylistDatabase.instance.database;
++    await db.transaction((tx) async {
++      final updated = await tx.update(
++          'playlists',
++          {
++            'last_synced_at': playlist.lastSyncedAt,
++            if (channels != null) 'channel_count': channels.length,
++          },
++          where: 'id = ? AND m3u_url = ?',
++          whereArgs: [playlist.id, playlist.m3uUrl]);
++      if (updated == 0) throw const PlaylistDeletedException();
++      if (replace) {
++        await tx.delete('channels', where: 'playlist_id = ?', whereArgs: [playlist.id]);
++      }
++      if (channels != null) {
++        await _insertChannels(channels, executor: tx, onProgress: onProgress);
++      }
++      await tx.insert(
++          'm3u_http_cache',
++          {
++            'playlist_id': playlist.id,
++            'source_hash': _m3uSourceHash(playlist.m3uUrl!),
++            'channel_cap': cap,
++            'user_agent': validators.agent,
++            'etag': validators.etag,
++            'modified': validators.modified,
++            'digest': validators.digest,
++          },
++          conflictAlgorithm: ConflictAlgorithm.replace);
++    });
++  }
++
++  // 80 lignes × 11 paramètres restent sous la limite SQLite historique de 999.
++  static const int _rowsPerInsert = 80;
++  static const _channelValues = '(?,?,?,?,?,?,?,?,?,?,?)';
++  static const _channelInsert = 'INSERT INTO channels '
++      '(playlist_id,external_id,name,category,stream_url,logo_url,is_live,'
++      'catchup_supported,catchup_days,catchup_source,epg_channel_id) VALUES ';
++
++  Future<void> _insertChannels(List<Channel> channels,
++      {DatabaseExecutor? executor, ImportProgressCallback? onProgress}) async {
++    final writer = executor ?? await PlaylistDatabase.instance.database;
++    CrashReporting.instance.recordMemoryBreadcrumbWithCounts('sqlite.insert.start',
++        channels: channels.length);
++    const int chunk = _rowsPerInsert * 12;
++    for (int start = 0; start < channels.length; start += chunk) {
++      final stop = (start + chunk).clamp(start, channels.length);
++      final batch = writer.batch();
++      for (int from = start; from < stop; from += _rowsPerInsert) {
++        final end = (from + _rowsPerInsert).clamp(from, stop);
++        final args = <Object?>[];
++        for (int i = from; i < end; i++) {
++          final c = channels[i];
++          args.addAll([
++            c.playlistId,
++            c.sourceScopedId,
++            c.name,
++            c.category,
++            c.streamUrl,
++            c.logoUrl,
++            c.isLive ? 1 : 0,
++            c.catchupSupported ? 1 : 0,
++            c.catchupDays,
++            c.catchupSource,
++            c.epgChannelId
++          ]);
++        }
++        final values = List.filled(end - from, _channelValues).join(',');
++        batch.rawInsert('$_channelInsert$values', args);
+       }
+       await batch.commit(noResult: true);
++      onProgress?.call(ImportProgress(phase: ImportPhase.saving, channelsFound: stop));
+     }
+-    CrashReporting.instance.recordMemoryBreadcrumbWithCounts(
+-        'sqlite.insert.done', channels: channels.length);
+-    // ANTI-OOM (P1-3) : on N'ÉMET PLUS d'état ICI — ni par tranche, ni à la
+-    // fin. Chaque appelant ré-émet l'état UNE seule fois APRÈS l'insertion
+-    // (addM3u/addXtream → setActivePlaylist ; refreshPlaylist →
+-    // _emitCurrentState). Avant, `_emitCurrentState()` relisait TOUTE la base
+-    // (jusqu'à 50k Channel) pendant l'import → une matérialisation complète
+-    // supplémentaire EN PLUS de `parsed.channels` déjà en RAM = pic mémoire qui
+-    // faisait planter les box faibles. On lit la base une seule fois, à la fin.
++    CrashReporting.instance
++        .recordMemoryBreadcrumbWithCounts('sqlite.insert.done', channels: channels.length);
+   }
+
+   Future<void> _updatePlaylistMetrics(Playlist playlist) async {
+@@ -1758,22 +1789,6 @@ class PlaylistRepository {
+   //  Mapping Channel ↔ SQLite
+   // ============================================================
+
+-  Map<String, Object?> _channelToMap(Channel ch) {
+-    return <String, Object?>{
+-      'playlist_id': ch.playlistId,
+-      'external_id': ch.sourceScopedId,
+-      'name': ch.name,
+-      'category': ch.category,
+-      'stream_url': ch.streamUrl,
+-      'logo_url': ch.logoUrl,
+-      'is_live': ch.isLive ? 1 : 0,
+-      'catchup_supported': ch.catchupSupported ? 1 : 0,
+-      'catchup_days': ch.catchupDays,
+-      'catchup_source': ch.catchupSource,
+-      'epg_channel_id': ch.epgChannelId,
+-    };
+-  }
+-
+   Channel _channelFromMap(Map<String, Object?> map) {
+     return Channel(
+       id: map['external_id'] as String,
+diff --git a/lib/features/playlists/data/source_calibrator.dart b/lib/features/playlists/data/source_calibrator.dart
+index 81fcb96943bf3146bd29a9454463a05cdfd6e549..e9e3bd5712ed5d4ae1569cc959b1cf8aca827504 100644
+--- a/lib/features/playlists/data/source_calibrator.dart
++++ b/lib/features/playlists/data/source_calibrator.dart
+@@ -37,6 +37,7 @@ import '../../player/data/player_settings.dart';
+ import '../../player/data/line_expiry.dart';
+ import '../../player/data/stream_diagnostics.dart';
+ import '../../player/data/xtream_url_variants.dart';
++import '../../vod/data/vod_download_service.dart';
+ import '../domain/playlist.dart';
+ import 'playlist_database.dart';
+ import 'xtream_client.dart';
+@@ -57,6 +58,12 @@ enum CalibrationVerdict {
+   /// échantillon → suggérer un VPN (blocage FAI probable).
+   allFormatsRefused,
+
++  /// Un autre lecteur utilise déjà la ligne.
++  connectionBusy,
++
++  /// Chaîne remplacée par le clip de refus du fournisseur.
++  providerPlaceholder,
++
+   /// La source n'a aucune chaîne à sonder.
+   noChannels,
+
+@@ -201,14 +208,19 @@ class SourceCalibrator {
+   //  E/S par défaut (production) — remplacées dans les tests
+   // ---------------------------------------------------------------
+
+-  Future<XtreamAccountInfo> _fetchAccount() {
++  Future<XtreamAccountInfo> _fetchAccount() async {
+     if (_accountFetcher != null) return _accountFetcher();
+-    return XtreamClient(
++    final XtreamClient client = XtreamClient(
+       serverUrl: playlist.xtreamServer ?? '',
+       username: playlist.xtreamUsername ?? '',
+       password: playlist.xtreamPassword ?? '',
+       timeout: kAccountTimeout,
+-    ).fetchAccountInfo();
++    );
++    try {
++      return await client.fetchAccountInfo();
++    } finally {
++      client.dispose();
++    }
+   }
+
+   /// 3 chaînes LIVE échantillon : début / milieu / fin de la liste —
+@@ -250,10 +262,12 @@ class SourceCalibrator {
+     Duration timeout = kProbeTimeout,
+   }) {
+     if (_probeUserAgents != null) {
+-      return _probeUserAgents(url, candidates: candidates, timeout: timeout);
++      return _probeUserAgents(url, candidates: candidates, timeout: timeout)
++          .timeout(kSignatureBudget);
+     }
+     return StreamProbe.instance
+-        .probeUserAgents(url, candidates: candidates, timeout: timeout);
++        .probeUserAgents(url, candidates: candidates, timeout: timeout,
++            budget: kSignatureBudget, isCancelled: () => _cancelled);
+   }
+
+   Future<StreamProbeResult> _runProbe(
+@@ -291,6 +305,20 @@ class SourceCalibrator {
+   // ---------------------------------------------------------------
+
+   Future<CalibrationReport> run() async {
++    final VodDownloadService line = VodDownloadService.instance;
++    if (line.playbackHold) {
++      return const CalibrationReport(verdict: CalibrationVerdict.connectionBusy);
++    }
++    // L’optimisation lancée depuis les réglages prend la priorité sur XMLTV.
++    line.claimPlaybackHold(this, network: true);
++    try {
++      return await _run();
++    } finally {
++      line.releasePlaybackHold(this);
++    }
++  }
++
++  Future<CalibrationReport> _run() async {
+     final bool isXtream = playlist.type == PlaylistType.xtream;
+     StreamDiagnostics.instance.recordEvent(
+       'calibrate',
+@@ -327,6 +355,14 @@ class SourceCalibrator {
+           accountChecked: true,
+         );
+       }
++      final int limit = account.maxConnections ?? 0;
++      if (limit > 0 && (account.activeCons ?? 0) >= limit) {
++        return CalibrationReport(
++          verdict: CalibrationVerdict.connectionBusy,
++          account: account,
++          accountChecked: true,
++        );
++      }
+     }
+     if (_cancelled) return _cancelledReport(account, accountChecked);
+
+@@ -341,6 +377,10 @@ class SourceCalibrator {
+     }
+     if (_cancelled) return _cancelledReport(account, accountChecked);
+
++    final int? maxConnections = account?.maxConnections;
++    final bool singleConnection = maxConnections == null
++        ? StreamDiagnostics.instance.singleConnectionLine
++        : maxConnections == 1;
+     final List<int> startupSamplesMs = <int>[];
+     bool sawNonNetworkFailure = false;
+     // Échec de niveau RÉSEAU (DNS/timeout/connexion) vs refus APPLICATIF
+@@ -379,6 +419,12 @@ class SourceCalibrator {
+         if (_cancelled) return _cancelledReport(account, accountChecked);
+         final StreamProbeResult r =
+             await _runProbe(candidate.url, userAgent: currentUa);
++        if (r.providerPlaceholder) {
++          return CalibrationReport(
++            verdict: CalibrationVerdict.providerPlaceholder,
++            account: account, accountChecked: accountChecked,
++          );
++        }
+         collect(r);
+         StreamDiagnostics.instance.recordEvent(
+           'calibrate',
+@@ -396,7 +442,7 @@ class SourceCalibrator {
+         // « une seule connexion » : la calibration se sabotait elle-même et
+         // persistait un mauvais verdict. Séquentiel sur ces comptes.
+         final List<StreamProbeResult> others = <StreamProbeResult>[];
+-        if (StreamDiagnostics.instance.singleConnectionLine) {
++        if (singleConnection) {
+           for (final String u in samples.skip(1)) {
+             final String applied =
+                 XtreamUrlVariants.applyFormat(u, candidate.formatCode) ?? u;
+@@ -451,13 +497,20 @@ class SourceCalibrator {
+       // diagnostic du lecteur (stream_blocked_fallback).
+       final UserAgentProbeResult uaProbe = await _runUaProbe(
+         uaProbeUrl,
+-        candidates: StreamDiagnostics.instance.singleConnectionLine
++        candidates: singleConnection
+             ? <String>[currentUa]
+             : <String>[
+                 currentUa,
+                 ...PlayerSettings.userAgentPresets.values,
+               ],
+-      ).timeout(kSignatureBudget);
++      );
++      if (uaProbe.attempts.values.any((r) => r.providerPlaceholder) &&
++          uaProbe.workingUserAgent == null && !anySuccess) {
++        return CalibrationReport(
++          verdict: CalibrationVerdict.providerPlaceholder,
++          account: account, accountChecked: accountChecked,
++        );
++      }
+       uaProbe.attempts.values.forEach(collect);
+       for (final MapEntry<String, StreamProbeResult> e
+           in uaProbe.attempts.entries) {
+diff --git a/lib/features/playlists/data/xtream_client.dart b/lib/features/playlists/data/xtream_client.dart
+index 95d3fc2423abaeeec626cb07a6a03ad18812bf5b..20a078c814e91f73b18fd9245e171202308353e7 100644
+--- a/lib/features/playlists/data/xtream_client.dart
++++ b/lib/features/playlists/data/xtream_client.dart
+@@ -116,6 +116,15 @@ class XtreamClient {
+   final String password;
+   final http.Client _http;
+   final Duration _timeout;
++  Future<Map<String, dynamic>>? _accountRequest;
++
++  // Partage uniquement une requête en vol sur CE compte. La consultation
++  // suivante relit les compteurs du fournisseur, y compris après un échec.
++  Future<Map<String, dynamic>> _accountData() {
++    return _accountRequest ??= _callApi(action: null).whenComplete(() {
++      _accountRequest = null;
++    });
++  }
+
+   /// Normalise le serveur (filet défensif — normalement déjà fait par
+   /// l'appelant, cf. `PlaylistRepository`) : complète http:// si absent,
+@@ -143,7 +152,7 @@ class XtreamClient {
+   /// Vérifie que les identifiants sont valides.
+   /// Lance une `XtreamException` si KO.
+   Future<void> verifyCredentials() async {
+-    final Map<String, dynamic> data = await _callApi(action: null);
++    final Map<String, dynamic> data = await _accountData();
+     final Map<String, dynamic>? userInfo =
+         data['user_info'] as Map<String, dynamic>?;
+     if (userInfo == null) {
+@@ -205,7 +214,7 @@ class XtreamClient {
+   /// renvoie. Utilisé par le bouton « Vérifier le compte » de l'écran
+   /// debug caché. Enregistre aussi le résultat dans la boîte noire.
+   Future<XtreamAccountInfo> fetchAccountInfo() async {
+-    final Map<String, dynamic> data = await _callApi(action: null);
++    final Map<String, dynamic> data = await _accountData();
+     final Map<String, dynamic>? userInfo =
+         data['user_info'] as Map<String, dynamic>?;
+     if (userInfo == null) {
+@@ -916,10 +925,12 @@ class XtreamClient {
+         action: action, seriesId: seriesId, vodId: vodId, streamId: streamId);
+     final Uint8List bodyBytes = await _getBodyBytes(uri);
+     try {
+-      final dynamic decoded = await compute(
+-        _decodeJsonBytesInIsolate,
+-        TransferableTypedData.fromList(<Uint8List>[bodyBytes]),
+-      );
++      // user_info tient habituellement dans quelques centaines d'octets.
++      // Démarrer un isolate pour ce message retarde chaque contrôle du zap.
++      final dynamic decoded = action == null && bodyBytes.length <= 4096
++          ? jsonDecode(utf8.decode(bodyBytes, allowMalformed: true))
++          : await compute(_decodeJsonBytesInIsolate,
++              TransferableTypedData.fromList(<Uint8List>[bodyBytes]));
+       if (decoded is Map<String, dynamic>) return decoded;
+       throw XtreamException(
+         'Réponse JSON non attendue (Map attendue) sur action=$action.',
+diff --git a/lib/features/playlists/presentation/free_player_sources.dart b/lib/features/playlists/presentation/free_player_sources.dart
+index 1566261fca1308437833394fb585dbe15d329d8a..2831b2a9260028918210d75cb548fe34dce7cbec 100644
+--- a/lib/features/playlists/presentation/free_player_sources.dart
++++ b/lib/features/playlists/presentation/free_player_sources.dart
+@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
+
+ import '../../../core/app/panel_live_wait.dart';
+ import '../../../core/i18n/l10n_extension.dart';
++import '../../../core/support/support_choice_sheet.dart';
+ import '../../device/data/device_identity.dart';
+ import 'm3u_login_sheet.dart';
+
+@@ -15,6 +16,8 @@ class FreePlayerSources extends StatelessWidget {
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.stretch,
+       children: <Widget>[
++        const FreePlayerDeviceActions(),
++        const SizedBox(height: 16),
+         Text(context.l10n.emptyAddYourFirst),
+         const SizedBox(height: 12),
+         FilledButton.icon(
+@@ -28,14 +31,88 @@ class FreePlayerSources extends StatelessWidget {
+           label: Text(context.l10n.playlistTypeXtream),
+         ),
+         const SizedBox(height: 12),
+-        const FreePlayerPanelTile(),
++        const FreePlayerPanelTile(showIdentity: false),
++      ],
++    );
++  }
++}
++
++class FreePlayerDeviceActions extends StatefulWidget {
++  const FreePlayerDeviceActions({super.key});
++
++  @override
++  State<FreePlayerDeviceActions> createState() => _FreePlayerDeviceActionsState();
++}
++
++class _FreePlayerDeviceActionsState extends State<FreePlayerDeviceActions> {
++  final DeviceIdentity _identity = DeviceIdentity.instance;
++  late final Future<String> _firstMac = _identity.mac;
++
++  Future<void> _copy(String mac) async {
++    await Clipboard.setData(ClipboardData(text: mac));
++    if (!mounted) return;
++    ScaffoldMessenger.of(context).showSnackBar(
++      SnackBar(content: Text(context.l10n.adminMacCopied(mac))),
++    );
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    return Wrap(
++      alignment: WrapAlignment.spaceBetween,
++      crossAxisAlignment: WrapCrossAlignment.center,
++      spacing: 8,
++      runSpacing: 4,
++      children: <Widget>[
++        ListenableBuilder(
++          listenable: _identity,
++          builder: (context, _) => FutureBuilder<String>(
++            future: _firstMac,
++            builder: (context, snapshot) {
++              final String? mac = _identity.cachedMac ?? snapshot.data;
++              return Tooltip(
++                message: context.l10n.buttonCopy,
++                child: TextButton(
++                  onPressed: mac == null ? null : () => _copy(mac),
++                  child: Row(
++                    mainAxisSize: MainAxisSize.min,
++                    children: <Widget>[
++                      Flexible(
++                        child: Column(
++                          mainAxisSize: MainAxisSize.min,
++                          crossAxisAlignment: CrossAxisAlignment.start,
++                          children: <Widget>[
++                            Text(context.l10n.tvDeviceAddress,
++                                style: Theme.of(context).textTheme.labelSmall),
++                            if (mac != null)
++                              Text(mac, textDirection: TextDirection.ltr,
++                                  style: Theme.of(context).textTheme.titleSmall),
++                          ],
++                        ),
++                      ),
++                      const SizedBox(width: 6),
++                      const Icon(Icons.copy_outlined, size: 16),
++                    ],
++                  ),
++                ),
++              );
++            },
++          ),
++        ),
++        OutlinedButton.icon(
++          onPressed: () => showSupportChoiceSheet(context, useRootNavigator: true),
++          icon: const Icon(Icons.support_agent_rounded, size: 18),
++          label: Text(context.l10n.vipHelpTitle),
++        ),
+       ],
+     );
+   }
+ }
+
+ class FreePlayerPanelTile extends StatefulWidget {
+-  const FreePlayerPanelTile({super.key});
++  const FreePlayerPanelTile({super.key, this.showIdentity = true});
++
++  final bool showIdentity;
+
+   @override
+   State<FreePlayerPanelTile> createState() => _FreePlayerPanelTileState();
+@@ -66,7 +143,7 @@ class _FreePlayerPanelTileState extends State<FreePlayerPanelTile> {
+       childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+       expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+       children: <Widget>[
+-        ListenableBuilder(
++        if (widget.showIdentity) ListenableBuilder(
+           listenable: identity,
+           builder: (context, _) => FutureBuilder<String>(
+             key: ValueKey(identity.macSync),
+diff --git a/lib/features/playlists/presentation/import_progress_screen.dart b/lib/features/playlists/presentation/import_progress_screen.dart
+index 616a4995e0973f374ef113345233902174a8849c..c36acacf1e3bb569a4ed16bd3ab1807774eb695e 100644
+--- a/lib/features/playlists/presentation/import_progress_screen.dart
++++ b/lib/features/playlists/presentation/import_progress_screen.dart
+@@ -116,13 +116,9 @@ class _ImportProgressScreenState<T> extends State<ImportProgressScreen<T>>
+       final T result = await widget.task((ImportProgress p) {
+         if (mounted && !_finished) _progress.value = p;
+       });
++      if (!mounted) return;
+       _finished = true;
+-      _progress.value = _progress.value.copyWith(phase: ImportPhase.done);
+-      // Petit temps de « victoire » : le client voit le total prêt.
+-      await Future<void>.delayed(const Duration(milliseconds: 650));
+-      if (mounted) {
+-        Navigator.of(context).pop(ImportOutcome<T>.success(result));
+-      }
++      Navigator.of(context).pop(ImportOutcome<T>.success(result));
+     } catch (e) {
+       _finished = true;
+       if (mounted) Navigator.of(context).pop(ImportOutcome<T>.failure(e));
+diff --git a/lib/features/playlists/presentation/m3u_login_sheet.dart b/lib/features/playlists/presentation/m3u_login_sheet.dart
+index b6e19bfaf72fa65bf4627509fda57382e35c9dde..5fc0bc0595cf46030ee12972f7bd3704d87f5f94 100644
+--- a/lib/features/playlists/presentation/m3u_login_sheet.dart
++++ b/lib/features/playlists/presentation/m3u_login_sheet.dart
+@@ -22,7 +22,6 @@ import '../data/playlist_repository.dart';
+ import '../data/source_link_utils.dart';
+ import '../domain/playlist.dart';
+ import 'import_progress_screen.dart';
+-import 'source_calibration_sheet.dart';
+
+ Future<void> showM3uLoginSheet(BuildContext context, {bool xtream = false}) {
+   return showModalBottomSheet<void>(
+@@ -148,28 +147,17 @@ class _M3uLoginSheetState extends State<_M3uLoginSheet> {
+       return;
+     }
+
+-    // Le NavigatorState survit au pop de la feuille — c'est lui qui
+-    // portera la proposition « Optimiser » juste après.
+-    final NavigatorState nav = Navigator.of(context);
+-    nav.pop();
+-    ScaffoldMessenger.of(context).showSnackBar(
++    // La source est utilisable. La calibration reste disponible à la demande
++    // dans « Mes sources », sans deuxième feuille devant le catalogue.
++    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
++    final String confirmation = context.l10n.loginSourceAdded;
++    Navigator.of(context).pop();
++    messenger.showSnackBar(
+       SnackBar(
+         behavior: SnackBarBehavior.floating,
+-        content: Text(context.l10n.loginSourceAdded,
+-            style: AppTextStyles.bodyMedium),
++        content: Text(confirmation, style: AppTextStyles.bodyMedium),
+       ),
+     );
+-    // Calibration proposée automatiquement à la FIN de l'ajout : on
+-    // retrouve la source qui vient d'être créée (la plus récente) et
+-    // on ouvre la feuille « Optimiser » en mode proposition.
+-    final List<Playlist> all = PlaylistRepository.instance.currentPlaylists;
+-    if (all.isNotEmpty) {
+-      final Playlist added = all.reduce(
+-          (Playlist a, Playlist b) => a.createdAt >= b.createdAt ? a : b);
+-      if (added.id != null && nav.mounted) {
+-        showSourceCalibrationSheet(nav.context, added, proposal: true);
+-      }
+-    }
+   }
+
+   @override
+diff --git a/lib/features/playlists/presentation/source_calibration_sheet.dart b/lib/features/playlists/presentation/source_calibration_sheet.dart
+index 074aec1d597bf11f8b3a3d871d4eb2e9c4a078b0..63a47fc1b6d0b20e0d30ab3ee55d8bc7db12e4ff 100644
+--- a/lib/features/playlists/presentation/source_calibration_sheet.dart
++++ b/lib/features/playlists/presentation/source_calibration_sheet.dart
+@@ -330,6 +330,10 @@ class _CalibrationSheetState extends State<_CalibrationSheet> {
+           context.l10n.calibrateFailUnreachable,
+         CalibrationVerdict.allFormatsRefused =>
+           context.l10n.calibrateFailRefused,
++        CalibrationVerdict.connectionBusy =>
++          context.l10n.playerMaxConnectionsGeneric,
++        CalibrationVerdict.providerPlaceholder =>
++          context.l10n.playerChannelBlocked,
+         CalibrationVerdict.noChannels =>
+           context.l10n.calibrateFailNoChannels,
+         _ => context.l10n.calibrateCancelledMsg,
+diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
+index 477865a6c3ca7a907f3cd72cf142c9934c70d90f..e61b82c4909723ddf42e7fe05a38b14035b0b9ff 100644
+--- a/lib/features/simple_home/presentation/simple_home_screen.dart
++++ b/lib/features/simple_home/presentation/simple_home_screen.dart
+@@ -301,6 +301,12 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+                         Expanded(
+                           child: CategoryBrowserView(
+                             channels: channels,
++                            openingHeader: kIsPlayBuild
++                                ? const Padding(
++                                    padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
++                                    child: FreePlayerDeviceActions(),
++                                  )
++                                : null,
+                             // Une seule zone défilante : les annonces, la
+                             // reprise et les radios ne compriment plus la
+                             // liste des chaînes.
+diff --git a/lib/features/simple_home/presentation/widgets/category_browser_view.dart b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+index f2b6553aaaf55a23b4adff6f87fabbe078997955..d911df18526172838f814aec58bd64cc7117cae2 100644
+--- a/lib/features/simple_home/presentation/widgets/category_browser_view.dart
++++ b/lib/features/simple_home/presentation/widgets/category_browser_view.dart
+@@ -116,6 +116,7 @@ class CategoryBrowserView extends StatefulWidget {
+   const CategoryBrowserView({
+     super.key,
+     required this.channels,
++    this.openingHeader,
+     this.discoveryHeader,
+   });
+
+@@ -123,6 +124,7 @@ class CategoryBrowserView extends StatefulWidget {
+   /// garde ainsi sa place sur un petit téléphone ou en grandes polices.
+   /// En entrant dans une catégorie, seul le catalogue choisi reste visible.
+   final Widget? discoveryHeader;
++  final Widget? openingHeader;
+
+   /// Toutes les chaînes de la playlist active, DANS L'ORDRE de la
+   /// playlist (le repository les renvoie triées par ordre d'insertion).
+@@ -1025,6 +1027,7 @@ class _CategoryBrowserViewState extends State<CategoryBrowserView> {
+               bottom: 16 + MediaQuery.paddingOf(context).bottom,
+             ),
+             children: <Widget>[
++              if (widget.openingHeader != null) widget.openingHeader!,
+               _buildFilterBar(ordered, effective),
+               if (effective == _Bucket.adult)
+                 Padding(
+diff --git a/lib/features/vod/data/vod_download_service.dart b/lib/features/vod/data/vod_download_service.dart
+index 47ca1efd689a346ba97fd4677a9a65909a2f060e..471db4e58c62fbc3eba2127afb4830212c591501 100644
+--- a/lib/features/vod/data/vod_download_service.dart
++++ b/lib/features/vod/data/vod_download_service.dart
+@@ -197,6 +197,9 @@ class VodDownloadService extends ChangeNotifier {
+
+   /// true tant que le lecteur streame en RÉSEAU (live ou VOD distante) —
+   /// la file patiente pour ne pas voler le créneau 1-connexion du panel.
++  final ValueNotifier<bool> _playbackSignal = ValueNotifier<bool>(false);
++  ValueListenable<bool> get playbackSignal => _playbackSignal;
++
+   bool _playbackHold = false;
+
+   // Les appels historiques (notamment TV) restent indépendants des jetons
+@@ -354,6 +357,7 @@ class VodDownloadService extends ChangeNotifier {
+   void _applyPlaybackHold(bool hold) {
+     if (_playbackHold == hold) return;
+     _playbackHold = hold;
++    _playbackSignal.value = hold;
+     _releaseGrace?.cancel();
+     _releaseGrace = null;
+     if (hold) {
+diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
+index b1ad49aaf2c1e4baf9fd856701d5429244bd1bdc..d581b767aebe18679cdd0fa0b4ad114d61bf3c5e 100644
+--- a/lib/l10n/app_ar.arb
++++ b/lib/l10n/app_ar.arb
+@@ -1819,6 +1819,7 @@
+   "categoryOrderReset": "إعادة تعيين",
+   "playerBlockedExpired": "انتهى اشتراكك بتاريخ {date}. جدّد خطك لدى مزوّدك.",
+   "playerBlockedProvider": "لا يستجيب هذا البث لدى مزوّدك. اشتراكك ليس السبب: أعد المحاولة أو اختر قناة أخرى.",
++  "playerPlaceholderChannel": "أرسل المزوّد شاشة سوداء بدلًا من هذه القناة. جرّب قناة أخرى أو أعد المحاولة لاحقًا.",
+   "playerBlockedMaxConnections": "تم بلوغ حد الاتصالات ({active}/{max}). هناك شاشة أخرى تشاهد بالفعل بهذا الحساب — أغلقها ثم أعد المحاولة.",
+   "playerMaxConnectionsGeneric": "تم بلوغ حدّ الاتصالات: اشتراكك لا يسمح إلا بعدد محدود من المشاهدات في الوقت نفسه، وشاشة أخرى (أو القناة السابقة) ما زالت تشغل المكان. أغلق المشاهدة الأخرى، وانتظر بضع ثوانٍ، ثم أعد المحاولة.",
+   "playerServerError": "خادم مزوّدك معطّل (خطأ {code}). المشكلة ليست في التطبيق ولا في جهازك — أعد المحاولة بعد قليل، أو تواصل مع مزوّدك إذا استمر العطل.",
+diff --git a/lib/l10n/app_da.arb b/lib/l10n/app_da.arb
+index 38577eb8a72e3a4d842314eb61ae47357349b706..2bbc066b07598daa87dc61f34eadf91719d6866f 100644
+--- a/lib/l10n/app_da.arb
++++ b/lib/l10n/app_da.arb
+@@ -1819,6 +1819,7 @@
+   "categoryOrderReset": "Nulstil",
+   "playerBlockedExpired": "Dit abonnement udløb den {date}. Forny din linje hos din udbyder.",
+   "playerBlockedProvider": "Denne stream svarer ikke hos din udbyder. Dit abonnement er ikke problemet: prøv igen, eller vælg en anden kanal.",
++  "playerPlaceholderChannel": "Udbyderen sendte en sort skærm for denne kanal. Prøv en anden kanal, eller prøv igen senere.",
+   "playerBlockedMaxConnections": "Forbindelsesgrænse nået ({active}/{max}). En anden skærm ser allerede med denne konto — luk den, og prøv igen.",
+   "playerMaxConnectionsGeneric": "Forbindelsesgrænsen er nået: dit abonnement tillader kun et begrænset antal samtidige afspilninger, og en anden skærm (eller den forrige kanal) optager stadig pladsen. Luk den anden afspilning, vent et par sekunder, og prøv igen.",
+   "playerServerError": "Din udbyders server er nede (fejl {code}). Det er hverken appen eller din boks — prøv igen om lidt, eller kontakt din udbyder, hvis det fortsætter.",
+diff --git a/lib/l10n/app_en.arb b/lib/l10n/app_en.arb
+index a450a5754c46e46620584d788fe335d8f12b3fe2..6a52453cbd3f61a10e333e76f830d8908cb07080 100644
+--- a/lib/l10n/app_en.arb
++++ b/lib/l10n/app_en.arb
+@@ -1582,6 +1582,7 @@
+     }
+   },
+   "playerBlockedProvider": "This stream is not responding at your provider. Your subscription is not the problem: try again, or pick another channel.",
++  "playerPlaceholderChannel": "The provider returned a black screen for this channel. Try another channel or try again later.",
+   "playerBlockedMaxConnections": "Connection limit reached ({active}/{max}). Another screen is already watching with this account — close it, then try again.",
+   "@playerBlockedMaxConnections": {
+     "placeholders": {
+diff --git a/lib/l10n/app_es.arb b/lib/l10n/app_es.arb
+index fb213d80e2230ed88c8fe001b6ba5677e1f859e2..81d50e6a8f43721ed391c78c50501999636014d5 100644
+--- a/lib/l10n/app_es.arb
++++ b/lib/l10n/app_es.arb
+@@ -1819,6 +1819,7 @@
+   "categoryOrderReset": "Restablecer",
+   "playerBlockedExpired": "Tu suscripción caducó el {date}. Renueva tu línea con tu proveedor.",
+   "playerBlockedProvider": "Este canal no responde en tu proveedor. Tu suscripción no está en causa: vuelve a intentarlo o elige otro canal.",
++  "playerPlaceholderChannel": "El proveedor ha enviado una pantalla negra para este canal. Prueba otro canal o vuelve a intentarlo más tarde.",
+   "playerBlockedMaxConnections": "Límite de conexiones alcanzado ({active}/{max}). Otra pantalla ya está viendo con esta cuenta: ciérrala y vuelve a intentarlo.",
+   "playerMaxConnectionsGeneric": "Límite de conexiones alcanzado: tu suscripción solo permite un número limitado de reproducciones simultáneas y otra pantalla (o el canal anterior) todavía ocupa la plaza. Cierra la otra reproducción, espera unos segundos y vuelve a intentarlo.",
+   "playerServerError": "El servidor de tu proveedor está caído (error {code}). No es la aplicación ni tu dispositivo: vuelve a intentarlo en un momento o contacta con tu proveedor si persiste.",
+diff --git a/lib/l10n/app_fr.arb b/lib/l10n/app_fr.arb
+index 369d0ab463427c56d1aadf05bf6cff95b72e3e6b..710382abe1b81746b94b4915d7df24c24780a0ef 100644
+--- a/lib/l10n/app_fr.arb
++++ b/lib/l10n/app_fr.arb
+@@ -2805,6 +2805,7 @@
+     }
+   },
+   "playerBlockedProvider": "Ce flux ne répond pas chez ton fournisseur. Ton abonnement n’est pas en cause : réessaie, ou choisis une autre chaîne.",
++  "playerPlaceholderChannel": "Le fournisseur a renvoyé un écran noir à la place de cette chaîne. Essaie une autre chaîne ou réessaie plus tard.",
+   "playerBlockedMaxConnections": "Limite de connexions atteinte ({active}/{max}). Un autre écran regarde déjà avec ce compte — ferme-le, puis réessaie.",
+   "@playerBlockedMaxConnections": {
+     "placeholders": {
+diff --git a/lib/l10n/app_nb.arb b/lib/l10n/app_nb.arb
+index d9230012f0dd6d9ac38782b85229b61dfc4eb7d6..58eeb2a7b621f45d16d811af3ff54f4db8c9b294 100644
+--- a/lib/l10n/app_nb.arb
++++ b/lib/l10n/app_nb.arb
+@@ -1819,6 +1819,7 @@
+   "categoryOrderReset": "Tilbakestill",
+   "playerBlockedExpired": "Abonnementet ditt utløp {date}. Forny linjen hos leverandøren din.",
+   "playerBlockedProvider": "Denne strømmen svarer ikke hos leverandøren din. Abonnementet ditt er ikke problemet: prøv igjen, eller velg en annen kanal.",
++  "playerPlaceholderChannel": "Leverandøren sendte en svart skjerm for denne kanalen. Prøv en annen kanal eller prøv igjen senere.",
+   "playerBlockedMaxConnections": "Tilkoblingsgrense nådd ({active}/{max}). En annen skjerm ser allerede med denne kontoen — lukk den, og prøv igjen.",
+   "playerMaxConnectionsGeneric": "Tilkoblingsgrensen er nådd: abonnementet ditt tillater bare et begrenset antall samtidige avspillinger, og en annen skjerm (eller forrige kanal) holder fortsatt plassen. Lukk den andre avspillingen, vent noen sekunder og prøv igjen.",
+   "playerServerError": "Leverandørens server er nede (feil {code}). Det er ikke appen eller boksen din — prøv igjen om litt, eller kontakt leverandøren hvis det vedvarer.",
+diff --git a/lib/l10n/app_sv.arb b/lib/l10n/app_sv.arb
+index 7633603029fe645aa821c573b9b735906459ea45..65ea0a6112fbf32e5e503e160f24faa70d8f7960 100644
+--- a/lib/l10n/app_sv.arb
++++ b/lib/l10n/app_sv.arb
+@@ -1819,6 +1819,7 @@
+   "categoryOrderReset": "Återställ",
+   "playerBlockedExpired": "Ditt abonnemang gick ut den {date}. Förnya din linje hos din leverantör.",
+   "playerBlockedProvider": "Den här strömmen svarar inte hos din leverantör. Ditt abonnemang är inte problemet: försök igen eller välj en annan kanal.",
++  "playerPlaceholderChannel": "Leverantören skickade en svart bild för den här kanalen. Välj en annan kanal eller försök igen senare.",
+   "playerBlockedMaxConnections": "Anslutningsgränsen nådd ({active}/{max}). En annan skärm tittar redan med det här kontot — stäng den och försök igen.",
+   "playerMaxConnectionsGeneric": "Anslutningsgränsen har nåtts: ditt abonnemang tillåter bara ett begränsat antal samtidiga uppspelningar, och en annan skärm (eller den förra kanalen) upptar fortfarande platsen. Stäng den andra uppspelningen, vänta några sekunder och försök igen.",
+   "playerServerError": "Din leverantörs server är nere (fel {code}). Det är inte appen eller din box — försök igen om en stund, eller kontakta din leverantör om det fortsätter.",
+diff --git a/lib/l10n/app_sw.arb b/lib/l10n/app_sw.arb
+index 0d08384ef0f7d94ddde988fad2862b16351d7bd7..eb35c66a2a8455a6e3a025383cf51ca2021d28bb 100644
+--- a/lib/l10n/app_sw.arb
++++ b/lib/l10n/app_sw.arb
+@@ -1819,6 +1819,7 @@
+   "categoryOrderReset": "Weka upya",
+   "playerBlockedExpired": "Usajili wako uliisha tarehe {date}. Fanya upya laini yako kwa mtoa huduma wako.",
+   "playerBlockedProvider": "Mtiririko huu haujibu kwa mtoa huduma wako. Usajili wako si tatizo: jaribu tena, au chagua chaneli nyingine.",
++  "playerPlaceholderChannel": "Mtoa huduma ametuma picha nyeusi kwa chaneli hii. Chagua chaneli nyingine au ujaribu tena baadaye.",
+   "playerBlockedMaxConnections": "Kikomo cha muunganisho kimefikiwa ({active}/{max}). Skrini nyingine tayari inatazama kwa akaunti hii — ifunge, kisha ujaribu tena.",
+   "playerMaxConnectionsGeneric": "Kikomo cha miunganisho kimefikiwa: usajili wako unaruhusu idadi ndogo tu ya vipindi kwa wakati mmoja, na skrini nyingine (au kituo kilichotangulia) bado inashikilia nafasi. Funga kipindi kingine, subiri sekunde chache, kisha ujaribu tena.",
+   "playerServerError": "Seva ya mtoa huduma wako imeanguka (hitilafu {code}). Si tatizo la programu wala kifaa chako — jaribu tena baadaye kidogo, au wasiliana na mtoa huduma wako likiendelea.",
+diff --git a/lib/main.dart b/lib/main.dart
+index 2ffcec8bd626e485b225851c86f3812f0762ea6d..88d76c1ad92d57d281ce80c65c5fc84765167a6f 100644
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -114,6 +114,15 @@ void main() {
+ }
+
+ bool _appStarted = false;
++Future<bool>? _startupAdDecision;
++
++// La décision du panel s'obtient pendant les lectures locales du démarrage.
++// Après le délai de secours, une réponse tardive ne coupe pas l'accueil.
++Future<bool> _checkStartupAd() async {
++  final ads = StartupAdRepository.instance;
++  return ads.fetch().then((_) => ads.shouldShow())
++      .timeout(const Duration(milliseconds: 2500), onTimeout: () => false);
++}
+
+ /// Lance l'interface une seule fois, quelle que soit l'issue du boot.
+ void startApp() {
+@@ -311,6 +320,7 @@ Future<void> bootApp() async {
+   // Cloudflare de secours mémorisée (retour auto au domaine maison au
+   // 1er heartbeat réussi). Voir core/backend/backend_hosts.dart.
+   await BootDiagnostics.step('backendHosts', BackendHosts.loadPreferred);
++  _startupAdDecision = _checkStartupAd();
+
+   // Licence : cache local d'ABORD (prefs, ms) pour que le 1er frame
+   // connaisse déjà ban/gel/grâce — puis heartbeat Worker (autorité).
+@@ -645,13 +655,11 @@ class _AppEntryState extends State<_AppEntry> with WidgetsBindingObserver {
+   // générateur à chaque rebuild du ListenableBuilder.
+   bool _consolePushed = false;
+
+-  /// Résout la pub de démarrage SANS jamais bloquer l'accueil plus de 2,5 s.
++  /// Réutilise le contrôle déjà lancé au démarrage, une seule fois.
+   Future<void> _resolveAd() async {
+-    Timer(const Duration(milliseconds: 2500), () {
+-      if (mounted && !_adResolved) setState(() => _adResolved = true);
+-    });
+-    await StartupAdRepository.instance.fetch();
+-    final bool show = await StartupAdRepository.instance.shouldShow();
++    final pending = _startupAdDecision ?? _checkStartupAd();
++    _startupAdDecision = null;
++    final show = await pending;
+     if (mounted) {
+       setState(() {
+         _adShow = show;
+diff --git a/test/features/device/device_identity_adopt_test.dart b/test/features/device/device_identity_adopt_test.dart
+index 30e12316a45a5245bb6eca037f00faf5e134095f..f625b2e7e8874030cb3dd2cd629df15c685dddb2 100644
+--- a/test/features/device/device_identity_adopt_test.dart
++++ b/test/features/device/device_identity_adopt_test.dart
+@@ -5,6 +5,9 @@
+ //  interne DOIT changer : sinon « YOUR REFERENCE NUMBER » reste
+ //  l'ancien CD:18:EF:A1:A0 zombie.
+ // =========================================================
++import 'dart:async';
++
++import 'package:flutter/services.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:shared_preferences/shared_preferences.dart';
+ import 'package:tv_king/features/device/data/device_identity.dart';
+@@ -64,6 +67,100 @@ void main() {
+     });
+   });
+
++  group('Lectures et écritures concurrentes', () {
++    final identity = DeviceIdentity.instance;
++    const channel = MethodChannel('com.manzilionellm.tvking/device');
++    const prefKey = 'device.virtual_mac.v1';
++    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
++
++    tearDown(() => messenger.setMockMethodCallHandler(channel, null));
++
++    test('premier lancement sans identité native : une seule MAC enregistrée et signalée', () async {
++      final calls = <String>[];
++      messenger.setMockMethodCallHandler(channel, (call) async {
++        calls.add(call.method);
++        return call.method == 'getDeviceInfo' ? <String, String>{} : null;
++      });
++      final observed = <String>[];
++      void track() => observed.add(identity.macSync);
++      identity.addListener(track);
++      addTearDown(() => identity.removeListener(track));
++
++      final results = await Future.wait(List.generate(12, (_) => identity.mac));
++      final mac = results.first;
++      expect(mac, matches(RegExp(r'^MK(:[A-F0-9]{2}){5}$')));
++      expect(results.toSet(), {mac});
++      expect(calls, ['getAndroidId', 'getDeviceInfo']);
++      expect(observed, [mac]);
++      final prefs = await SharedPreferences.getInstance();
++      await prefs.reload();
++      expect(prefs.getString(prefKey), mac);
++
++      identity.debugResetCache();
++      expect(await identity.mac, mac);
++      expect(calls, ['getAndroidId', 'getDeviceInfo']);
++      expect(observed, [mac, mac]);
++    });
++
++    for (final usePanel in [true, false]) {
++      test('une ${usePanel ? 'réattribution' : 'régénération'} remplace la lecture native bloquée', () async {
++        final entered = Completer<void>();
++        final response = Completer<String?>();
++        final calls = <String>[];
++        messenger.setMockMethodCallHandler(channel, (call) async {
++          calls.add(call.method);
++          if (call.method == 'getAndroidId') {
++            entered.complete();
++            return response.future;
++          }
++          return <String, String>{};
++        });
++        addTearDown(() { if (!response.isCompleted) response.complete(null); });
++        final observed = <String>[];
++        void track() => observed.add(identity.macSync);
++        identity.addListener(track);
++        addTearDown(() => identity.removeListener(track));
++
++        final initial = identity.mac;
++        await entered.future;
++        final String expected;
++        if (usePanel) {
++          expected = 'MK:AA:BB:CC:DD:EE';
++          expect(await identity.adopt(expected), isTrue);
++        } else {
++          expected = await identity.regenerate();
++        }
++        expect(await initial.timeout(const Duration(seconds: 2)), expected);
++        response.complete(null);
++        await Future<void>.delayed(Duration.zero);
++        expect(calls, ['getAndroidId']);
++        expect(observed, [expected]);
++        expect(await identity.mac, expected);
++        final prefs = await SharedPreferences.getInstance();
++        await prefs.reload();
++        expect(prefs.getString(prefKey), expected);
++      });
++    }
++
++    test('la dernière demande gagne même si la valeur revient au MAC déjà en cache', () async {
++      const old = 'MK:00:11:22:33:44';
++      const interim = 'MK:55:66:77:88:99';
++      expect(await identity.adopt(old), isTrue);
++      final changed = identity.adopt(interim);
++      final generated = identity.regenerate();
++      final restored = identity.adopt(old);
++      final read = identity.mac;
++      expect(await changed, isTrue);
++      await generated;
++      expect(await restored, isTrue);
++      expect(await read, old);
++      final prefs = await SharedPreferences.getInstance();
++      await prefs.reload();
++      expect(prefs.getString(prefKey), old);
++      expect(identity.macSync, old);
++    });
++  });
++
+   group('newMacFromReassigned', () {
+     test('lit new_mac du payload Worker', () {
+       expect(
+diff --git a/test/features/player/hls_playback_test.dart b/test/features/player/hls_playback_test.dart
+index 819b6d210e0917200b76c8d03e771df5ed9146f2..b1772ad818b14ce4b00e42079862131f870cd3b4 100644
+--- a/test/features/player/hls_playback_test.dart
++++ b/test/features/player/hls_playback_test.dart
+@@ -23,6 +23,7 @@
+ // =========================================================
+
+ import 'dart:async';
++import 'dart:convert';
+ import 'dart:io';
+
+ import 'package:flutter_test/flutter_test.dart';
+@@ -195,15 +196,39 @@ void main() {
+     await evil.close(force: true);
+   });
+
+-  test('resolveFinalPlaylistUrl : suit la redirection tokenisée et '
+-      'renvoie l\'URL FINALE (base des segments)', () async {
+-    final String? resolved =
+-        await HlsPreflight.resolveFinalPlaylistUrl(m3u8Url);
+-    expect(resolved, 'http://127.0.0.1:${panel.port}/hls/master.m3u8?token=abc');
+-    // Sans redirection : l'URL est renvoyée telle quelle.
+-    final String direct =
+-        'http://127.0.0.1:${panel.port}/hls/chunks.m3u8?token=abc';
+-    expect(await HlsPreflight.resolveFinalPlaylistUrl(direct), direct);
++  test('lecture HLS : un seul document, base finale après deux redirections',
++      () async {
++    final provider = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    addTearDown(() => provider.close(force: true));
++    int documents = 0;
++    provider.listen((request) async {
++      switch (request.uri.path) {
++        case '/start':
++          await request.response.redirect(Uri.parse('/cdn/index'));
++          break;
++        case '/cdn/index':
++          await request.response.redirect(Uri.parse('live/manifest.m3u8?key=1'));
++          break;
++        case '/cdn/live/manifest.m3u8':
++          documents++;
++          request.response.write('#EXTM3U\n#EXTINF:4,\nseg.ts?key=2\n');
++          await request.response.close();
++          break;
++        default:
++          request.response.statusCode = HttpStatus.notFound;
++          await request.response.close();
++      }
++    });
++    final authority = 'http://127.0.0.1:${provider.port}';
++    final local = await LocalStreamRelay.instance.hlsPlaylistUrlFor(
++        '$authority/start');
++    expect(documents, 0, reason: 'aucune prélecture du manifeste');
++    final reader = HttpClient();
++    addTearDown(() => reader.close(force: true));
++    final response = await (await reader.getUrl(Uri.parse(local))).close();
++    expect(await response.transform(utf8.decoder).join(),
++        contains('$authority/cdn/live/seg.ts?key=2'));
++    expect(documents, 1);
+   });
+ }
+
+diff --git a/test/features/player/playback_transition_integration_test.dart b/test/features/player/playback_transition_integration_test.dart
+index 051ba61bc778cdc9cfc48f22d14669693d54b28b..c8003e2ded32b2d0451ddfc896bee3e16dcd835f 100644
+--- a/test/features/player/playback_transition_integration_test.dart
++++ b/test/features/player/playback_transition_integration_test.dart
+@@ -32,6 +32,7 @@ class _XtreamPanel {
+   bool _coolingDown = false;
+   int simultaneousAttempts = 0;
+   int blackResponses = 0;
++  final blackRedirects = <int>[];
+
+   String get baseUrl => 'http://127.0.0.1:${server.port}';
+
+@@ -111,6 +112,7 @@ class _XtreamPanel {
+     mediaRequests.add(id);
+     if (_activeStreams > 0 || _coolingDown || alwaysBlack.contains(id)) {
+       if (_activeStreams > 0) simultaneousAttempts++;
++      blackRedirects.add(id);
+       await request.response.redirect(Uri.parse('$baseUrl/video/black.ts'));
+       return;
+     }
+@@ -353,7 +355,8 @@ void main() {
+     final BlockedVerdict verdict =
+         await blocked.future.timeout(const Duration(seconds: 5));
+     expect(verdict.kind, BlockedKind.channelBlocked);
+-    expect(panel.blackResponses, 1);
++    expect(panel.blackRedirects, <int>[2]);
++    expect(panel.blackResponses, 0);
+
+     fallback.onPlaybackRefused('erreur native tardive de test');
+     expect(fallback.onContainerUnsupported(), isTrue);
+diff --git a/test/features/player/playback_transition_test.dart b/test/features/player/playback_transition_test.dart
+index 0f64a815622cd310083921e512317c4a76d03669..06668253d70d6237a3b5782081d7206ccb1689ad 100644
+--- a/test/features/player/playback_transition_test.dart
++++ b/test/features/player/playback_transition_test.dart
+@@ -8,6 +8,26 @@ import 'package:tv_king/features/player/data/stream_blocked_fallback.dart';
+ import 'package:tv_king/features/playlists/data/xtream_client.dart';
+
+ void main() {
++  test('zap, diagnostic et sortie attendent un seul arrêt par ouverture', () async {
++    final stop = PlaybackStop();
++    final pending = Completer<void>();
++    int calls = 0;
++    Future<void> nativeStop() {
++      calls++;
++      return pending.future;
++    }
++    final first = stop.run(nativeStop);
++    expect(stop.run(nativeStop), same(first));
++    expect(calls, 1);
++    pending.complete();
++    await first;
++    await stop.run(nativeStop);
++    expect(calls, 1);
++    stop.reset();
++    await stop.run(nativeStop);
++    expect(calls, 2);
++  });
++
+   const Channel channel = Channel(
+     id: 'transition-test',
+     name: 'Chaîne de test',
+@@ -197,6 +217,31 @@ void main() {
+     });
+   });
+
++  test('un nouveau zap libère la file même si le panel ne répond jamais', () {
++    fakeAsync((fake) {
++      final response = Completer<XtreamAccountInfo>();
++      final cancel = Completer<void>();
++      int probes = 0;
++      bool done = false;
++      StreamBlockedFallback.awaitProviderSlot(
++        channel,
++        cancelled: cancel.future,
++        isCancelled: () => cancel.isCompleted,
++        probeOverride: () { probes++; return response.future; },
++      ).then((_) => done = true);
++      fake.flushMicrotasks();
++      expect(done, isFalse);
++      cancel.complete();
++      fake.flushMicrotasks();
++      expect(done, isTrue, reason: 'aucune avance de l’horloge nécessaire');
++      expect(fake.pendingTimers, isEmpty);
++      response.complete(const XtreamAccountInfo(maxConnections: 1, activeCons: 1));
++      fake.flushMicrotasks();
++      expect(probes, 1);
++      expect(fake.pendingTimers, isEmpty);
++    });
++  });
++
+   test('les réponses lentes et les pauses partagent le même budget réel', () {
+     fakeAsync((FakeAsync fake) {
+       bool done = false;
+diff --git a/test/features/player/upstream_placeholder_test.dart b/test/features/player/upstream_placeholder_test.dart
+index 2f74991c09b8f5326b2cde7358b4e791052305cd..6644bd50933053fec910ec065079f15b59a185c1 100644
+--- a/test/features/player/upstream_placeholder_test.dart
++++ b/test/features/player/upstream_placeholder_test.dart
+@@ -20,7 +20,9 @@ void main() {
+         Timer? feed;
+         server.listen((HttpRequest req) async {
+           requests++;
+-          if (available) {
++          if (available && req.uri.path != '/cdn/healthy.ts') {
++            await req.response.redirect(Uri.parse('/cdn/healthy.ts'));
++          } else if (available) {
+             req.response.headers.contentType = ContentType('video', 'mp2t');
+             req.response.bufferOutput = false;
+             feed = Timer.periodic(const Duration(milliseconds: 20), (_) {
+@@ -34,7 +36,7 @@ void main() {
+             await req.response.close();
+           } else {
+             await req.response.redirect(
+-              Uri.parse('http://127.0.0.1:${server.port}/video/black.ts'),
++              Uri.parse('/video/black.ts'),
+             );
+           }
+         });
+@@ -111,8 +113,8 @@ void main() {
+         expect(reopened, 0);
+         expect(
+           requests,
+-          2,
+-          reason: 'ni reconnexion fournisseur, ni sonde après le verdict',
++          1,
++          reason: 'la Location suffit, sans charger le clip ni relancer de sonde',
+         );
+
+         // Le fournisseur rétablit la chaîne : Réessayer doit marcher, sans
+@@ -142,7 +144,8 @@ void main() {
+         client.close(force: true);
+         await server.close(force: true);
+         await reading.cancel().timeout(const Duration(seconds: 5));
+-        expect(requests, 3);
++        expect(requests, 3,
++            reason: 'un réessai explicite suit la redirection vers le vrai média');
+       },
+     );
+   }
+@@ -161,7 +164,7 @@ void main() {
+         await req.response.close();
+       } else {
+         await req.response.redirect(
+-          Uri.parse('http://127.0.0.1:${server.port}/video/black.ts'),
++          Uri.parse('/video/black.ts'),
+         );
+       }
+     });
+@@ -212,7 +215,7 @@ void main() {
+     await blocked.future.timeout(const Duration(seconds: 5));
+     released.complete();
+     await diagnosis;
+-    expect(requests, 2);
++    expect(requests, 1);
+     expect(reopens, 0);
+   });
+
+diff --git a/test/features/playlists/m3u_catalogue_refresh_test.dart b/test/features/playlists/m3u_catalogue_refresh_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..a972fb3cce05377e94dccf3b78238f928a584cfe
+--- /dev/null
++++ b/test/features/playlists/m3u_catalogue_refresh_test.dart
+@@ -0,0 +1,143 @@
++import 'dart:async';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  sqfliteFfiInit();
++  FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++  final repo = PlaylistRepository.instance;
++  late Database db;
++
++  setUpAll(() async {
++    db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
++    await PlaylistDatabase.instance.debugCreate(db);
++    PlaylistDatabase.instance.debugUseDatabase(db);
++  });
++  tearDownAll(() async {
++    PlaylistDatabase.instance.debugUseDatabase(null);
++    await db.close();
++  });
++  setUp(() async {
++    SharedPreferences.setMockInitialValues(<String, Object>{});
++    await db.delete('playlists');
++    repo.debugSeedChannels([]);
++    repo.debugSeedPlaylists([]);
++  });
++
++  test('la migration v9 conserve les listes et crée un cache vide', () async {
++    await db.execute('DROP TABLE m3u_http_cache');
++    await PlaylistDatabase.instance.debugUpgrade(db, 9, 10);
++    await PlaylistDatabase.instance.debugUpgrade(db, 9, 10);
++    expect(await db.query('m3u_http_cache'), isEmpty);
++  });
++
++  test(
++    'deux refresh simultanés partagent la requête et le catalogue validé',
++    () async {
++      const body = '#EXTM3U\n#EXTINF:-1,Un\nhttps://media.example.invalid/1.ts';
++      final pending = Completer<void>();
++      final started = Completer<void>();
++      var requests = 0;
++      var responsePhase = 0;
++      final receivedHeaders = <Map<String, String>>[];
++      http.Client create() => MockClient((request) async {
++        requests++;
++        receivedHeaders.add(
++          request.headers.map(
++            (key, value) => MapEntry(key.toLowerCase(), value),
++          ),
++        );
++        if (responsePhase == 1) {
++          started.complete();
++          await pending.future;
++          return http.Response('', 304, headers: {'etag': '"v2"'});
++        }
++        // Le fournisseur peut ignorer le validateur ou le retirer.
++        return http.Response(
++          body,
++          200,
++          headers: responsePhase == 0 ? {'etag': '"v1"'} : {},
++        );
++      });
++      await http.runWithClient(() async {
++        final playlist = await repo.addM3uPlaylist(
++          name: 'Synthétique',
++          url: 'https://source.example.invalid/list.m3u',
++        );
++        final before = (await db.query('channels')).single;
++        responsePhase = 1;
++        final one = repo.refreshPlaylist(playlist);
++        await started.future;
++        final two = repo.refreshPlaylist(playlist);
++        pending.complete();
++        expect(await Future.wait([one, two]), [true, true]);
++        expect(requests, 2);
++        expect(receivedHeaders.last['if-none-match'], '"v1"');
++        expect((await db.query('channels')).single, before);
++
++        responsePhase = 2;
++        await repo.refreshPlaylist(playlist);
++        expect(receivedHeaders.last['if-none-match'], '"v2"');
++        expect((await db.query('channels')).single, before);
++        await repo.refreshPlaylist(playlist);
++        expect(receivedHeaders.last.containsKey('if-none-match'), isFalse);
++        expect((await db.query('channels')).single, before);
++      }, create);
++    },
++  );
++
++  test(
++    'un refresh en échec préserve les chaînes et le validateur applicables',
++    () async {
++      String body(int count) => [
++        '#EXTM3U',
++        for (var i = 0; i < count; i++)
++          '#EXTINF:-1,Canal $i\nhttps://media.example.invalid/$i.ts',
++      ].join('\n');
++      var count = 2;
++      var etag = '"original"';
++      final sent = <String?>[];
++      http.Client create() => MockClient((request) async {
++        sent.add(request.headers['if-none-match']);
++        return http.Response(body(count), 200, headers: {'etag': etag});
++      });
++      await http.runWithClient(() async {
++        final playlist = await repo.addM3uPlaylist(
++          name: 'Test',
++          url: 'https://source.example.invalid/test.m3u',
++        );
++        final previous = await db.query('channels', orderBy: 'local_id');
++        count = 1200;
++        etag = '"changed"';
++        await db.execute(
++          "CREATE TEMP TRIGGER reject_fixture BEFORE INSERT ON channels "
++          "WHEN NEW.name='Canal 1001' BEGIN SELECT RAISE(ABORT,'fixture'); END",
++        );
++        await expectLater(
++          repo.refreshPlaylist(playlist),
++          throwsA(isA<DatabaseException>()),
++        );
++        expect(await db.query('channels', orderBy: 'local_id'), previous);
++        expect((await db.query('m3u_http_cache')).single['etag'], '"original"');
++        await db.execute('DROP TRIGGER reject_fixture');
++        expect(await repo.refreshPlaylist(playlist), isTrue);
++        expect(sent.last, '"original"');
++        expect(
++          (await db.rawQuery('SELECT COUNT(*) AS n FROM channels')).single['n'],
++          1200,
++        );
++        expect((await db.query('m3u_http_cache')).single['etag'], '"changed"');
++        await db.delete('playlists');
++        expect(await db.query('m3u_http_cache'), isEmpty);
++      }, create);
++    },
++  );
++}
+diff --git a/test/features/playlists/xtream_client_test.dart b/test/features/playlists/xtream_client_test.dart
+index 0c861dcd83f785db8a10da1e6b0900973222404a..6232d52cade43fa21ab7b9eb26c804962c766a5d 100644
+--- a/test/features/playlists/xtream_client_test.dart
++++ b/test/features/playlists/xtream_client_test.dart
+@@ -9,6 +9,7 @@
+ //    - identifiants avec caractères spéciaux dans les URLs de flux
+ // =========================================================
+
++import 'dart:async';
+ import 'dart:convert';
+
+ import 'package:flutter_test/flutter_test.dart';
+@@ -53,6 +54,33 @@ MockClient _mockServer({
+ }
+
+ void main() {
++  test('deux consultations simultanées partagent un GET, la suivante est fraîche',
++      () async {
++    final release = Completer<void>();
++    int requests = 0;
++    final client = XtreamClient(
++      serverUrl: 'http://panel.example',
++      username: 'test',
++      password: 'test',
++      httpClient: MockClient((request) async {
++        requests++;
++        await release.future;
++        return http.Response(jsonEncode({
++          'user_info': {'auth': 1, 'status': 'Active', 'active_cons': requests - 1},
++        }), 200);
++      }),
++    );
++    addTearDown(client.dispose);
++    final login = client.verifyCredentials();
++    final counts = client.fetchAccountInfo();
++    release.complete();
++    await login;
++    expect((await counts).activeCons, 0);
++    expect(requests, 1);
++    expect((await client.fetchAccountInfo()).activeCons, 1);
++    expect(requests, 2);
++  });
++
+   group('verifyCredentials — variantes auth des panels réels', () {
+     test('accepte auth: true (booléen — forks XUI.one)', () async {
+       final XtreamClient c = XtreamClient(
+diff --git a/test/free_play/epg_foreground_priority_test.dart b/test/free_play/epg_foreground_priority_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..3141b63a6cd4b362d86a6bca86818e7e4c6bd695
+--- /dev/null
++++ b/test/free_play/epg_foreground_priority_test.dart
+@@ -0,0 +1,114 @@
++import 'dart:async';
++import 'dart:io';
++
++import 'package:flutter/foundation.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:tv_king/core/playback/stream_slot.dart';
++import 'package:tv_king/features/cast/data/stream_probe.dart';
++import 'package:tv_king/features/epg/data/idle_epg_sync.dart';
++import 'package:tv_king/features/playlists/data/source_calibrator.dart';
++import 'package:tv_king/features/playlists/data/xtream_client.dart';
++import 'package:tv_king/features/playlists/domain/playlist.dart';
++
++class _Connection extends http.BaseClient {
++  final closed = Completer<void>();
++  @override
++  void close() => closed.complete();
++  @override
++  Future<http.StreamedResponse> send(http.BaseRequest request) =>
++      throw UnimplementedError();
++}
++
++void main() {
++  final slot = StreamSlot.instance;
++  setUp(slot.resetForTest);
++  tearDown(slot.resetForTest);
++
++  for (final byPlayerHold in [false, true]) {
++    test('priorité lecteur et reprise XMLTV (signal=$byPlayerHold)', () async {
++      final hold = ValueNotifier(true);
++      addTearDown(hold.dispose);
++      final ready = Completer<_Connection>();
++      final clients = <_Connection>[];
++      final job =
++          IdleEpgSync(
++            playback: hold,
++            quietPeriod: const Duration(milliseconds: 2),
++            clientFactory: () {
++              final client = _Connection();
++              clients.add(client);
++              return client;
++            },
++          ).run((client) async {
++            if (clients.length == 1) {
++              final connection = client as _Connection;
++              ready.complete(connection);
++              await connection.closed.future;
++              throw const SocketException('lecture prioritaire');
++            }
++            return 12;
++          });
++      await Future<void>.delayed(const Duration(milliseconds: 10));
++      expect(clients, isEmpty);
++      hold.value = false;
++      final started = await ready.future.timeout(const Duration(seconds: 2));
++      final screen = Object();
++      if (byPlayerHold) {
++        hold.value = true;
++      } else {
++        slot.register(screen, teardown: () async {});
++        await slot.claim(screen);
++      }
++      expect(started.closed.isCompleted, isTrue);
++      await Future<void>.delayed(const Duration(milliseconds: 10));
++      expect(clients, hasLength(1));
++      if (byPlayerHold) {
++        hold.value = false;
++      } else {
++        slot.unregister(screen);
++      }
++      expect(await job.timeout(const Duration(seconds: 2)), 12);
++      expect(clients.length, 2);
++      expect(clients.last.closed.isCompleted, isTrue);
++    });
++  }
++
++  test('le clip black.ts redirigé ne valide ni format ni signature', () async {
++    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    addTearDown(() => server.close(force: true));
++    final paths = <String>[];
++    server.listen((req) async {
++      paths.add(req.uri.path);
++      req.response.statusCode = HttpStatus.found;
++      req.response.headers.set('Location', '/video/black.ts?token=example');
++      await req.response.close();
++    });
++    final url = 'http://127.0.0.1:${server.port}/live/u/p/1.ts';
++    final result = await StreamProbe.instance.probeUserAgents(
++      url,
++      candidates: ['Current', 'Alternative'],
++    );
++    expect(result.workingUserAgent, isNull);
++    expect(result.attempts.values.single.providerPlaceholder, isTrue);
++    expect(paths, ['/live/u/p/1.ts']);
++  });
++
++  test('compte 1/1 : la calibration ne sonde aucune chaîne', () async {
++    final result = await SourceCalibrator(
++      playlist: const Playlist(
++        id: 12,
++        name: 'Test',
++        type: PlaylistType.xtream,
++        createdAt: 0,
++      ),
++      accountFetcher: () async => const XtreamAccountInfo(
++        status: 'Active',
++        maxConnections: 1,
++        activeCons: 1,
++      ),
++      sampleUrls: () async => throw StateError('échantillon inattendu'),
++    ).run();
++    expect(result.verdict, CalibrationVerdict.connectionBusy);
++  });
++}
+diff --git a/test/free_play/home_device_assistance_test.dart b/test/free_play/home_device_assistance_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..1f331848489efd4a991ae0aa327c21d595d7588e
+--- /dev/null
++++ b/test/free_play/home_device_assistance_test.dart
+@@ -0,0 +1,109 @@
++import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:sqflite_common_ffi/sqflite_ffi.dart';
++import 'package:tv_king/core/assistance/assistance_controller.dart';
++import 'package:tv_king/core/assistance/assistance_session.dart';
++import 'package:tv_king/core/flavor/flavor.dart';
++import 'package:tv_king/core/update/build_flags.dart';
++import 'package:tv_king/features/channels/data/recently_watched_repository.dart';
++import 'package:tv_king/features/channels/domain/channel.dart';
++import 'package:tv_king/features/device/data/device_identity.dart';
++import 'package:tv_king/features/playlists/data/favorites_repository.dart';
++import 'package:tv_king/features/playlists/data/playlist_database.dart';
++import 'package:tv_king/features/playlists/data/playlist_repository.dart';
++import 'package:tv_king/features/simple_home/presentation/simple_home_screen.dart';
++import 'package:tv_king/l10n/generated/app_localizations.dart';
++
++import '../support/premium_capture_fonts.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  late Database db;
++  const firstMac = 'MK:01:23:45:67:89';
++  const reassignedMac = 'MK:10:32:54:76:98';
++
++  setUpAll(() async {
++    await preparePremiumCaptureFonts();
++    FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
++    SharedPreferences.setMockInitialValues(<String, Object>{
++      'device.virtual_mac.v1': firstMac,
++      'notif.matches.enabled': false,
++      'notif.reminders.enabled': false,
++    });
++    sqfliteFfiInit();
++    databaseFactory = databaseFactoryFfiNoIsolate;
++    db = await databaseFactory.openDatabase(inMemoryDatabasePath);
++    await PlaylistDatabase.instance.debugCreate(db);
++    PlaylistDatabase.instance.debugUseDatabase(db);
++    await FavoritesRepository.instance.initialize();
++    await RecentlyWatchedRepository.instance.initialize();
++  });
++  tearDownAll(() async {
++    PlaylistDatabase.instance.debugUseDatabase(null);
++    await db.close();
++  });
++
++  for (final hasChannels in <bool>[false, true]) {
++    testWidgets('MAC et assistance dès l’accueil, catalogue=$hasChannels', (
++      tester,
++    ) async {
++      tester.view.devicePixelRatio = 1;
++      tester.view.physicalSize = const Size(320, 730);
++      addTearDown(tester.view.resetPhysicalSize);
++      addTearDown(tester.view.resetDevicePixelRatio);
++      await DeviceIdentity.instance.adopt(firstMac);
++      DeviceIdentity.instance.debugResetCache();
++      PlaylistRepository.instance.debugSeedChannels(<Channel>[
++        if (hasChannels)
++          const Channel(id: 'one', name: 'Chaîne', category: 'Info',
++              streamUrl: 'https://example.test/live', isLive: true),
++      ]);
++      await tester.pumpWidget(MaterialApp(
++        locale: const Locale('fr'),
++        localizationsDelegates: AppLocalizations.localizationsDelegates,
++        supportedLocales: AppLocalizations.supportedLocales,
++        builder: (context, child) => MediaQuery(
++          data: MediaQuery.of(context).copyWith(
++            textScaler: TextScaler.linear(hasChannels ? 2 : 1),
++          ),
++          child: child!,
++        ),
++        home: const SimpleHomeScreen(),
++      ));
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 250));
++      expect(find.text(firstMac).hitTestable(), findsOneWidget);
++      expect(find.text('Assistance').hitTestable(), findsOneWidget);
++      expect(tester.takeException(), isNull);
++      await DeviceIdentity.instance.adopt(reassignedMac);
++      await tester.pump();
++      expect(find.text(firstMac), findsNothing);
++      expect(find.text(reassignedMac).hitTestable(), findsOneWidget);
++      String? copied;
++      final messenger = tester.binding.defaultBinaryMessenger;
++      messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
++        if (call.method == 'Clipboard.setData') copied = call.arguments['text'] as String;
++        return null;
++      });
++      addTearDown(() => messenger.setMockMethodCallHandler(SystemChannels.platform, null));
++      await tester.tap(find.text(reassignedMac));
++      await tester.pump();
++      expect(copied, reassignedMac);
++      final strings = AppLocalizations.of(tester.element(find.byType(SimpleHomeScreen)));
++      expect(find.text(strings.adminMacCopied(reassignedMac)), findsOneWidget);
++      await tester.tap(find.text('Assistance'));
++      await tester.pump();
++      await tester.pump(const Duration(milliseconds: 300));
++      expect(find.text(strings.supportInstantMessage), findsOneWidget);
++      expect(find.text(strings.supportPhoneCall), findsOneWidget);
++      await tester.ensureVisible(find.text(strings.supportPhoneCall));
++      expect(find.text(strings.supportPhoneCall).hitTestable(), findsOneWidget);
++      expect(AssistanceController.instance.etat, EtatAssistance.inactive);
++      expect(tester.takeException(), isNull);
++      await tester.pumpWidget(const SizedBox.shrink());
++      await tester.pump(const Duration(seconds: 10));
++    }, skip: !kIsPlayBuild);
++  }
++}
+diff --git a/test/free_play/import_completion_test.dart b/test/free_play/import_completion_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..98fd0833fe4784ded28fabb279748619d8227289
+--- /dev/null
++++ b/test/free_play/import_completion_test.dart
+@@ -0,0 +1,46 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/playlists/presentation/import_progress_screen.dart';
++import 'package:tv_king/l10n/generated/app_localizations.dart';
++
++void main() {
++  testWidgets('le résultat est disponible dès la fin de l’import', (
++    tester,
++  ) async {
++    final done = Completer<int>();
++    int? count;
++    await tester.pumpWidget(
++      MaterialApp(
++        localizationsDelegates: AppLocalizations.localizationsDelegates,
++        supportedLocales: AppLocalizations.supportedLocales,
++        home: Builder(
++          builder: (context) {
++            return Scaffold(
++              body: TextButton(
++                onPressed: () async {
++                  final result = await runImportWithProgress<int>(
++                    context,
++                    title: 'Import',
++                    task: (_) => done.future,
++                  );
++                  count = result.value;
++                },
++                child: const Text('Ajouter'),
++              ),
++            );
++          },
++        ),
++      ),
++    );
++    await tester.tap(find.text('Ajouter'));
++    await tester.pump();
++    await tester.pump(const Duration(milliseconds: 250));
++    expect(count, isNull);
++    done.complete(42);
++    await tester.pump();
++    expect(count, 42);
++    await tester.pumpAndSettle();
++  });
++}
+diff --git a/test/free_play/player_entry_test.dart b/test/free_play/player_entry_test.dart
+index 94c437475afe358c4e9650127f4010c782690801..9e730c9132266bb16a6ed14f0a984c5478541cae 100644
+--- a/test/free_play/player_entry_test.dart
++++ b/test/free_play/player_entry_test.dart
+@@ -68,7 +68,7 @@ void main() {
+     await _showEntry(tester);
+     await tester.tap(find.text('Device management'));
+     await tester.pumpAndSettle();
+-    expect(find.text('01:23:45:67:89'), findsOneWidget);
++    expect(find.text('MK:01:23:45:67:89'), findsOneWidget);
+     final context = tester.element(find.byType(FreePlayerPanelTile));
+     final strings = AppLocalizations.of(context);
+     expect(find.text(strings.freePanelSynced), findsNothing);

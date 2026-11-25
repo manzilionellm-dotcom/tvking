@@ -9,7 +9,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:native_video_player/native_video_player.dart';
 
 void main() {
-  setUp(() => NativeVideoController.backendFactory = null);
+  setUp(() {
+    NativeVideoController.backendFactory = null;
+    NativeVideoController.appInBackground = false;
+  });
+
+  tearDown(() => NativeVideoController.appInBackground = false);
+
+  test('Home et retour restent visibles pendant un zap sans ack', () {
+    final NativeVideoController c = NativeVideoController();
+    c.setUrl('http://a.example.invalid/1.ts');
+    c.applyBackendEvent('appBackground', true);
+    expect(NativeVideoController.blocksReopenInBackground, isTrue);
+    c.setUrl('http://a.example.invalid/2.ts');
+    c.applyBackendEvent('ack', 1); // accusé de l'ancienne chaîne
+    c.applyBackendEvent('appBackground', false);
+    expect(NativeVideoController.blocksReopenInBackground, isFalse);
+    c.applyBackendEvent('position', 9000);
+    expect(c.position, Duration.zero,
+        reason: 'la porte des événements vidéo reste fermée');
+    c.dispose();
+    c.applyBackendEvent('appBackground', true);
+    expect(NativeVideoController.appInBackground, isFalse,
+        reason: 'une vue détruite ne change plus le cycle de vie');
+  });
 
   test('avant l\'ack, les événements de l\'ancienne lecture sont ignorés', () {
     final NativeVideoController c = NativeVideoController();

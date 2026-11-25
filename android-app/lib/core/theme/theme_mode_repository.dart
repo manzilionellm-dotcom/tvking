@@ -24,7 +24,17 @@ class ThemeModeRepository extends ChangeNotifier {
   static const String _kKey = 'theme.mode.v1';
 
   ThemeMode _mode = ThemeMode.dark; // Cinema par défaut
-  ThemeMode get mode => _mode;
+  ThemeMode? _remoteMode;
+  ThemeMode get mode => _remoteMode ?? _mode;
+
+  /// Surcharge distante non persistée : retirer le thème du panel restitue
+  /// le choix local. Les écrans qui restent volontairement sombres gardent
+  /// leur propre Theme ; aucune couleur vidéo/Cast n'est modifiée ici.
+  void applyRemoteMode(ThemeMode? mode) {
+    if (_remoteMode == mode) return;
+    _remoteMode = mode;
+    notifyListeners();
+  }
 
   Future<void> initialize() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();

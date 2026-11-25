@@ -41,6 +41,49 @@ class VideoTrackChoiceTest {
     }
 
     @Test
+    fun lesGroupesFixesNeRemplacentPasLeHlsAdaptatifSelectionne() {
+        val tracks = listOf(
+            v(0, 720, 2_000_000, adaptive = true, selected = true),
+            v(1, 1080, 5_000_000, adaptive = true, selected = true),
+            v(0, 1080, 8_000_000, group = 1),
+            v(0, 2160, 15_000_000, group = 2),
+        )
+        assertNull(VideoTrackChoice.pick(tracks, bandwidthBps = 25_000_000, screenHeightPx = 2160))
+    }
+
+    @Test
+    fun plusieursPistesDansUnGroupeNonAdaptatifRestentEligibles() {
+        val tracks = listOf(
+            v(0, 720, 2_000_000, selected = true),
+            v(1, 1080, 5_000_000),
+        )
+        assertEquals(1, VideoTrackChoice.pick(tracks, 0, 1080)?.index)
+    }
+
+    @Test
+    fun tv4kAvecInterface1080pConserveLaPiste4k() {
+        val height = VideoTrackChoice.landscapeDisplayHeight(3840, 2160, fallbackHeightPx = 1080)
+        val pick = VideoTrackChoice.pick(
+            listOf(
+                v(0, 1080, 5_000_000, group = 0, selected = true),
+                v(0, 2160, 15_000_000, group = 1),
+            ),
+            bandwidthBps = 25_000_000,
+            screenHeightPx = height,
+        )
+        assertEquals(2160, height)
+        assertEquals(2160, pick?.height)
+    }
+
+    @Test
+    fun ecranPortraitEtResolutionInconnueOntUnRepliCoherent() {
+        assertEquals(1080, VideoTrackChoice.landscapeDisplayHeight(1080, 2400, 2400))
+        assertEquals(720, VideoTrackChoice.landscapeDisplayHeight(0, 0, 720))
+        assertEquals(720, VideoTrackChoice.landscapeDisplayHeight(3840, 0, 720))
+        assertEquals(0, VideoTrackChoice.landscapeDisplayHeight(0, 0, -1))
+    }
+
+    @Test
     fun plusHauteQuiTientSurLecran() {
         val pick = VideoTrackChoice.pick(
             listOf(

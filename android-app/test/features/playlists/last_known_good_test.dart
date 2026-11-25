@@ -45,6 +45,8 @@ String _m3u(String tag, int n) {
 /// Serveur simulé : `served` = listes que le panel sert, `rev` = révision.
 class _World {
   List<Map<String, Object?>> served = <Map<String, Object?>>[];
+  List<Map<String, Object?>> revoked = <Map<String, Object?>>[];
+  Map<String, Object?>? legacySource;
   int rev = 0;
 
   http.Client client() => MockClient((http.Request r) async {
@@ -53,7 +55,8 @@ class _World {
           return http.Response(jsonEncode(<String, Object?>{
             'mac': kMac,
             'sources': served,
-            'source': served.isEmpty ? null : served.first,
+            'source': legacySource ?? (served.isEmpty ? null : served.first),
+            'revoked': revoked,
             'updated_at': 1791300000000 + rev,
             'rev': rev,
           }), 200);
@@ -174,5 +177,32 @@ void main() {
     await _sync(w);
     expect(_has(await _lists(), 'good-a.invalid'), isFalse,
         reason: 'l’ancien ordre détruit la dernière bonne liste : le test ci-dessus le détecterait');
+  });
+
+  test('suppression explicite au panel : retirée même si la remplaçante échoue', () async {
+    final _World w = _World();
+    w.serve('good-a.invalid');
+    expect(await _sync(w), RemoteSyncResult.loaded);
+    w.revoked = List<Map<String, Object?>>.of(w.served);
+    w.serve('http500.invalid');
+    expect(await _sync(w), RemoteSyncResult.sourceFailed);
+    expect(_has(await _lists(), 'good-a.invalid'), isFalse);
+    await PlaylistDatabase.instance.closeForTesting();
+    // Une ancienne réponse de configuration ne doit pas annuler le retrait.
+    w.revoked = <Map<String, Object?>>[];
+    w.serve('good-a.invalid');
+    await _sync(w);
+    expect(_has(await _lists(), 'good-a.invalid'), isFalse);
+  });
+
+  test('sources vide fait autorité sur le champ source historique', () async {
+    final _World w = _World();
+    w.serve('good-a.invalid');
+    expect(await _sync(w), RemoteSyncResult.loaded);
+    w.legacySource = w.served.first;
+    w.clear();
+    await _sync(w);
+    await _sync(w);
+    expect(await _lists(), isEmpty);
   });
 }

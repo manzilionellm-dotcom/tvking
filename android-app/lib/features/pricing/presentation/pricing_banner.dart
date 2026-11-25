@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/update/build_flags.dart';
 import '../data/pricing_repository.dart';
 
 class PricingBanner extends StatelessWidget {
@@ -26,6 +27,7 @@ class PricingBanner extends StatelessWidget {
     return ValueListenableBuilder<PricingConfig>(
       valueListenable: PricingRepository.notifier,
       builder: (BuildContext context, PricingConfig p, _) {
+        if (kIsPlayBuild || !p.hasOffers) return const SizedBox.shrink();
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           decoration: BoxDecoration(
@@ -47,17 +49,21 @@ class PricingBanner extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               // Les deux offres côte à côte (à vie mise en avant à gauche).
-              Row(
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
                 children: <Widget>[
-                  Expanded(
+                  if (p.lifetime.isNotEmpty) SizedBox(
+                    width: 160,
                     child: _OfferTile(
                       label: context.l10n.pricingLifetime,
                       price: p.lifetimeLabel,
                       highlight: true,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
+                  if (p.yearly.isNotEmpty) SizedBox(
+                    width: 160,
                     child: _OfferTile(
                       label: context.l10n.pricingYearly,
                       price: p.yearlyLabel,
@@ -66,23 +72,8 @@ class PricingBanner extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              // Essai gratuit (durée pilotée par le panel).
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Icon(Icons.card_giftcard_rounded,
-                      size: 16, color: AppColors.accent),
-                  const SizedBox(width: 6),
-                  Text(
-                    context.l10n.pricingTrialDays(p.trialDays),
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      fontSize: 12.5,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
+              // Aucun « essai gratuit N jours » déduit d'un tarif marketing :
+              // seul le statut serveur de cet appareil décide de son accès.
               // Message promo / bonus (seulement si activé au panel).
               if (p.promoEnabled && p.promoMessage.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 12),

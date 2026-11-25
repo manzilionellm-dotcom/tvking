@@ -25,6 +25,15 @@ abstract final class RepairFlags {
   /// l'écran noir « le son continue » après une coupure.
   static const String legacyHoldFrameKey = 'zuno.player.hold_frame_legacy';
   static bool legacyHoldFrame = false;
+
+  /// Vrai = le correctif « film Dolby Vision + HDR10+ » est désarmé : le
+  /// flux part tel quel au décodeur (ancien comportement). Faux = sur les
+  /// clés Amazon à puce MT8696, où ce mélange donne un écran d'une seule
+  /// couleur avec le son, le lecteur retire ce qu'il faut avant le
+  /// décodeur. Le réglage « Compatibilité HDR » n'est pas concerné : c'est
+  /// un choix de la personne.
+  static const String hybridHdrOffKey = 'zuno.player.hybrid_hdr_off';
+  static bool hybridHdrOff = false;
   /// Vrai = la boîte noire écrit les lignes TELLES QUELLES (ancien
   /// comportement). Faux = chaque ligne est expurgée à l'écriture
   /// (adresses de flux, identifiants, mots de passe) : le journal sur la
@@ -272,6 +281,23 @@ abstract final class RepairFlags {
   static const String verifyNoForceKey = 'zuno.source.verify_no_force';
   static bool verifyNoForce = false;
 
+  /// Vrai = ancien accès Sport : délai de 8 s et échec présenté comme une
+  /// liste vide. Faux = délai borné de 20 s, raison visible et journal sûr.
+  /// Mesuré le 07/10/2026 : réponses valides après 8,5 à 11,7 s ; test HTTP
+  /// réel rouge avec une réponse après 9 s. Aucun réessai automatique ajouté.
+  static const String sportsNetworkLegacyKey = 'zuno.sports.network_legacy';
+  static bool sportsNetworkLegacy = false;
+
+  /// Vrai = ancien écran Sport, sans accès aux calendriers publics. Faux =
+  /// accès OpenLigaDB / OpenFootball sur demande, sans clé ni vidéo externe.
+  static const String sportsCommunityOffKey = 'zuno.sports.community_off';
+  static bool sportsCommunityOff = false;
+
+  /// Vrai = ancien grand bandeau du guide, permanent sur la vidéo.
+  /// Faux = une ligne neutre pendant deux secondes, détails dans le Guide.
+  static const String missedNoticeLegacyKey = 'zuno.guide.notice_legacy';
+  static bool missedNoticeLegacy = false;
+
   static Future<void> load() async {
     bool raw = false;
     bool tvDelLegacy = false;
@@ -305,6 +331,10 @@ abstract final class RepairFlags {
     bool testPollLegacy = false;
     bool dropFirst = false;
     bool ackOff = false;
+    bool sportsLegacy = false;
+    bool communityOff = false;
+    bool noticeLegacy = false;
+    bool hdrOff = false;
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       raw = prefs.getBool(blackBoxRawKey) ?? false;
@@ -339,6 +369,10 @@ abstract final class RepairFlags {
       replayLegacy = prefs.getBool(wsReplayLegacyKey) ?? false;
       gzipByHeader = prefs.getBool(epgGzipByHeaderKey) ?? false;
       xtreamSerial = prefs.getBool(xtreamPerCategorySerialKey) ?? false;
+      sportsLegacy = prefs.getBool(sportsNetworkLegacyKey) ?? false;
+      communityOff = prefs.getBool(sportsCommunityOffKey) ?? false;
+      noticeLegacy = prefs.getBool(missedNoticeLegacyKey) ?? false;
+      hdrOff = prefs.getBool(hybridHdrOffKey) ?? false;
     } catch (_) {
       raw = false;
       fsyncAll = false;
@@ -372,9 +406,16 @@ abstract final class RepairFlags {
       replayLegacy = false;
       gzipByHeader = false;
       xtreamSerial = false;
+      sportsLegacy = false;
+      communityOff = false;
+      noticeLegacy = false;
+      hdrOff = false;
     }
     epgGzipByHeader = gzipByHeader;
     xtreamPerCategorySerial = xtreamSerial;
+    sportsNetworkLegacy = sportsLegacy;
+    sportsCommunityOff = communityOff;
+    missedNoticeLegacy = noticeLegacy;
     orderAckOff = ackOff;
     tvDeleteLegacy = tvDelLegacy;
     liveShelvesLegacy = shelvesLegacy;
@@ -405,8 +446,10 @@ abstract final class RepairFlags {
     legacyHoldFrame = holdLegacy;
     epgInlineParse = epgInline;
     historyOnOpen = histOpen;
+    hybridHdrOff = hdrOff;
     // Le lecteur natif reçoit le réglage avec les autres (avant l'URL).
     NativeVideoController.legacyHoldFrame = holdLegacy;
+    NativeVideoController.hybridHdrOff = hdrOff;
     NativeVideoController.pushAudioDiagFlags();
   }
 
@@ -444,6 +487,12 @@ abstract final class RepairFlags {
     wsReplayLegacy = false;
     epgGzipByHeader = false;
     xtreamPerCategorySerial = false;
+    sportsNetworkLegacy = false;
+    sportsCommunityOff = false;
+    missedNoticeLegacy = false;
+    hybridHdrOff = false;
     NativeVideoController.legacyHoldFrame = false;
+    NativeVideoController.hybridHdrOff = false;
   }
 }
+

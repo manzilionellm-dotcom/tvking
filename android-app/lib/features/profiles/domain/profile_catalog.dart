@@ -22,7 +22,8 @@ class ProfileCatalog {
     required this.askOnStartup,
   });
 
-  static const int maxProfiles = 4;
+  // 10 depuis le 13/11/2026 (4 avant) : demande du propriétaire.
+  static const int maxProfiles = 10;
 
   final List<FamilyProfile> profiles;
 

@@ -18,8 +18,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/app/box_memory_budget.dart';
+import '../presentation/tv_card_shine.dart';
 import 'tv_dimens.dart';
-import 'tv_tokens.dart';
+import 'tv_ghost.dart';
+import 'tv_app_tokens.dart';
+import 'tv_remote_map.dart';
 
 /// Intensité du grossissement au focus selon la taille de l'élément.
 /// [none] : listes serrées (chaînes, catégories, guide). Un zoom y
@@ -72,11 +76,35 @@ class TvFocusable extends StatefulWidget {
   State<TvFocusable> createState() => _TvFocusableState();
 }
 
-class _TvFocusableState extends State<TvFocusable> {
+class _TvFocusableState extends State<TvFocusable>
+    with TickerProviderStateMixin {
   late final FocusNode _node = widget.focusNode ?? FocusNode();
   bool _ownsNode = false;
   bool _focused = false;
   bool _pressed = false;
+  AnimationController? _sweep;
+  AnimationController? _pulse;
+
+  /// Reflet et onde : thème Ghost, et seulement au-dessus de 2 Go.
+  /// En dessous, le contour déjà peint suffit (PR fluidité).
+  bool get _shine {
+    if (!TvAppTokens.of(context).ghost) return false;
+    return BoxMemoryBudget.paintFocusGlow;
+  }
+
+  void _playSweep() {
+    if (!_shine) return;
+    _sweep ??= AnimationController(vsync: this, duration: TvGhost.shine);
+    _sweep!.forward(from: 0);
+    setState(() {});
+  }
+
+  void _playPulse() {
+    if (!_shine) return;
+    _pulse ??= AnimationController(vsync: this, duration: TvGhost.pulse);
+    _pulse!.forward(from: 0);
+    setState(() {});
+  }
 
   @override
   void initState() {
@@ -86,6 +114,8 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   void dispose() {
+    _sweep?.dispose();
+    _pulse?.dispose();
     if (_ownsNode) _node.dispose();
     super.dispose();
   }
@@ -104,17 +134,16 @@ class _TvFocusableState extends State<TvFocusable> {
   }
 
   bool _isSelectKey(LogicalKeyboardKey k) =>
-      k == LogicalKeyboardKey.select ||
-      k == LogicalKeyboardKey.enter ||
-      k == LogicalKeyboardKey.numpadEnter ||
-      k == LogicalKeyboardKey.gameButtonA ||
-      k == LogicalKeyboardKey.space;
+      readTvRemoteKey(k)?.action == TvRemoteAction.select;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (!widget.enabled) return KeyEventResult.ignored;
     if (!_isSelectKey(event.logicalKey)) return KeyEventResult.ignored;
     if (event is KeyDownEvent) {
-      if (!_pressed) setState(() => _pressed = true);
+      if (!_pressed) {
+        setState(() => _pressed = true);
+        _playPulse();
+      }
       return KeyEventResult.handled;
     }
     if (event is KeyUpEvent) {
@@ -133,18 +162,30 @@ class _TvFocusableState extends State<TvFocusable> {
   Widget build(BuildContext context) {
     final BorderRadius radius =
         widget.borderRadius ?? BorderRadius.circular(TvDimens.cardRadius);
-    final Color focusBg = widget.focusColor ?? TvTokens.sel;
+    final Color focusBg = widget.focusColor ?? TvAppTokens.of(context).sel;
     final bool active = _focused && widget.enabled;
 
     // Échelle : un poil moins quand on enfonce OK (effet "pressé").
-    final double targetScale =
-        active ? (_pressed ? _scaleValue * 0.97 : _scaleValue) : 1.0;
+    final double targetScale = active
+        ? (_pressed ? _scaleValue * 0.97 : _scaleValue)
+        : 1.0;
 
     // TACTILE (TV/tablette à écran tactile) : on rend l'élément cliquable au
     // doigt EN PLUS du D-pad. Comme TOUTE l'UI TV passe par TvFocusable, ce
     // seul GestureDetector rend l'app entière navigable au toucher. Le doigt
     // prend d'abord le focus (le halo suit le doigt), puis relâche = onSelect.
-    return GestureDetector(
+    // Souris air / gyro : le halo suit le pointeur. Le clic valide
+    // déjà via onTap. Pas de splash : le D-pad n'en a pas besoin.
+    // onHover, pas onEnter : Flutter rejoue onEnter quand la liste
+    // défile sous un pointeur immobile, et ce pointeur reprendrait
+    // le focus au D-pad à chaque ligne.
+    return MouseRegion(
+      onHover: widget.enabled
+          ? (_) {
+              if (!_node.hasFocus) _node.requestFocus();
+            }
+          : null,
+      child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: widget.enabled
           ? (_) {
@@ -169,10 +210,12 @@ class _TvFocusableState extends State<TvFocusable> {
         canRequestFocus: widget.enabled,
         onKeyEvent: _onKey,
         onFocusChange: (bool f) {
+          final bool gained = f && !_focused;
           setState(() {
             _focused = f;
             if (!f) _pressed = false;
           });
+          if (gained) _playSweep();
           widget.onFocusChange?.call(f);
         },
         child: AnimatedScale(
@@ -190,37 +233,85 @@ class _TvFocusableState extends State<TvFocusable> {
                 // Signal 2 : COULEUR de surface (tonale, Maison Noir).
                 color: active
                     ? focusBg
-                    : (widget.selected ? TvTokens.sel : widget.baseColor),
+                    : (widget.selected
+                          ? TvAppTokens.of(context).sel
+                          : widget.baseColor),
                 borderRadius: radius,
                 // Signal 4 : CONTOUR OR au focus (visible partout, §5 spec).
                 border: (widget.showOutline && (active || widget.selected))
                     ? Border.all(
-                        color: active ? TvTokens.accent : TvTokens.line,
+                        color: active
+                            ? TvAppTokens.of(context).accent
+                            : TvAppTokens.of(context).line,
                         width: TvDimens.focusOutline,
                       )
                     : null,
                 // Signal 3 : ÉLÉVATION (ombre portée) + lueur champagne. C'est
                 // l'ombre profonde — pas la bordure — qui « soulève » l'élément
                 // façon Apple TV+ ; la lueur or signe la marque.
-                boxShadow: (widget.showGlow && active)
+                // Sur une box ≤ 2 Go on ne la peint pas : deux flous (32 et
+                // 40 px) refont un calque à chaque flèche. Le contour or
+                // (signal 4) reste, c'est lui qui se lit à distance.
+                boxShadow: (widget.showGlow &&
+                        active &&
+                        BoxMemoryBudget.paintFocusGlow)
                     ? <BoxShadow>[
-                        BoxShadow(
-                          color: const Color(0x99000000), // noir 60 %
+                        const BoxShadow(
+                          // Élévation noire 60 %. Pas une couleur de marque.
+                          color: Color(0x99000000),
                           blurRadius: TvDimens.focusElevBlur,
                           offset: const Offset(0, TvDimens.focusElevDy),
                         ),
                         BoxShadow(
-                          color: TvTokens.accent.withValues(alpha: 0.30),
+                          color: TvAppTokens.of(context).accent
+                              .withValues(alpha: 0.30),
                           blurRadius: TvDimens.focusGlowBlur,
                           spreadRadius: TvDimens.focusGlowSpread,
                         ),
                       ]
                     : null,
               ),
-              child: widget.child,
+              // Pression OK : voile noir seulement PENDANT l'appui.
+              // Pas de calque permanent sur les listes (box lentes).
+              // Clip.none : l'ombre du bouton (CTA) dépasse le rectangle.
+              // Un clip la couperait et le bouton paraîtrait « coupé au cutter ».
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  // Le contenu (logo, texte) ne se redessine pas quand seule
+                  // la bordure ou l'échelle bouge.
+                  RepaintBoundary(child: widget.child),
+                  if (_sweep != null || _pulse != null)
+                    Positioned.fill(
+                      child: AnimatedBuilder(
+                        animation: Listenable.merge(<Listenable>[
+                          if (_sweep != null) _sweep!,
+                          if (_pulse != null) _pulse!,
+                        ]),
+                        builder: (BuildContext context, _) => TvCardShine(
+                          sweep: _sweep?.value ?? 0,
+                          pulse: _pulse?.value ?? 0,
+                          radius: radius,
+                        ),
+                      ),
+                    ),
+                  if (_pressed && active)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            borderRadius: radius,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -237,6 +328,8 @@ class TvFocusBuilder extends StatefulWidget {
     this.focusNode,
     this.autofocus = false,
     this.scale = TvFocusScale.medium,
+    this.borderRadius,
+    this.showGlow = true,
     this.enabled = true,
   });
 
@@ -249,6 +342,15 @@ class TvFocusBuilder extends StatefulWidget {
   final FocusNode? focusNode;
   final bool autofocus;
   final TvFocusScale scale;
+
+  /// Rayon du halo. Sans ça, le halo reste à [TvDimens.cardRadius] (12)
+  /// même quand la carte visible est plus ronde (18) : l'ombre ne suit
+  /// pas le contrôle.
+  final BorderRadius? borderRadius;
+
+  /// Faux quand le contenu peint déjà son focus (fond or plein). Un
+  /// second flou de 32 px coûte cher sur les box lentes et fait « néon ».
+  final bool showGlow;
   final bool enabled;
 
   @override
@@ -265,8 +367,10 @@ class _TvFocusBuilderState extends State<TvFocusBuilder> {
       focusNode: widget.focusNode,
       autofocus: widget.autofocus,
       scale: widget.scale,
+      borderRadius: widget.borderRadius,
       enabled: widget.enabled,
       showOutline: false,
+      showGlow: widget.showGlow,
       onFocusChange: (bool f) {
         if (_focused != f) setState(() => _focused = f);
         widget.onFocusChange?.call(f);

@@ -1,12 +1,11 @@
 // =========================================================
 //  show_lines.dart — Phrases du bandeau, dans la langue de l'app
 // =========================================================
-//  Ces phrases restent ici (pas dans les 16 fichiers .arb) :
+//  Ces phrases restent ici (pas dans les fichiers .arb) :
 //  elles ne servent qu'à cette fonction. Chaque langue de
 //  l'application a SA phrase. Une langue inconnue retombe
-//  sur le français, comme le reste des fonctions en plus
-//  quand la traduction manque — sauf qu'ici les 16 langues
-//  sont écrites.
+//  sur l’anglais. Les tests vérifient la même liste de langues
+//  que le reste de l’application.
 // =========================================================
 
 import 'show_clock.dart';
@@ -27,13 +26,14 @@ const Set<String> kFollowedLanguages = <String>{
   'ru',
   'sv',
   'sw',
+  'so',
   'tr',
   'zh',
 };
 
 String _code(String languageCode) {
   final String code = languageCode.toLowerCase();
-  return kFollowedLanguages.contains(code) ? code : 'fr';
+  return kFollowedLanguages.contains(code) ? code : 'en';
 }
 
 /// « Journal commence dans 5 minutes ».
@@ -81,6 +81,8 @@ String startsInLine(String languageCode, String title, int minutes) {
       return '$title $n मिनट में शुरू';
     case 'zh':
       return '$title 将在 $n 分钟后开始';
+    case 'so':
+      return '$title waxay bilaabmaysaa $n daqiiqo gudahood';
     case 'sw':
       return '$title inaanza baada ya dakika $n';
     case 'fr':
@@ -144,6 +146,8 @@ String startedAgoLine(String languageCode, String title, int minutes) {
       return '$title $n मिनट पहले शुरू हुआ';
     case 'zh':
       return '$title 已开始 $n 分钟';
+    case 'so':
+      return '$title waxay bilaabatay $n daqiiqo ka hor';
     case 'sw':
       return '$title ilianza dakika $n zilizopita';
     case 'fr':
@@ -185,6 +189,8 @@ String finishedLine(String languageCode, String title) {
       return '$title समाप्त';
     case 'zh':
       return '$title 已结束';
+    case 'so':
+      return '$title way dhammaatay';
     case 'sw':
       return '$title imeisha';
     case 'fr':
@@ -223,8 +229,8 @@ String rowSubtitle(String languageCode, ShowCue cue) {
 
 /// Mot court (bouton, titre de rangée, réglage).
 String followedWord(String languageCode, String id) {
-  final Map<String, String>? row = _words[_code(languageCode)] ?? _words['fr'];
-  return row?[id] ?? _words['fr']![id] ?? id;
+  final Map<String, String>? row = _words[_code(languageCode)] ?? _words['en'];
+  return row?[id] ?? _words['en']![id] ?? id;
 }
 
 /// « OK passe au délai suivant : 2, 5, 10 ou 15 minutes. »
@@ -258,6 +264,8 @@ String leadHint(String languageCode) {
       return 'OK अगली देरी चुनता है: 2, 5, 10 या 15 मिनट.';
     case 'zh':
       return '按 OK 切换下一项：2、5、10 或 15 分钟。';
+    case 'so':
+      return 'Hagaag waxay doorataa muddada xigta: 2, 5, 10 ama 15 daqiiqo.';
     case 'sw':
       return 'OK kuchagua muda unaofuata: dakika 2, 5, 10 au 15.';
     case 'fr':
@@ -564,6 +572,26 @@ const Map<String, Map<String, String>> _words = <String, Map<String, String>>{
     'setOn': '应用会认出你的节目，并在开始前提醒。按 OK 关闭。不会自己打开。数据只留在盒子上。',
     'setOff': '已关闭。按 OK 打开。不再学习，提示条消失。',
     'lead': '提前 {n} 分钟提醒。按 OK 更改。',
+  },
+  'so': <String, String>{
+    'row': 'Barnaamijyadaada',
+    'on': 'Hadda socda',
+    'soon': 'Dhowaan',
+    'late': 'Hore u bilaabmay',
+    'watch': 'Daawo',
+    'live': 'Toos u daawo',
+    'start': 'Ka bilow bilowga',
+    'replay': 'Ku celis',
+    'later': 'Mar dambe',
+    'follow': 'La soco',
+    'following': 'La socda',
+    'flashOn': 'Barnaamijka waa lala socdaa',
+    'flashOff': 'Barnaamijka waa laga saaray',
+    'setOn':
+        'Abku wuxuu bartaa barnaamijyadaada wuxuuna ku ogeysiiyaa ka hor intaysan bilaaban. Hagaag si aad u damiso. Waxba iskood uma bilaabmaan. Xogtu qalabka ayay ku hadhaysaa.',
+    'setOff':
+        'Waa dansan yahay. Hagaag si aad u shiddo. Barashadu way istaagaysaa, ogeysiiskuna wuu baaba’ayaa.',
+    'lead': 'Ogeysii {n} daqiiqo ka hor. Hagaag si aad u beddesho.',
   },
   'sw': <String, String>{
     'row': 'Vipindi vyako',

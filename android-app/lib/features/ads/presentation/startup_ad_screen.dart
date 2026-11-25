@@ -29,11 +29,14 @@ class StartupAdScreen extends StatefulWidget {
   State<StartupAdScreen> createState() => _StartupAdScreenState();
 }
 
-class _StartupAdScreenState extends State<StartupAdScreen> {
+class _StartupAdScreenState extends State<StartupAdScreen>
+    with WidgetsBindingObserver {
   late final Player _player;
   late final VideoController _controller;
   StreamSubscription<bool>? _completedSub;
   StreamSubscription<String>? _errorSub;
+  StreamSubscription<Duration>? _progressSub;
+  bool _markedShown = false;
   Timer? _skipTimer;
   Timer? _safetyTimer;
   bool _canSkip = false;
@@ -42,10 +45,9 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _player = Player();
     _controller = VideoController(_player);
-    // Lance la vidéo (best-effort).
-    unawaited(_player.open(Media(widget.config.url)));
 
     // Révèle « Passer » après le délai configuré.
     _skipTimer = Timer(Duration(seconds: widget.config.skip), () {
@@ -53,10 +55,7 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
     });
     // Filet de sécurité : si la vidéo ne démarre jamais, on libère au bout
     // de 20 s (skip + marge) pour ne JAMAIS bloquer l'utilisateur.
-    _safetyTimer = Timer(
-      Duration(seconds: widget.config.skip + 20),
-      _finish,
-    );
+    _safetyTimer = Timer(Duration(seconds: widget.config.skip + 20), _finish);
 
     // Fin de vidéo → on continue vers l'app.
     _completedSub = _player.stream.completed.listen((bool c) {
@@ -64,20 +63,49 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
     });
     // Erreur de lecture → on ne bloque pas, on passe.
     _errorSub = _player.stream.error.listen((_) => _finish());
+    // Une panne n'épuise pas le droit quotidien. On mémorise seulement
+    // après une progression réelle du lecteur, jamais dans onDone.
+    _progressSub = _player.stream.position.listen((Duration position) {
+      if (!_done &&
+          !_markedShown &&
+          position > Duration.zero &&
+          _player.state.playing) {
+        _markedShown = true;
+        unawaited(StartupAdRepository.instance.markShown());
+      }
+    });
+    // Les écouteurs sont en place AVANT l'ouverture : une erreur immédiate
+    // ou un refus du moteur libère aussi l'accueil.
+    unawaited(
+      _player.open(Media(widget.config.url)).catchError((Object _) {
+        _finish();
+      }),
+    );
   }
 
   void _finish() {
-    if (_done) return;
+    if (_done || !mounted) return;
     _done = true;
     widget.onDone();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _finish();
+    }
+  }
+
+  @override
   void dispose() {
+    _done = true;
+    WidgetsBinding.instance.removeObserver(this);
     _skipTimer?.cancel();
     _safetyTimer?.cancel();
     _completedSub?.cancel();
     _errorSub?.cancel();
+    _progressSub?.cancel();
     _player.dispose();
     super.dispose();
   }
@@ -111,19 +139,24 @@ class _StartupAdScreenState extends State<StartupAdScreen> {
                   borderRadius: BorderRadius.circular(20),
                   onTap: _finish,
                   child: const Padding(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Text('Passer',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14)),
+                        Text(
+                          'Passer',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
                         SizedBox(width: 4),
-                        Icon(Icons.skip_next_rounded,
-                            color: Colors.white, size: 18),
+                        Icon(
+                          Icons.skip_next_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
                       ],
                     ),
                   ),

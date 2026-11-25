@@ -22,6 +22,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../tv/core/tv_dimens.dart';
 import '../../tv/core/tv_tokens.dart';
+import '../../tv/core/tv_app_tokens.dart';
 import '../../tv/presentation/tv_components.dart';
 import 'remote_control.dart';
 
@@ -82,7 +83,8 @@ class _TvRemoteScreenState extends State<TvRemoteScreen> {
   KeyEventResult _swallowOk(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final LogicalKeyboardKey k = event.logicalKey;
-    final bool ok = k == LogicalKeyboardKey.select ||
+    final bool ok =
+        k == LogicalKeyboardKey.select ||
         k == LogicalKeyboardKey.enter ||
         k == LogicalKeyboardKey.numpadEnter ||
         k == LogicalKeyboardKey.gameButtonA ||
@@ -94,7 +96,8 @@ class _TvRemoteScreenState extends State<TvRemoteScreen> {
   @override
   Widget build(BuildContext context) {
     final RemoteView view = RemoteControl.instance.view;
-    final bool showQr = view.phase == RemotePhase.ready &&
+    final bool showQr =
+        view.phase == RemotePhase.ready &&
         view.url != null &&
         view.secondsLeft > 0;
     return Row(
@@ -107,55 +110,69 @@ class _TvRemoteScreenState extends State<TvRemoteScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(context.l10n.tvRemoteTitle,
-                    style: const TextStyle(
-                      fontSize: TvDimens.displayS,
-                      fontWeight: FontWeight.w800,
-                      color: TvTokens.text,
-                    )),
+                Text(
+                  context.l10n.tvRemoteTitle,
+                  style: TextStyle(
+                    fontSize: TvDimens.displayS,
+                    fontWeight: FontWeight.w800,
+                    color: TvAppTokens.of(context).text,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                Text(context.l10n.tvRemoteLead,
-                    style: const TextStyle(
-                      fontSize: TvDimens.body,
-                      color: TvTokens.muted,
-                      height: 1.35,
-                    )),
+                Text(
+                  context.l10n.tvRemoteLead,
+                  style: TextStyle(
+                    fontSize: TvDimens.body,
+                    color: TvAppTokens.of(context).muted,
+                    height: 1.35,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text(context.l10n.tvRemoteWarn,
-                    style: const TextStyle(
-                      fontSize: TvDimens.caption,
-                      color: TvTokens.mutedDim,
-                      height: 1.35,
-                    )),
+                Text(
+                  context.l10n.tvRemoteWarn,
+                  style: TextStyle(
+                    fontSize: TvDimens.caption,
+                    color: TvAppTokens.of(context).mutedDim,
+                    height: 1.35,
+                  ),
+                ),
                 const SizedBox(height: 18),
-                Text(_status(context, view),
-                    style: TextStyle(
-                      fontSize: TvDimens.title,
-                      fontWeight: FontWeight.w700,
-                      color:
-                          view.paired ? TvTokens.accentBright : TvTokens.text,
-                    )),
+                Text(
+                  _status(context, view),
+                  style: TextStyle(
+                    fontSize: TvDimens.title,
+                    fontWeight: FontWeight.w700,
+                    color: view.paired
+                        ? TvAppTokens.of(context).accentBright
+                        : TvAppTokens.of(context).text,
+                  ),
+                ),
                 if (showQr) ...<Widget>[
                   const SizedBox(height: 6),
-                  Text(context.l10n.tvRemoteLeft(_clock(view.secondsLeft)),
-                      style: const TextStyle(
-                        fontSize: TvDimens.body,
-                        color: TvTokens.accentBright,
-                      )),
+                  Text(
+                    context.l10n.tvRemoteLeft(_clock(view.secondsLeft)),
+                    style: TextStyle(
+                      fontSize: TvDimens.body,
+                      color: TvAppTokens.of(context).accentBright,
+                    ),
+                  ),
                 ],
                 const Spacer(),
-                Text(context.l10n.tvRemoteKeep,
-                    style: const TextStyle(
-                      fontSize: TvDimens.caption,
-                      color: TvTokens.mutedDim,
-                      height: 1.35,
-                    )),
+                Text(
+                  context.l10n.tvRemoteKeep,
+                  style: TextStyle(
+                    fontSize: TvDimens.caption,
+                    color: TvAppTokens.of(context).mutedDim,
+                    height: 1.35,
+                  ),
+                ),
                 const SizedBox(height: 14),
                 Row(
                   children: <Widget>[
                     Expanded(
                       child: TvCtaButton(
-                        label: view.phase == RemotePhase.stopped ||
+                        label:
+                            view.phase == RemotePhase.stopped ||
                                 view.phase == RemotePhase.noLan ||
                                 view.phase == RemotePhase.error
                             ? context.l10n.tvRemoteStart
@@ -167,7 +184,8 @@ class _TvRemoteScreenState extends State<TvRemoteScreen> {
                     Expanded(
                       child: TvCtaButton(
                         label: context.l10n.tvRemoteStop,
-                        onSelect: _busy ||
+                        onSelect:
+                            _busy ||
                                 view.phase == RemotePhase.stopped ||
                                 view.phase == RemotePhase.starting
                             ? null
@@ -192,7 +210,10 @@ class _TvRemoteScreenState extends State<TvRemoteScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(TvTokens.rCard),
-                  border: Border.all(color: TvTokens.accent, width: 2),
+                  border: Border.all(
+                    color: TvAppTokens.of(context).accent,
+                    width: 2,
+                  ),
                 ),
                 child: QrImageView(
                   data: view.url!,
@@ -200,33 +221,38 @@ class _TvRemoteScreenState extends State<TvRemoteScreen> {
                   errorCorrectionLevel: QrErrorCorrectLevel.H,
                   size: 240,
                   backgroundColor: Colors.white,
-                  eyeStyle: const QrEyeStyle(
+                  eyeStyle: QrEyeStyle(
                     eyeShape: QrEyeShape.square,
-                    color: TvTokens.bg,
+                    color: TvAppTokens.of(context).bg,
                   ),
-                  dataModuleStyle: const QrDataModuleStyle(
+                  dataModuleStyle: QrDataModuleStyle(
                     dataModuleShape: QrDataModuleShape.square,
-                    color: TvTokens.bg,
+                    color: TvAppTokens.of(context).bg,
                   ),
                 ),
               ),
               const SizedBox(height: 12),
               SizedBox(
                 width: 280,
-                child: Text(context.l10n.tvRemoteUrlHelp,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: TvDimens.caption,
-                      color: TvTokens.mutedDim,
-                    )),
+                child: Text(
+                  context.l10n.tvRemoteUrlHelp,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: TvDimens.caption,
+                    color: TvAppTokens.of(context).mutedDim,
+                  ),
+                ),
               ),
               const SizedBox(height: 6),
               SizedBox(
                 width: 300,
-                child: Text(view.url!,
-                    textAlign: TextAlign.center,
-                    style:
-                        TvTokens.mono(TvDimens.caption, color: TvTokens.text)),
+                child: Text(
+                  view.url!,
+                  textAlign: TextAlign.center,
+                  style: TvAppTokens.of(
+                    context,
+                  ).mono(TvDimens.caption, color: TvAppTokens.of(context).text),
+                ),
               ),
             ],
           ),

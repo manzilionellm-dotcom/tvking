@@ -26,6 +26,7 @@ import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/epg_program.dart';
+import 'epg_batch_pipe.dart';
 import 'epg_fetch.dart';
 
 class EpgRepository {
@@ -99,6 +100,8 @@ class EpgRepository {
     required String url,
     Set<String>? knownChannelIds,
     Map<String, List<String>>? channelIdMap,
+    // Chaînes à catch-up : leur journée passée est gardée (REPLAY).
+    Set<String>? replayChannelIds,
     http.Client? httpClient,
     void Function(int progressBytes)? onProgress,
     Duration connectTimeout = const Duration(seconds: 30),
@@ -108,12 +111,15 @@ class EpgRepository {
     if (_syncing) return 0;
     _syncing = true;
     final Stopwatch sw = Stopwatch()..start();
+    _RowSink? staging;
     try {
       await initialize();
       // On purge d'abord les vieux programmes pour faire de la place.
       await purgeStale();
       final Database db = await PlaylistDatabase.instance.database;
       final _RowSink sink = _RowSink(db);
+      staging = sink;
+      await sink.begin();
       final bool isolate =
           inIsolate ?? (httpClient == null && !RepairFlags.epgInlineParse);
       int total;
@@ -122,6 +128,7 @@ class EpgRepository {
           url: url,
           knownIds: knownChannelIds,
           idMap: channelIdMap,
+          replayIds: replayChannelIds,
           connectTimeout: connectTimeout,
           idleTimeout: idleTimeout,
           onProgress: onProgress,
@@ -135,6 +142,7 @@ class EpgRepository {
             client: client,
             knownIds: knownChannelIds,
             idMap: channelIdMap,
+            replayIds: replayChannelIds,
             connectTimeout: connectTimeout,
             idleTimeout: idleTimeout,
             onProgress: onProgress,
@@ -144,7 +152,7 @@ class EpgRepository {
           if (httpClient == null) client.close();
         }
       }
-      await sink.flush();
+      await sink.publish();
       BlackBox.instance.info(
         'EPG',
         'guide : $total programmes pour ${sink.channels} chaîne(s) '
@@ -156,7 +164,11 @@ class EpgRepository {
       }
       return total;
     } finally {
-      _syncing = false;
+      try {
+        await staging?.close();
+      } finally {
+        _syncing = false;
+      }
     }
   }
 
@@ -166,6 +178,7 @@ class EpgRepository {
     required String url,
     required Set<String>? knownIds,
     required Map<String, List<String>>? idMap,
+    required Set<String>? replayIds,
     required Duration connectTimeout,
     required Duration idleTimeout,
     required void Function(int progressBytes)? onProgress,
@@ -180,6 +193,7 @@ class EpgRepository {
           url: url,
           knownIds: knownIds?.toList(growable: false),
           idMap: idMap,
+          replayIds: replayIds?.toList(growable: false),
           connectTimeoutMs: connectTimeout.inMilliseconds,
           idleTimeoutMs: idleTimeout.inMilliseconds,
           port: rx.sendPort,
@@ -209,14 +223,13 @@ class EpgRepository {
           }
           throw Exception(msg.startsWith('error:') ? msg.substring(6) : msg);
         }
+        if (msg is EpgRowBatch) {
+          await sink.addRows(msg.rows);
+          // Le producteur attend cette écriture : au plus un lot en vol.
+          msg.acknowledge.send(null);
+          continue;
+        }
         if (msg is List) {
-          if (msg.isNotEmpty && msg.first is Map) {
-            await sink.addRows(<Map<String, Object?>>[
-              for (final Object? m in msg)
-                if (m is Map) m.cast<String, Object?>(),
-            ]);
-            continue;
-          }
           // onError : [erreur, pile].
           throw Exception('EPG : ${msg.isEmpty ? 'erreur' : msg.first}');
         }
@@ -228,19 +241,44 @@ class EpgRepository {
     }
   }
 
-  /// Supprime tous les programmes terminés depuis plus d'une heure.
-  /// Garde 1h dans le passé pour le catch-up immédiat.
+  /// Supprime les programmes terminés depuis plus d'une heure. Exception :
+  /// les chaînes qui déclarent un catch-up gardent [kEpgReplayKeepHours]
+  /// heures, sinon le guide n'avait presque rien à proposer en REPLAY.
   Future<int> purgeStale() async {
     await initialize();
     final Database db = await PlaylistDatabase.instance.database;
-    final int cutoff = DateTime.now()
-        .subtract(const Duration(hours: 1))
+    final DateTime now = DateTime.now();
+    final int cutoff =
+        now.subtract(const Duration(hours: 1)).millisecondsSinceEpoch;
+    final int replayCutoff = now
+        .subtract(const Duration(hours: kEpgReplayKeepHours))
         .millisecondsSinceEpoch;
     return db.delete(
       'epg_programs',
-      where: 'stop_time < ?',
-      whereArgs: <Object>[cutoff],
+      where: 'stop_time < ? AND (stop_time < ? OR channel_id NOT IN ('
+          'SELECT external_id FROM channels WHERE catchup_supported = 1 '
+          "OR (catchup_source IS NOT NULL AND catchup_source <> '')))",
+      whereArgs: <Object>[cutoff, replayCutoff],
     );
+  }
+
+  // Variantes M3U actives du catalogue TV. Le guide XMLTV reste enregistré
+  // une seule fois sous l'identifiant exact du fournisseur, casse comprise.
+  Map<String, String> _guideForVariant = const {};
+  Map<String, List<String>> _variantsForGuide = const {};
+
+  void setM3uVariantGuideIds(Map<String, String> ids) {
+    _guideForVariant = ids;
+    final variants = <String, List<String>>{};
+    for (final entry in ids.entries) {
+      (variants[entry.value] ??= []).add(entry.key);
+    }
+    _variantsForGuide = variants;
+  }
+
+  EpgProgram _forChannel(Map<String, Object?> row, String id) {
+    if (row['channel_id'] == id) return EpgProgram.fromMap(row);
+    return EpgProgram.fromMap({...row, 'channel_id': id});
   }
 
   /// Vide complètement la base EPG.
@@ -263,11 +301,11 @@ class EpgRepository {
     final List<Map<String, Object?>> rows = await db.query(
       'epg_programs',
       where: 'channel_id = ? AND start_time <= ? AND stop_time > ?',
-      whereArgs: <Object>[channelId, now, now],
+      whereArgs: <Object>[_guideForVariant[channelId] ?? channelId, now, now],
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return EpgProgram.fromMap(rows.first);
+    return _forChannel(rows.first, channelId);
   }
 
   /// Programme suivant après celui en cours (null si rien programmé).
@@ -278,12 +316,12 @@ class EpgRepository {
     final List<Map<String, Object?>> rows = await db.query(
       'epg_programs',
       where: 'channel_id = ? AND start_time > ?',
-      whereArgs: <Object>[channelId, now],
+      whereArgs: <Object>[_guideForVariant[channelId] ?? channelId, now],
       orderBy: 'start_time ASC',
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return EpgProgram.fromMap(rows.first);
+    return _forChannel(rows.first, channelId);
   }
 
   /// Programmes d'une chaîne entre deux instants (pour la grille TV).
@@ -298,10 +336,10 @@ class EpgRepository {
       'epg_programs',
       where:
           'channel_id = ? AND stop_time > ? AND start_time < ?',
-      whereArgs: <Object>[channelId, startMs, endMs],
+      whereArgs: <Object>[_guideForVariant[channelId] ?? channelId, startMs, endMs],
       orderBy: 'start_time ASC',
     );
-    return rows.map(EpgProgram.fromMap).toList(growable: false);
+    return rows.map((row) => _forChannel(row, channelId)).toList(growable: false);
   }
 
   /// Récupère les programmes d'aujourd'hui pour une chaîne donnée.
@@ -343,7 +381,18 @@ class EpgRepository {
         orderBy: 'start_time ASC',
         limit: cap,
       );
-      return rows.map(EpgProgram.fromMap).toList(growable: false);
+      if (_variantsForGuide.isEmpty) {
+        return rows.map(EpgProgram.fromMap).toList(growable: false);
+      }
+      final programs = <EpgProgram>[];
+      for (final row in rows) {
+        final source = row['channel_id'] as String;
+        for (final channel in _variantsForGuide[source] ?? [source]) {
+          programs.add(_forChannel(row, channel));
+          if (programs.length == cap) return programs;
+        }
+      }
+      return programs;
     } catch (e) {
       if (kDebugMode) debugPrint('[EpgRepository] programmes du soir : $e');
       return const <EpgProgram>[];
@@ -360,12 +409,15 @@ class EpgRepository {
   }
 }
 
-/// Insère les rangées par lots de 500. À la première apparition d'une
-/// chaîne dans CET import, ses programmes encore en base sont retirés
-/// dans le même lot, AVANT ses nouvelles lignes (pas de clé unique dans
-/// la table ; une chaîne absente du fichier garde son ancien guide).
+/// Prépare le nouveau guide sur disque, puis le publie atomiquement.
+/// Une panne réseau après plusieurs lots ne doit pas effacer l'ancien
+/// guide. Aucune transaction n'est gardée ouverte pendant le réseau :
+/// les écrans peuvent continuer de lire le dernier guide complet.
 class _RowSink {
   _RowSink(this.db);
+  static const String _table = 'epg_import_stage';
+  static const String _columns =
+      'channel_id, start_time, stop_time, title, description, category, icon_url';
   final Database db;
   Batch? _batch;
   int _pending = 0;
@@ -373,18 +425,22 @@ class _RowSink {
 
   int get channels => _refreshed.length;
 
+  Future<void> begin() async {
+    // Table sur disque : même les gros guides ne deviennent pas un tampon
+    // Dart. Une interruption du processus laisse au pire cette table privée,
+    // qui est recréée au prochain import ; le guide publié reste intact.
+    await db.execute('DROP TABLE IF EXISTS $_table');
+    await db.execute(
+      'CREATE TABLE $_table AS SELECT $_columns FROM epg_programs WHERE 0',
+    );
+  }
+
   Future<void> addRows(List<Map<String, Object?>> rows) async {
     for (final Map<String, Object?> row in rows) {
       final Batch batch = _batch ??= db.batch();
       final String channelId = row['channel_id'] as String;
-      if (_refreshed.add(channelId)) {
-        batch.delete(
-          'epg_programs',
-          where: 'channel_id = ?',
-          whereArgs: <Object>[channelId],
-        );
-      }
-      batch.insert('epg_programs', row);
+      _refreshed.add(channelId);
+      batch.insert(_table, row);
       _pending++;
       if (_pending >= 500) await flush();
     }
@@ -397,6 +453,25 @@ class _RowSink {
     _pending = 0;
     await batch.commit(noResult: true);
   }
+
+  Future<void> publish() async {
+    await flush();
+    await db.transaction((Transaction txn) async {
+      await txn.execute(
+        'DELETE FROM epg_programs WHERE channel_id IN '
+        '(SELECT DISTINCT channel_id FROM $_table)',
+      );
+      await txn.execute(
+        'INSERT INTO epg_programs ($_columns) SELECT $_columns FROM $_table',
+      );
+    });
+  }
+
+  Future<void> close() async {
+    _batch = null;
+    _pending = 0;
+    await db.execute('DROP TABLE IF EXISTS $_table');
+  }
 }
 
 /// Ce que l'isolate reçoit. Tout est copiable entre isolates.
@@ -405,6 +480,7 @@ class _EpgJob {
     required this.url,
     required this.knownIds,
     required this.idMap,
+    required this.replayIds,
     required this.connectTimeoutMs,
     required this.idleTimeoutMs,
     required this.port,
@@ -413,6 +489,7 @@ class _EpgJob {
   final String url;
   final List<String>? knownIds;
   final Map<String, List<String>>? idMap;
+  final List<String>? replayIds;
   final int connectTimeoutMs;
   final int idleTimeoutMs;
   final SendPort port;
@@ -432,10 +509,11 @@ Future<void> _epgWorker(_EpgJob job) async {
       client: client,
       knownIds: job.knownIds?.toSet(),
       idMap: job.idMap,
+      replayIds: job.replayIds?.toSet(),
       connectTimeout: Duration(milliseconds: job.connectTimeoutMs),
       idleTimeout: Duration(milliseconds: job.idleTimeoutMs),
       onProgress: (int bytes) => job.port.send(bytes),
-      onRows: (List<Map<String, Object?>> rows) async => job.port.send(rows),
+      onRows: (List<Map<String, Object?>> rows) => sendEpgRows(job.port, rows),
       gzipByHeader: job.gzipByHeader,
     );
     job.port.send('done:$total');

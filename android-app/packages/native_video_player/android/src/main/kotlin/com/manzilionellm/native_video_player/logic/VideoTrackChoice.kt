@@ -7,7 +7,8 @@ package com.manzilionellm.native_video_player.logic
  * plus descendre quand le Wi-Fi faiblit.
  *
  * Règle, du plus important au moins important :
- *  1. une seule piste fixe, ou seulement des pistes adaptatives → null
+ *  1. un groupe adaptatif sélectionné, une seule piste fixe, ou
+ *     seulement des pistes adaptatives → null
  *     (on ne touche à rien) ;
  *  2. on garde celles qui tiennent sur l'écran (hauteur ≤ écran + 10 %),
  *     s'il en reste au moins une. Une 4K seule sur une TV 1080p est
@@ -52,6 +53,9 @@ object VideoTrackChoice {
         bandwidthBps: Long,
         screenHeightPx: Int,
     ): VideoCandidate? {
+        // Un flux peut exposer un ladder HLS sélectionné ET des groupes
+        // fixes. Imposer l'un de ces groupes couperait l'adaptation au Wi-Fi.
+        if (tracks.any { it.adaptive && it.selected }) return null
         val fixed = tracks.filter { !it.adaptive }
         if (fixed.size < 2) return null
         val onScreen = fixed.filter { fits(it.height, screenHeightPx) }
@@ -64,6 +68,22 @@ object VideoTrackChoice {
         }
         if (chosen.selected) return null
         return chosen
+    }
+
+    /**
+     * Hauteur utile pour les chaînes en paysage. Une TV 4K peut dessiner
+     * l'interface en 1080p : la SurfaceView vidéo garde pourtant les 2160
+     * lignes physiques. Le petit côté évite de confondre hauteur portrait
+     * du téléphone et résolution d'une chaîne paysage.
+     */
+    fun landscapeDisplayHeight(
+        physicalWidthPx: Int,
+        physicalHeightPx: Int,
+        fallbackHeightPx: Int,
+    ): Int = if (physicalWidthPx > 0 && physicalHeightPx > 0) {
+        minOf(physicalWidthPx, physicalHeightPx)
+    } else {
+        fallbackHeightPx.coerceAtLeast(0)
     }
 
     private fun fits(height: Int, screenHeightPx: Int): Boolean {

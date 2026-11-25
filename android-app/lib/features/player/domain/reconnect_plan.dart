@@ -20,6 +20,17 @@
 
 /// Décisions pures de reconnexion et de budget de démarrage.
 abstract final class ReconnectPlan {
+  /// Une remise à zéro (reconnexion), un seek ou une position reçue pendant
+  /// le chargement ne prouvent pas que le flux est revenu. Sinon chaque
+  /// setUrl remettrait le budget d'essais à zéro : boucle sans fin.
+  static bool madePlaybackProgress({
+    required Duration previous,
+    required Duration current,
+    required bool playing,
+    required bool buffering,
+    required bool hasError,
+  }) => playing && !buffering && !hasError && current > previous;
+
   /// Essais silencieux du natif avant de prévenir l'écran.
   static const int maxSilent = 8;
 

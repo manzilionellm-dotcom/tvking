@@ -44,11 +44,19 @@ export const KIND_LABEL: Record<string, string> = {
   force_update: 'mise à jour forcée',
   featured: 'favori',
   ad: 'publicité',
+  banner: 'bannière',
+  banners: 'bannière',
   pricing: 'tarifs',
   feedback: 'avis',
   servers: 'serveurs',
   license: 'licence',
 };
+
+/// Le tableau « Direct » et la page « En ligne » relisent la base.
+/// Ce Worker n'ouvre pas de WebSocket au navigateur (la box, elle,
+/// tient déjà l'attente longue, environ 300 ms). 1 s garde l'affichage
+/// dans la fenêtre demandée (1–2 s), au lieu de 2,5 s et 30 s.
+export const PANEL_LIVE_MS = 1000;
 
 export function kindLabel(kind: string): string {
   return KIND_LABEL[kind] || kind || 'ordre';
