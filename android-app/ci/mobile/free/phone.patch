@@ -61,7 +61,7 @@ index 71522773b7c88b102bc0e49b4f3d9e822e6c8665..2b76e6b5aa50500745bf09d70d0f0fb3
    });
 
 diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
-index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab77dfe3ba 100644
+index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94ab5af78e 100644
 --- a/lib/core/app/panel_live_wait.dart
 +++ b/lib/core/app/panel_live_wait.dart
 @@ -1,33 +1,8 @@
@@ -103,7 +103,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
  import 'dart:async';
  import 'dart:convert';
 
-@@ -35,11 +10,22 @@ import 'package:flutter/foundation.dart';
+@@ -35,11 +10,23 @@ import 'package:flutter/foundation.dart';
  import 'package:flutter/widgets.dart';
  import 'package:http/http.dart' as http;
  import 'package:shared_preferences/shared_preferences.dart';
@@ -123,10 +123,11 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +import '../../features/feedback/data/feedback_repository.dart';
 +import '../../features/playlists/data/default_servers.dart';
 +import '../../features/about/data/force_update_checker.dart';
++import '../update/build_flags.dart';
 
  /// Préférence de repli : vrai = pas d'écoute en direct (ancien comportement).
  const String kLiveWaitOffKey = 'zuno.mobile.live_wait_off';
-@@ -87,7 +73,7 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
+@@ -87,7 +74,7 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
  /// Délai avant de réessayer après [failures] échecs d'affilée.
  Duration liveWaitBackoff(int failures) {
    if (failures <= 0) return Duration.zero;
@@ -135,7 +136,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
    return Duration(seconds: s > 30 ? 30 : s);
  }
 
-@@ -102,8 +88,17 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -102,8 +89,17 @@ class PanelLiveWait with WidgetsBindingObserver {
    http.Client Function() clientFactory = http.Client.new;
 
    static Future<void> _defaultOnChange() async {
@@ -154,7 +155,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
      // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
      // ce contrôle, une suppression reçue pendant une coupure réseau
      // était marquée « traitée » avant d'avoir été appliquée localement.
-@@ -111,16 +106,315 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -111,16 +107,330 @@ class PanelLiveWait with WidgetsBindingObserver {
          result == RemoteSyncResult.sourceFailed) {
        throw StateError('synchronisation des sources : ${result.name}');
      }
@@ -247,7 +248,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +      if (pending is! Map || pending['box'] is! List) return;
 +      final commands =
 +          (pending['box'] as List)
-+              .whereType<Map>()
++              .whereType<Map<Object?, Object?>>()
 +              .where(
 +                (item) => item['id'] is int && (item['id'] as int) > cursor,
 +              )
@@ -283,7 +284,11 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 
 +  /// Accusé du protocole réellement déployé (box_orders), sans identifiants
 +  /// fournisseur. Un HTTP 200 contenant une erreur par ordre reste un refus.
-+  Future<bool> _ack(String mac, List<Map<String, Object?>> orders) async {
++  Future<bool> _ack(
++    String mac,
++    List<Map<String, Object?>> orders, {
++    Set<String>? terminal,
++  }) async {
 +    if (orders.isEmpty) return true;
 +    final http.Client client = clientFactory();
 +    try {
@@ -298,19 +303,26 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +      final Object? decoded = jsonDecode(response.body);
 +      if (decoded is! Map || decoded['results'] is! List) return false;
 +      final List<dynamic> results = decoded['results'] as List<dynamic>;
-+      return orders.every(
-+        (order) => results.any(
-+          (result) =>
-+              result is Map &&
-+              result['order_id'] == order['order_id'] &&
-+              result['status'] == 200 &&
-+              result['error'] == null &&
-+              (result['state'] == order['state'] ||
-+                  (order['state'] == 'received' &&
-+                      (result['state'] == 'applied' ||
-+                          result['state'] == 'failed'))),
-+        ),
-+      );
++      for (final order in orders) {
++        final id = order['order_id'];
++        final matches = results.whereType<Map<Object?, Object?>>().where(
++          (row) => row['order_id'] == id,
++        );
++        if (matches.length != 1) return false;
++        final row = matches.single;
++        if (row['status'] != 200 || row['error'] != null) return false;
++        final state = row['state'];
++        if (order['state'] == 'received' &&
++            (state == 'applied' || state == 'failed')) {
++          terminal?.add(id as String);
++          continue;
++        }
++        // Le Worker accepte encore un accusé final après expiration, mais le
++        // premier accusé « reçu » laisse cet ordre dans l'état « expired ».
++        if (order['state'] == 'received' && state == 'expired') continue;
++        if (state != order['state']) return false;
++      }
++      return true;
 +    } catch (_) {
 +      return false;
 +    } finally {
@@ -339,6 +351,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +    }
 +    final int received = DateTime.now().millisecondsSinceEpoch;
 +    String version = '';
++    final terminal = <String>{};
 +    if (tracked.isNotEmpty) {
 +      try {
 +        version = (await PackageInfo.fromPlatform()).version;
@@ -351,15 +364,17 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +            'received_at': received,
 +            'app_version': version,
 +          },
-+      ]);
++      ], terminal: terminal);
 +      if (!receivedOk) throw StateError('réception non confirmée');
++      tracked.removeWhere((order) => terminal.contains(order['order_id']));
 +    }
 +    try {
 +      final List<dynamic> commands = body is Map && body['box'] is List
 +          ? body['box'] as List<dynamic>
 +          : <dynamic>[];
 +      final Set<String> kinds = commands
-+          .whereType<Map>()
++          .whereType<Map<Object?, Object?>>()
++          .where((item) => !terminal.contains(item['order_id']))
 +          .map((item) => '${item['kind'] ?? ''}')
 +          .toSet();
 +      const statusKinds = <String>{
@@ -413,6 +428,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +            await DefaultServersApi.fetch(forceRefresh: true, strict: true);
 +            break;
 +          case 'force_update':
++            if (kIsPlayBuild) break;
 +            await ForceUpdateChecker.instance.mustUpdate(strict: true);
 +            ForceUpdateChecker.instance.requestRecheck();
 +            break;
@@ -421,6 +437,8 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +      const sourceKinds = <String>{'source', 'source_clear'};
 +      final restricted = SubscriptionState.instance.remote.shouldBlock;
 +      String? rejection(Object? kind) {
++        if (kind == 'force_update' && kIsPlayBuild)
++          return 'update_managed_by_play';
 +        if (sourceKinds.contains(kind) && restricted)
 +          return 'source_access_restricted';
 +        if (!statusKinds.contains(kind) && !configKinds.contains(kind))
@@ -433,9 +451,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +          RemoteSourceRepository.lastConfigRev == null) {
 +        throw StateError('révision des listes non appliquée');
 +      }
-+      if (commands.any(
-+        (dynamic item) => item is Map && item['kind'] == 'message',
-+      )) {
++      if (kinds.contains('message')) {
 +        await AnnouncementRepository.refreshFromPanel();
 +      }
 +      if (gen != _generation || await DeviceIdentity.instance.mac != mac) {
@@ -452,7 +468,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
 +            if (rejection(item['kind']) == null)
 +              'result': 'refreshed'
 +            else
-+              'error': rejection(item['kind']),
++              'error_code': rejection(item['kind']),
 +            if (!restricted &&
 +                sourceKinds.contains(item['kind']) &&
 +                RemoteSourceRepository.lastConfigRev != null)
@@ -470,7 +486,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
    /// À appeler une fois au démarrage du téléphone.
    Future<void> install() async {
      if (_installed) return;
-@@ -145,6 +439,7 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -145,6 +455,7 @@ class PanelLiveWait with WidgetsBindingObserver {
 
    void start() {
      if (_running) return;
@@ -478,7 +494,15 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab
      _running = true;
      final int gen = ++_generation;
      unawaited(_loop(gen));
-@@ -187,76 +482,40 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -159,7 +470,6 @@ class PanelLiveWait with WidgetsBindingObserver {
+
+   /// Relecture unique : un ordre pendant une relecture en relance une
+   /// seule après, jamais deux en parallèle.
+-  @visibleForTesting
+   Future<void> trigger() {
+     final Future<void>? running = _syncing;
+     if (running != null) {
+@@ -187,76 +497,40 @@ class PanelLiveWait with WidgetsBindingObserver {
    }
 
    Future<void> _loop(int gen) async {
@@ -1728,7 +1752,7 @@ index 8cfa08dccf8e8f56d18ae97dc3426d22a6d93022..d290eab7eb3913081cb63a18e30b881f
      notifyListeners();
    }
 diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
-index f1b500b92c8776bd8429de789bf2cca6b4110007..dc33cbae029170da1b4c6d0f0ab47f1d4d13650d 100644
+index f1b500b92c8776bd8429de789bf2cca6b4110007..477865a6c3ca7a907f3cd72cf142c9934c70d90f 100644
 --- a/lib/features/simple_home/presentation/simple_home_screen.dart
 +++ b/lib/features/simple_home/presentation/simple_home_screen.dart
 @@ -27,6 +27,9 @@ import 'package:flutter/material.dart';
@@ -1772,17 +1796,35 @@ index f1b500b92c8776bd8429de789bf2cca6b4110007..dc33cbae029170da1b4c6d0f0ab47f1d
                                ],
                              ),
                            ),
-@@ -347,10 +354,14 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
-           // « Invité ou code perso ? » — le tout premier choix d'une nouvelle
-           // install : soit on a été invité par un ami (mode invité), soit on a
-           // son propre identifiant à activer (les blocs ci-dessous).
+@@ -319,11 +326,7 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+     );
+   }
+
+-  // ----- Accueil VIDE : activation par code MAC uniquement -----
+-  //  Le client ne saisit RIEN (ni M3U, ni serveur, ni identifiant). Il
+-  //  voit son code, l'envoie au revendeur, puis « Vérifier mon
+-  //  abonnement » charge la source poussée. Au succès, le StreamBuilder
+-  //  se reconstruit tout seul et révèle la liste des catégories.
++  // Accueil vide : sources personnelles sur Play, activation sur l’APK direct.
+   Widget _buildActivationEntry(BuildContext context) {
+     return SingleChildScrollView(
+       physics: const BouncingScrollPhysics(),
+@@ -344,13 +347,16 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+             ),
+           ),
+           const SizedBox(height: 24),
+-          // « Invité ou code perso ? » — le tout premier choix d'une nouvelle
+-          // install : soit on a été invité par un ami (mode invité), soit on a
+-          // son propre identifiant à activer (les blocs ci-dessous).
 -          _GuestEntryCard(onTap: () => openGuestScreen(context)),
 -          const SizedBox(height: 22),
 -          const RadioEntry(),
 -          const MacActivationView(),
-+          if (kIsPlayBuild)
-+            const FreePlayerSources()
-+          else ...<Widget>[
++          if (kIsPlayBuild) ...<Widget>[
++            const FreePlayerSources(),
++            const SizedBox(height: 22),
++            const RadioEntry(),
++          ] else ...<Widget>[
 +            _GuestEntryCard(onTap: () => openGuestScreen(context)),
 +            const SizedBox(height: 22),
 +            const RadioEntry(),
@@ -1791,7 +1833,7 @@ index f1b500b92c8776bd8429de789bf2cca6b4110007..dc33cbae029170da1b4c6d0f0ab47f1d
            const SizedBox(height: 14),
            const LegalDisclaimer.compact(),
          ],
-@@ -517,7 +528,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
+@@ -517,7 +523,9 @@ class _SimpleHomeScreenState extends State<SimpleHomeScreen> {
            MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
          ),
        ),
@@ -2330,10 +2372,10 @@ index 0000000000000000000000000000000000000000..905cec0293b302948acf9903a8acfe5c
 +}
 diff --git a/test/free_play/panel_roundtrip_test.dart b/test/free_play/panel_roundtrip_test.dart
 new file mode 100644
-index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2beb3b7ad32
+index 0000000000000000000000000000000000000000..ae1b6d89f33b2f170b8ae7e55ac43475ee937858
 --- /dev/null
 +++ b/test/free_play/panel_roundtrip_test.dart
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,267 @@
 +import 'dart:convert';
 +
 +import 'package:flutter/services.dart';
@@ -2382,6 +2424,7 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +    });
 +    final calls = <String>[];
 +    bool rejectFirst = true;
++    bool forceFailed = false;
 +    bool frozen = false;
 +    final body0 = {'id': 1, 'kind': 'source', 'order_id': 'ord_00000001'};
 +    final body1 = {'id': 2, 'kind': 'suspend', 'order_id': 'ord_00000002'};
@@ -2391,7 +2434,7 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +      final path = request.url.path;
 +      if (path == '/api/device-proof') return reply({'ok': true});
 +      if (path == '/api/heartbeat') {
-+        final body = jsonDecode(request.body) as Map;
++        final body = jsonDecode(request.body) as Map<String, dynamic>;
 +        expect(body['mac'], mac);
 +        expect(body['platform'], 'mobile');
 +        expect(body['store'], const bool.fromEnvironment('PLAY_BUILD'));
@@ -2404,7 +2447,7 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +      }
 +      if (path == '/api/device-source/$mac') {
 +        calls.add('sources');
-+        return reply({'rev': 9, 'sources': [], 'source': null});
++        return reply({'rev': 9, 'sources': <Object?>[], 'source': null});
 +      }
 +      if (path == '/api/box/wait/$mac') {
 +        calls.add('replay');
@@ -2416,9 +2459,10 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +      if (path == '/api/box/ack/$mac') {
 +        expect(request.headers['X-Device-Secret'], isNotEmpty);
 +        final acknowledgements =
-+            (jsonDecode(request.body) as Map)['orders'] as List;
++            (jsonDecode(request.body) as Map<String, dynamic>)['orders']
++                as List;
 +        final results = <Object>[];
-+        for (final ack in acknowledgements.cast<Map>()) {
++        for (final ack in acknowledgements.cast<Map<String, dynamic>>()) {
 +          final id = ack['order_id'];
 +          final status = ack['state'];
 +          final reject = status == 'applied' && rejectFirst;
@@ -2426,6 +2470,21 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +          calls.add('$id:$status:${reject ? 503 : 200}');
 +          if (id == 'ord_00000001' && status == 'applied')
 +            expect(ack['config_rev'], 9);
++          if (id == 'ord_00000006') {
++            if (status == 'failed') {
++              expect(ack['error_code'], 'update_managed_by_play');
++              expect(forceFailed, isFalse);
++              forceFailed = true;
++              return http.Response('', 503); // Le Worker a persisté le refus.
++            }
++            expect(status, 'received');
++            results.add({
++              'order_id': id,
++              'status': 200,
++              'state': forceFailed ? 'failed' : 'expired',
++            });
++            continue;
++          }
 +          results.add({
 +            'order_id': id,
 +            'status': reject ? 503 : 200,
@@ -2439,7 +2498,7 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +
 +    panel.clientFactory = () => MockClient(handler);
 +    await http.runWithClient(() async {
-+      Map<String, dynamic> frame(Map event) => {
++      Map<String, dynamic> frame(Map<String, Object?> event) => {
 +        'mac': mac,
 +        'seq': event['id'],
 +        'type': event['kind'],
@@ -2498,6 +2557,23 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +        (await SharedPreferences.getInstance()).getInt(liveWaitCursorKey(mac)),
 +        5,
 +      );
++      if (const bool.fromEnvironment('PLAY_BUILD')) {
++        final forceUpdate = {
++          'mac': mac,
++          'seq': 6,
++          'type': 'force_update',
++          'order_id': 'ord_00000006',
++        };
++        await expectLater(
++          panel.acceptSocketFrame(forceUpdate),
++          throwsStateError,
++        );
++        expect(await panel.cursorFor(mac), 5);
++        await panel.acceptSocketFrame(forceUpdate);
++        expect(forceFailed, isTrue);
++        expect(await panel.cursorFor(mac), 6);
++        expect(calls, isNot(contains('ord_00000006:applied:200')));
++      }
 +    }, () => MockClient(handler));
 +  });
 +
@@ -2529,7 +2605,8 @@ index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2be
 +        if (r.url.path == '/api/device-proof') return http.Response('{}', 200);
 +        if (r.method == 'GET')
 +          return http.Response(jsonEncode({'box': orders}), 200);
-+        final rows = (jsonDecode(r.body)['orders'] as List).cast<Map>();
++        final rows = (jsonDecode(r.body)['orders'] as List)
++            .cast<Map<String, dynamic>>();
 +        batches.add(rows.length);
 +        expect(rows.length, lessThanOrEqualTo(20));
 +        return http.Response(
