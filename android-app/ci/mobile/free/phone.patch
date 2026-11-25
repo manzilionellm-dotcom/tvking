@@ -61,7 +61,7 @@ index 71522773b7c88b102bc0e49b4f3d9e822e6c8665..2b76e6b5aa50500745bf09d70d0f0fb3
    });
 
 diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
-index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94ab5af78e 100644
+index 303938d3dc4be731b25cef7f413763e1d19ba880..610a90775a4531a7e79236b589b46a4b034b1241 100644
 --- a/lib/core/app/panel_live_wait.dart
 +++ b/lib/core/app/panel_live_wait.dart
 @@ -1,33 +1,8 @@
@@ -136,9 +136,14 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94
    return Duration(seconds: s > 30 ? 30 : s);
  }
 
-@@ -102,8 +89,17 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -101,9 +88,22 @@ class PanelLiveWait with WidgetsBindingObserver {
+   @visibleForTesting
    http.Client Function() clientFactory = http.Client.new;
 
++  /// Cadence du repli à vide, remplaçable dans les tests du cycle réseau.
++  @visibleForTesting
++  Duration pollPeriod = const Duration(seconds: 5);
++
    static Future<void> _defaultOnChange() async {
 +    if (!await SubscriptionState.instance.refreshAfterPanel()) {
 +      throw StateError('statut non confirmé après l’ordre');
@@ -155,7 +160,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94
      // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
      // ce contrôle, une suppression reçue pendant une coupure réseau
      // était marquée « traitée » avant d'avoir été appliquée localement.
-@@ -111,16 +107,330 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -111,16 +111,330 @@ class PanelLiveWait with WidgetsBindingObserver {
          result == RemoteSyncResult.sourceFailed) {
        throw StateError('synchronisation des sources : ${result.name}');
      }
@@ -486,7 +491,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94
    /// À appeler une fois au démarrage du téléphone.
    Future<void> install() async {
      if (_installed) return;
-@@ -145,6 +455,7 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -145,6 +459,7 @@ class PanelLiveWait with WidgetsBindingObserver {
 
    void start() {
      if (_running) return;
@@ -494,7 +499,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94
      _running = true;
      final int gen = ++_generation;
      unawaited(_loop(gen));
-@@ -159,7 +470,6 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -159,7 +474,6 @@ class PanelLiveWait with WidgetsBindingObserver {
 
    /// Relecture unique : un ordre pendant une relecture en relance une
    /// seule après, jamais deux en parallèle.
@@ -502,7 +507,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94
    Future<void> trigger() {
      final Future<void>? running = _syncing;
      if (running != null) {
-@@ -187,76 +497,40 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -187,76 +501,40 @@ class PanelLiveWait with WidgetsBindingObserver {
    }
 
    Future<void> _loop(int gen) async {
@@ -520,7 +525,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..44f20b109b5f3ccf0105aa3a307d6a94
 -        cursorMac = mac;
 -        cursor = 0;
 -        failures = 0;
-+      final DateTime next = DateTime.now().add(const Duration(seconds: 5));
++      final DateTime next = DateTime.now().add(pollPeriod);
 +      if (!socketOnline) {
 +        final http.Client client = clientFactory();
 +        _client = client;
@@ -2157,7 +2162,7 @@ index 6a549608b2d0b339d31278f031337d4f0141fc39..0d08384ef0f7d94ddde988fad2862b16
    "appTagline": "Sinema bila mipaka",
    "navHome": "Mwanzo",
 diff --git a/test/core/app/panel_live_wait_test.dart b/test/core/app/panel_live_wait_test.dart
-index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f99eba08b 100644
+index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..0907b9ad3e25f28d621eb9827e7395ad1cdad8ca 100644
 --- a/test/core/app/panel_live_wait_test.dart
 +++ b/test/core/app/panel_live_wait_test.dart
 @@ -14,6 +14,7 @@ import 'package:http/testing.dart';
@@ -2182,10 +2187,21 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f
        expect(liveWaitBackoff(9), const Duration(seconds: 30));
      });
    });
-@@ -77,6 +78,81 @@ void main() {
+@@ -71,11 +72,90 @@ void main() {
+       DeviceIdentity.instance.debugResetCache();
+       w = PanelLiveWait.instance;
+       w.stop();
++      w.pollPeriod = const Duration(milliseconds: 650);
+       syncs = 0;
+       w.onChange = () async => syncs++;
+     });
 
-     tearDown(() => w.stop());
-
+-    tearDown(() => w.stop());
++    tearDown(() {
++      w.stop();
++      w.pollPeriod = const Duration(seconds: 5);
++    });
++
 +    // Le transport simulé du canal ne couvre pas à lui seul l'enregistrement
 +    // de la preuve HTTP. Tous les autres appels restent aussi dans ce test.
 +    void start() => http.runWithClient(w.start, () => MockClient((r) async {
@@ -2260,11 +2276,10 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f
 +      expect(cursors,<String>['0','0','12']);
 +      expect(syncs,3);
 +    });
-+
+
      test('« Effacer les listes » au panel → relecture immédiate, pas au bout de 60 s', () async {
        final Completer<void> panelClick = Completer<void>();
-       int calls = 0;
-@@ -104,7 +180,7 @@ void main() {
+@@ -104,7 +184,7 @@ void main() {
            200,
          );
        });
@@ -2273,7 +2288,7 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f
        await Future<void>.delayed(const Duration(milliseconds: 100));
        expect(syncs, 0, reason: 'rien tant que le panel n’a rien envoyé');
 
-@@ -163,7 +239,7 @@ void main() {
+@@ -163,7 +243,7 @@ void main() {
            );
          });
 
@@ -2282,7 +2297,7 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f
          await firstAttempt.future.timeout(const Duration(seconds: 1));
          final SharedPreferences prefs = await SharedPreferences.getInstance();
          expect(
-@@ -171,9 +247,9 @@ void main() {
+@@ -171,9 +251,9 @@ void main() {
            isNull,
            reason: 'recevoir un ordre ne prouve pas son application',
          );
@@ -2294,7 +2309,7 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f
          expect(syncs, 2);
          expect(prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')), 12);
        },
-@@ -208,14 +284,15 @@ void main() {
+@@ -208,14 +288,15 @@ void main() {
            return http.Response('{}', 404);
          });
 
@@ -2313,7 +2328,7 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f
          expect(prefs.getInt(_cursorKey(nextMac)), 1);
          expect(prefs.getInt(_cursorKey(firstMac)), 500);
        },
-@@ -232,7 +309,7 @@ void main() {
+@@ -232,7 +313,7 @@ void main() {
          (http.Request r) async =>
              http.Response('{"box":[{"id":12,"kind":"source_clear"}]}', 200),
        );
@@ -2322,7 +2337,7 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f
        await started.future.timeout(const Duration(seconds: 1));
        w.stop();
        finish.complete();
-@@ -246,17 +323,17 @@ void main() {
+@@ -246,17 +327,17 @@ void main() {
      });
 
      test(
