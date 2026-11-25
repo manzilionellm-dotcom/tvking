@@ -29,6 +29,10 @@ class PhoneVideoPlayer extends PlatformPlayer {
   int _width = 0;
   int _height = 0;
 
+  // Les flux anamorphiques ont deux grandeurs distinctes : la taille décodée
+  // sert aux statistiques, le rapport d'affichage garde les bonnes proportions.
+  final displayAspect = ValueNotifier<double?>(null);
+
   Future<void> attach(int id) async {
     if (_closed) return;
     final channel = MethodChannel('novatube_video/$id');
@@ -75,6 +79,7 @@ class PhoneVideoPlayer extends PlatformPlayer {
     firstFrame = false;
     recovering = false;
     _width = _height = 0;
+    displayAspect.value = null;
     audioWithoutVideo = false;
     _paused = !play;
     state = PlayerState(
@@ -128,6 +133,19 @@ class PhoneVideoPlayer extends PlatformPlayer {
       case 'engineExhausted':
         recovering = false;
         errorController.add('Video decoder exhausted');
+      case 'phoneVideoGeometry':
+        if (value is Map) {
+          final width = value['width'];
+          final height = value['height'];
+          final pixelRatio = value['pixelRatio'];
+          if (width is int && width > 0 && height is int && height > 0) {
+            final scale =
+                pixelRatio is num && pixelRatio.isFinite && pixelRatio > 0
+                ? pixelRatio.toDouble()
+                : 1.0;
+            displayAspect.value = width * scale / height;
+          }
+        }
       case 'videoSize':
       case 'videoFormat':
         if (value is Map) {
@@ -135,6 +153,8 @@ class PhoneVideoPlayer extends PlatformPlayer {
           _height = (value['height'] as num?)?.toInt() ?? 0;
           if (firstFrame) _publishSize();
         }
+      case 'videoQualityReset':
+        displayAspect.value = null;
       case 'tracks':
         if (value is List) _tracks(value);
       case 'cues':
@@ -280,9 +300,11 @@ class PhoneVideoPlayer extends PlatformPlayer {
 
   @override
   Future<void> stop() async {
+    if (_closed) return;
     _epoch++;
     _pending = null;
     _nextMime = null;
+    displayAspect.value = null;
     recovering = false;
     _paused = true;
     await _channel?.invokeMethod<void>('silence');
@@ -304,6 +326,7 @@ class PhoneVideoPlayer extends PlatformPlayer {
     } on MissingPluginException {
       // La destruction par Flutter a déjà libéré cette vue Android.
     } finally {
+      displayAspect.dispose();
       await super.dispose();
     }
   }
@@ -349,17 +372,14 @@ class PhoneVideoSurface extends StatelessWidget {
         return controller;
       },
     );
-    return StreamBuilder<int?>(
-      stream: player.stream.height,
-      builder: (context, _) => LayoutBuilder(
+    return ValueListenableBuilder<double?>(
+      valueListenable: player.displayAspect,
+      builder: (context, decodedAspect, _) => LayoutBuilder(
         builder: (context, box) {
-          final width = player.state.width ?? 0;
-          final height = player.state.height ?? 0;
           final ratio =
               aspect ??
-              (width > 0 && height > 0
-                  ? width / height
-                  : box.maxWidth / box.maxHeight);
+              decodedAspect ??
+              (box.maxHeight > 0 ? box.maxWidth / box.maxHeight : 1.0);
           return Stack(
             fit: StackFit.expand,
             children: [

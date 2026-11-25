@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import struct
 import wave
 import zipfile
@@ -51,6 +52,13 @@ def audit(path, store=False):
     if "android.permission.POST_NOTIFICATIONS" not in permissions:
         errors.append("Permission des notifications absente")
     if store:
+        expected_admob = os.environ.get("SEVEN_ADMOB_APP_ID", "").strip()
+        # L'APK universel est extrait de l'AAB signé, après la fusion des manifests.
+        metadata = [item.get(ANDROID + "value") for item in root.findall("application/meta-data")
+                    if item.get(ANDROID + "name") == "com.google.android.gms.ads.APPLICATION_ID"]
+        expected_metadata = [expected_admob] if expected_admob else []
+        if metadata != expected_metadata:
+            errors.append("Configuration AdMob embarquée différente de la configuration de livraison")
         for permission in sorted(FORBIDDEN_PLAY):
             if "android.permission." + permission in permissions:
                 errors.append("Permission retirée de la version Play encore présente : " + permission)
