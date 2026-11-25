@@ -605,14 +605,12 @@ jobs:
           sed -i 's/^val kBoxMinSdk = 21$/val kBoxMinSdk = 24/' android/app/build.gradle.kts
           grep -q '^val kBoxMinSdk = 24$' android/app/build.gradle.kts \
             || { echo "❌ minSdk 24 non posé pour l'AAB Play"; exit 1; }
-          python3 ci/play_editions/install_mobile_ads.py
-          python3 ci/play_editions/branding/apply.py
           flutter build appbundle --release --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
             --build-number="$PLAY_VERSION_CODE" \
             --build-name="$PLAY_VERSION_NAME" \
             --obfuscate --split-debug-info=build/symbols-aab \
-            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true \
+            --dart-define=PLAY_BUILD=true \
             --dart-define=APP_BUILD_TS="$TV_BUILD_NUMBER" \
             --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
             --target=lib/main_tv.dart
