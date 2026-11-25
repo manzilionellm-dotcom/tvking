@@ -439,6 +439,11 @@ jobs:
       run: |
         set -e
         cp ci/proguard-rules.pro android/app/proguard-rules.pro
+        # Room retrouve cette classe et son constructeur par réflexion au démarrage de WorkManager.
+        cat >> android/app/proguard-rules.pro <<'PROGUARD'
+        -keepnames class androidx.work.impl.WorkDatabase
+        -keep class androidx.work.impl.WorkDatabase_Impl { public <init>(); }
+        PROGUARD
         python3 << 'PYEOF'
         f = "android/app/build.gradle.kts"
         s = open(f).read()
@@ -546,6 +551,7 @@ jobs:
         PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         [ "$PKG" = "com.manzilionellm.tvking.tv_king" ]
+        bash ../mission/android-app/ci/mobile/verify_work_database.sh "$APK" --if-present
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py "$APK"
         for TAG in 7motion-test phone-latest; do
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 7motion.apk -O "$RUNNER_TEMP/previous-$TAG.apk"
@@ -565,8 +571,8 @@ jobs:
       id: play_build
       if: ${{ inputs.play_aab }}
       env:
-        SEVEN_ADMOB_APP_ID: ${{ vars.SEVEN_ADMOB_APP_ID }}
-        SEVEN_ADMOB_BANNER_ID: ${{ vars.SEVEN_ADMOB_BANNER_ID }}
+        SEVEN_ADMOB_APP_ID: 'ca-app-pub-3909645366985922~6550717938'
+        SEVEN_ADMOB_BANNER_ID: 'ca-app-pub-3909645366985922/1669800033'
         KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -575,6 +581,8 @@ jobs:
         # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
         python3 ../mission/android-app/ci/mobile/prepare_play.py
         bash ../mission/android-app/ci/mobile/free/prepare-sources.sh
+        : "${SEVEN_ADMOB_APP_ID:?Configurer l’application de production dans AdMob}"
+        : "${SEVEN_ADMOB_BANNER_ID:?Configurer la bannière de production dans AdMob}"
         python3 ../mission/android-app/ci/mobile/free/ads/prepare_ads.py android
         flutter gen-l10n
         flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -584,7 +592,7 @@ jobs:
         # PHONE_VERSION_CODE est déjà vérifié supérieur aux versions publiées.
         PLAY_VERSION_CODE="$PHONE_VERSION_CODE"
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PLAY_VERSION_CODE" --build-name=0.4.1 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.4.4 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
@@ -609,6 +617,7 @@ jobs:
           --ks=android/app/release.jks --ks-pass="file:$PLAY_PASS_DIR/store.pass" \
           --ks-key-alias="${KS_ALIAS:-sevenmotion}" --key-pass="file:$PLAY_PASS_DIR/key.pass"
         unzip -p build/play-review/7motion.apks universal.apk > build/play-review/7motion-play.apk
+        bash ../mission/android-app/ci/mobile/verify_work_database.sh build/play-review/7motion-play.apk --if-present
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py \
           build/play-review/7motion-play.apk --play | tee build/play-review/native-audit.json
         python3 - "$PLAY_VERSION_CODE" <<'PLAYCODE'
@@ -623,6 +632,12 @@ jobs:
         actual=subprocess.check_output(["git", "-C", "../mission", "rev-parse", "HEAD"], text=True).strip()
         assert actual == source, "Commit reconstruit différent du lancement"
         bundle=Path("build/play-review/7motion.aab")
+        assert report["versionName"] == "0.4.4" and report["package"] == "com.manzilionellm.tvking"
+        cert=subprocess.check_output(["keytool","-J-Duser.language=en","-printcert","-jarfile",str(bundle)],text=True)
+        expected_cert="51:45:B8:E0:19:F6:D5:FB:96:A2:07:F2:E7:36:73:FD:95:4F:79:99:66:FD:59:88:89:21:15:56:CB:DF:9E:61"
+        assert re.findall(r"^\s*SHA256: (\S+)",cert,re.M)==[expected_cert], "Certificat AAB différent de la livraison officielle"
+        verified=subprocess.check_output(["jarsigner","-J-Duser.language=en","-verify",str(bundle)],text=True)
+        assert "jar verified." in verified and "unsigned entries" not in verified, "Signature AAB incomplète"
         # Vérifier les deux logos réellement embarqués, pas seulement leur source.
         reference_decoder={
             "base/lib/arm64-v8a/libffmpegJNI.so": "47247da50df2a92976cf792421c1ed63507e4197cb29c9c36d5981c1c79f2525",
@@ -653,6 +668,7 @@ jobs:
             "package": report["package"], "versionCode": int(report["versionCode"]),
             "versionName": report["versionName"], "targetSdk": int(report["targetSdk"]),
             "aabSha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+            "uploadCertificateSha256": expected_cert,
             "logos": logos,
         }
         Path("build/play-review/build-provenance.json").write_text(json.dumps(proof, indent=2)+"\n")

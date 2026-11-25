@@ -3,6 +3,8 @@
 set -euo pipefail
 flutter test --no-pub --reporter expanded --dart-define=PLAY_BUILD=true \
   test/free_play \
+  test/core/app/boot_without_optional_plugins_test.dart \
+  test/core/observability/early_diagnostics_test.dart \
   test/core/playback/stream_slot_test.dart \
   test/features/channels/channel_metadata_isolate_test.dart \
   test/features/device/device_identity_adopt_test.dart \

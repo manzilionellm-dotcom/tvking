@@ -24,8 +24,8 @@ test('7 MOTION : le bundle et ses tests utilisent la même recette mobile revue'
     assert.ok(workflow.includes('prepare_novatube_video.py'));
     assert.ok(workflow.includes('prepare-reviewed-source.sh ../mobile-reviewed'));
   }
-  assert.ok(phone.includes('--build-name=0.4.1'));
   const playStep = phone.slice(phone.indexOf('id: play_build'));
+  assert.ok(playStep.includes('--build-name=0.4.4'));
   assert.ok(playStep.includes('free/prepare-sources.sh'));
   assert.ok(playStep.includes('free/ads/prepare_ads.py android'));
   assert.ok(!phone.slice(0, phone.indexOf('id: play_build')).includes('free/prepare-sources.sh'));

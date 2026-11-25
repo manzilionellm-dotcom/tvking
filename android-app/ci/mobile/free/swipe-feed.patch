@@ -1,0 +1,1048 @@
+diff --git a/lib/features/player/data/feed_lookahead.dart b/lib/features/player/data/feed_lookahead.dart
+new file mode 100644
+index 0000000..5957e54
+--- /dev/null
++++ b/lib/features/player/data/feed_lookahead.dart
+@@ -0,0 +1,204 @@
++import 'dart:async';
++import 'dart:io';
++
++/// At most two prospective TS connections, each paused after its first 256 KiB.
++/// Promotion continues the SAME HTTP response, including the buffered prefix.
++class FeedLookahead {
++  FeedLookahead({this.onExpire});
++  final void Function()? onExpire;
++  final Map<String, PreparedTransport> _entries = {};
++  static const maxItems = 2;
++
++  void update(Iterable<String> urls, String userAgent) {
++    final desired = urls.toSet().take(maxItems).toSet();
++    for (final url in _entries.keys.toList()) {
++      if (!desired.contains(url)) _entries.remove(url)?.close();
++    }
++    for (final url in desired) {
++      if (_entries.containsKey(url)) continue;
++      final item = PreparedTransport();
++      _entries[url] = item;
++      item.start(url, userAgent, () {
++        if (identical(_entries[url], item)) _entries.remove(url);
++      }, onExpire: onExpire);
++    }
++  }
++
++  void retainOnly(String url) {
++    for (final other in _entries.keys.where((key) => key != url).toList()) {
++      _entries.remove(other)?.close();
++    }
++  }
++
++  bool ready(String url) => _entries[url]?.ready == true;
++  PreparedTransport? take(String url) {
++    final item = _entries.remove(url);
++    if (item?.ready == true) {
++      item!.claim();
++      return item;
++    }
++    item?.close();
++    return null;
++  }
++
++  void clear() => update(const [], '');
++}
++
++class PreparedTransport {
++  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
++  final List<List<int>> _prefix = [];
++  StreamSubscription<List<int>>? _upstream;
++  StreamController<List<int>>? _downstream;
++  Timer? _expiry;
++  int _bytes = 0;
++  bool _closed = false;
++  bool _ended = false;
++  bool ready = false;
++  bool consumed = false;
++
++  Future<void> start(String url, String ua, void Function() evict,
++      {void Function()? onExpire}) async {
++    void abandon() {
++      close();
++      evict();
++    }
++
++    _expiry = Timer(const Duration(seconds: 12), () {
++      abandon();
++      onExpire?.call();
++    });
++    try {
++      _client.autoUncompress = false;
++      _client.userAgent = ua;
++      final req = await _client.getUrl(Uri.parse(url));
++      final res = await req.close();
++      var address = Uri.parse(url);
++      for (final hop in res.redirects) {
++        address = address.resolveUri(hop.location);
++      }
++      final mime = res.headers.contentType?.mimeType ?? '';
++      if (_closed ||
++          res.statusCode != 200 ||
++          mime.startsWith('text/') ||
++          address.pathSegments.lastOrNull?.toLowerCase() == 'black.ts') {
++        abandon();
++        return;
++      }
++      _upstream = res.listen((chunk) {
++        if (_closed) return;
++        final sink = _downstream;
++        if (sink != null && sink.hasListener) {
++          sink.add(chunk);
++          return;
++        }
++        _prefix.add(chunk);
++        _bytes += chunk.length;
++        // Promote a slow live connection as soon as three MPEG-TS packets
++        // are visible, even while the remainder of the prefix is arriving.
++        if (!ready && _bytes >= 564) {
++          final probe = _prefix.expand((part) => part).take(564).toList();
++          for (var i = 0; i < 188; i++) {
++            if (probe[i] == 0x47 &&
++                probe[i + 188] == 0x47 &&
++                probe[i + 376] == 0x47) {
++              ready = true;
++              break;
++            }
++          }
++          if (!ready) {
++            abandon();
++            return;
++          }
++        }
++        if (_bytes >= 256 * 1024) _upstream?.pause();
++      }, onError: (Object error, StackTrace stack) {
++        _downstream?.addError(error, stack);
++        abandon();
++      }, onDone: () {
++        _ended = true;
++        if (!ready) {
++          abandon();
++          return;
++        }
++        if (_downstream?.hasListener == true) unawaited(_downstream!.close());
++      });
++    } catch (_) {
++      abandon();
++    }
++  }
++
++  void claim() {
++    _expiry?.cancel();
++  }
++
++  Stream<List<int>> consume() {
++    if (consumed || _closed)
++      throw StateError('Prepared transport already closed or transferred');
++    consumed = true;
++    final sink = _downstream = StreamController<List<int>>();
++    sink.onListen = () {
++      for (final part in _prefix) {
++        sink.add(part);
++      }
++      _prefix.clear();
++      if (_ended) {
++        unawaited(sink.close());
++      } else if (_upstream?.isPaused == true) {
++        _upstream!.resume();
++      }
++    };
++    sink.onPause = () => _upstream?.pause();
++    sink.onResume = () => _upstream?.resume();
++    sink.onCancel = close;
++    return sink.stream;
++  }
++
++  void close() {
++    if (_closed) return;
++    _closed = true;
++    ready = false;
++    _expiry?.cancel();
++    _client.close(force: true);
++    unawaited(_upstream?.cancel());
++    _prefix.clear();
++    final sink = _downstream;
++    if (sink != null && !sink.isClosed) unawaited(sink.close());
++  }
++}
++
++int feedConnectionBudget(Uri uri,
++    {required bool isXtream,
++    String? sourceUser,
++    String? host,
++    String? accountUser,
++    DateTime? checkedAt,
++    String? status,
++    int? activeConnections,
++    int? maxConnections,
++    required DateTime now}) {
++  final credentialPath = uri.pathSegments;
++  final accountLike = isXtream ||
++      uri.userInfo.isNotEmpty ||
++      uri.queryParameters.containsKey('username') ||
++      uri.queryParameters.containsKey('password') ||
++      (credentialPath.length >= 3 &&
++          const {'live', 'movie', 'series'}.contains(credentialPath.first)) ||
++      (credentialPath.length == 3 &&
++          RegExp(r'^\d+(?:\.\w+)?$').hasMatch(credentialPath.last)) ||
++      host == uri.host;
++  if (!accountLike) return 2;
++  final checked = checkedAt;
++  final user = accountUser;
++  if (checked == null ||
++      now.difference(checked) > const Duration(seconds: 30) ||
++      status?.toLowerCase() != 'active' ||
++      host != uri.host ||
++      user == null ||
++      user.isEmpty ||
++      !(uri.pathSegments.contains(user) ||
++          uri.queryParameters['username'] == user) ||
++      (isXtream && sourceUser != user)) return 0;
++  final occupied = activeConnections;
++  if (occupied == null) return 0;
++  return ((maxConnections ?? 0) - (occupied < 1 ? 1 : occupied)).clamp(0, 2);
++}
+diff --git a/lib/features/player/data/local_stream_relay.dart b/lib/features/player/data/local_stream_relay.dart
+index e74005b..d272947 100644
+--- a/lib/features/player/data/local_stream_relay.dart
++++ b/lib/features/player/data/local_stream_relay.dart
+@@ -49,6 +49,7 @@
+ import '../../recordings/data/bounded_recording_writer.dart';
+ 
+ import 'dart:async';
++import 'feed_lookahead.dart';
+ import 'dart:convert';
+ import 'dart:io';
+ import 'dart:math';
+@@ -334,6 +335,18 @@ class LocalStreamRelay {
+   /// NORMALISE (HlsPlaylistNormalizer) et la sert avec le bon
+   /// Content-Type. Les SEGMENTS restent en DIRECT vers le CDN (URIs
+   /// absolues) — seul le petit document texte transite ici.
++  Future<String> previewHlsUrl(String url) async {
++    await _ensureServer();
++    return 'http://127.0.0.1:$_port/hls?u=${Uri.encodeComponent(url)}';
++  }
++
++  void adoptPrepared(String url, PreparedTransport transport) {
++    if (_currentPlaybackUrl != url) { transport.close(); return; }
++    final session = _ensureSession(url);
++    if (session.upstreamActive || session.prepared != null) { transport.close(); return; }
++    session.prepared = transport;
++  }
++
+   Future<String> hlsPlaylistUrlFor(String realUrl,
+       {bool Function()? isCancelled}) async {
+     void checkCurrent() {
+@@ -835,6 +848,13 @@ class LocalStreamRelay {
+     //  pour une session. On numérote chaque tentative ; seule la
+     //  connexion de la génération COURANTE a le droit de s'attacher.
+     final int gen = ++session.connectGeneration;
++    final warm = session.prepared;
++    if (warm != null && warm.ready && !warm.consumed) {
++      session.aligner = TsSyncAligner();
++      session.ring.clear();
++      _attachUpstreamListener(session, warm.consume());
++      return;
++    }
+     final HttpClientResponse? resp =
+         await _openUpstream(session, session.realUrl);
+     if (gen != session.connectGeneration) {
+@@ -1185,7 +1205,7 @@ class LocalStreamRelay {
+ 
+   void _attachUpstreamListener(
+     _RelaySession session,
+-    HttpClientResponse resp,
++    Stream<List<int>> resp,
+   ) {
+     _armStallWatch(session);
+     session.sub = resp.listen(
+@@ -1421,6 +1441,8 @@ class LocalStreamRelay {
+   void _closeSession(_RelaySession session) {
+     if (session.closed) return;
+     session.closed = true;
++    session.prepared?.close();
++    session.prepared = null;
+     // Une réponse tardive de ce client ne peut plus reprendre le registre.
+     ++session.connectGeneration;
+     session.lingerTimer?.cancel();
+@@ -1507,6 +1529,7 @@ class _RelaySession {
+   /// Numéro de la tentative de connexion amont en cours ; une réponse
+   /// d'une tentative plus ancienne est jetée (voir _connectUpstream).
+   bool closed = false;
++  PreparedTransport? prepared;
+   int connectGeneration = 0;
+ 
+   /// `true` si la dernière réponse amont était une PAGE (HTML/texte/JSON)
+diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
+index 3069ca7..d440832 100644
+--- a/lib/features/player/presentation/video_player_screen.dart
++++ b/lib/features/player/presentation/video_player_screen.dart
+@@ -68,6 +68,7 @@ import '../../vod/data/playback_position_repository.dart';
+ import '../../vod/domain/resume_start.dart';
+ import '../../vod/data/vod_download_service.dart';
+ import '../data/hls_preflight.dart';
++import '../data/feed_lookahead.dart';
+ import '../data/local_stream_relay.dart';
+ import '../data/pip_service.dart';
+ import '../data/audio_passthrough.dart';
+@@ -919,6 +920,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   void _onSlotRevoked() {
+     if (_slotRevoked || _disposing) return;
+     _slotRevoked = true;
++    _clearFeed();
+     _nextOpenGeneration();
+     _playbackTerminated = true;
+     _playbackEvidence.revoke();
+@@ -1090,12 +1092,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // Media3 invalide l'epoch, arrête et vide son média sur « silence ».
+     // Son setUrl réutilise ensuite la Surface et ignore les anciens callbacks.
+     // mpv conserve son recyclage complet contre les fuites de sockets FFmpeg.
+-    // Un PageView tactile déplace la vidéo d'une page à l'autre : sa
+-    // nouvelle AndroidView exige son propre canal, même pour deux directs.
+-    final reuse = stopConfirmed && _openedViaStreamRelay && _screenActive &&
+-        _zapPageController == null && !_audioOnly && !CastManager.instance.isCasting &&
+-        native != null && !native.vod && widget.overrideUrl == null &&
+-        _currentChannel.isLive && _useNativeVideo;
++    // La surface tactile reste montée à côté du pagineur pendant le swipe.
++    final reuse = stopConfirmed && (_openedViaStreamRelay || _zapPageController != null) && _screenActive &&
++        !_audioOnly && !CastManager.instance.isCasting &&
++        native != null && native.vod == !_currentChannel.isLive && widget.overrideUrl == null && _useNativeVideo;
+     if (reuse) {
+       _playerOpenedOnce = false;
+       _attachPlayerListeners();
+@@ -1162,12 +1162,80 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Appelé dans build() donc le context est dispo.
+   bool get _isTvUi => DeviceClassRepository.instance.isTvFor(context);
+ 
++  int _feedIndex = -1;
++  int _feedDirection = 1;
++  late final _feedWarm = FeedLookahead(onExpire: () => unawaited(_warmFeed()));
++  Map<String, String> _nativeTargets = {};
++  Map<String, String> _nativeMimes = {};
++  int _feedGeneration = 0;
++
+   int get _zapIndex {
+-    if (widget.zapPlaylist == null) return -1;
+-    return widget.zapPlaylist!
+-        .indexWhere((Channel c) => c.id == _currentChannel.id);
++    final list = widget.zapPlaylist;
++    if (list == null) return -1;
++    if (_feedIndex >= 0 && _feedIndex < list.length && list[_feedIndex].id == _currentChannel.id) return _feedIndex;
++    return _feedIndex = list.indexWhere((c) => c.id == _currentChannel.id);
++  }
++
++  void _clearFeed() {
++    _feedGeneration++;
++    _feedWarm.clear();
++    _nativeTargets.clear();
++    _nativeMimes.clear();
++    unawaited(_phoneVideo?.setLookahead(const {}));
++  }
++
++  int _feedCapacity(Channel channel) {
++    final uri = Uri.tryParse(channel.streamUrl);
++    if (uri == null || !const {'http', 'https'}.contains(uri.scheme)) return 0;
++    final src = StreamBlockedFallback.xtreamPlaylistFor(channel);
++    final diag = StreamDiagnostics.instance;
++    return feedConnectionBudget(uri,
++      isXtream: src != null, sourceUser: src?.xtreamUsername, host: diag.xtreamAccountHost,
++      accountUser: diag.xtreamAccountUser, checkedAt: diag.xtreamCheckedAt, status: diag.xtreamStatus,
++      activeConnections: diag.xtreamActiveCons, maxConnections: diag.xtreamMaxConnections, now: DateTime.now());
++  }
++
++  Future<void> _warmFeed() async {
++    final generation = ++_feedGeneration;
++    final list = widget.zapPlaylist;
++    if (list == null || !_ownsPlayback || _zapPageController == null || _audioOnly ||
++        _userPaused || _isRecording || _shieldBlocked || PrivacyShield.instance.blocksNetworkPlayback ||
++        _hasError || _wasCasting || CastManager.instance.isCasting ||
++        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
++        widget.overrideUrl != null || _playedChannelId != _currentChannel.id) return;
++    final index = _zapIndex;
++    if (index < 0) return;
++    final budget = _feedCapacity(_currentChannel);
++    final ts = <String>[];
++    final native = <String,String>{};
++    final originals = <String,String>{};
++    for (var step=1;step<=budget;step++) {
++      final i = index + step * _feedDirection;
++      if (i<0 || i>=list.length) break;
++      final ch = list[i];
++      if (ch.playlistId != _currentChannel.playlistId || ch.id == _currentChannel.id ||
++          _feedCapacity(ch) < step) continue;
++      final raw = ch.streamUrl;
++      if (HlsPreflight.isHlsUrl(raw) && _phoneVideo != null) {
++        final target = await LocalStreamRelay.instance.previewHlsUrl(raw);
++        if (generation != _feedGeneration || !_ownsPlayback) return;
++        native[target]='application/x-mpegURL'; originals[raw]=target;
++      } else if (!ch.isLive && _phoneVideo != null) {
++        native[raw]=''; originals[raw]=raw;
++      } else if (ch.isLive && !HlsPreflight.isHlsUrl(raw)) {
++        ts.add(raw);
++      }
++    }
++    if (generation != _feedGeneration || !_ownsPlayback) return;
++    _feedWarm.update(ts, PlayerSettings.instance.userAgent);
++    _nativeTargets = originals;
++    _nativeMimes = native;
++    await _phoneVideo?.setLookahead(native);
+   }
+ 
++  @override
++  void didHaveMemoryPressure() => _clearFeed();
++
+   /// Zap à un index donné. Appelé depuis :
+   ///   - les boutons ⏮/⏭ (avec wrap modulo pour la liste circulaire)
+   ///   - la télécommande TV
+@@ -1207,7 +1275,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// Applique réellement le changement de chaîne. Tirée par `_zapTo`
+   /// directement (mode TV) ou par `onPageChanged` du PageView après
+   /// le snap d'un swipe utilisateur.
+-  void _applyZap(int newIndex) {
++  void _applyZap(int newIndex, {bool swipe = false}) {
+     if (widget.zapPlaylist == null) return;
+     final List<Channel> list = widget.zapPlaylist!;
+     if (newIndex < 0 || newIndex >= list.length) return;
+@@ -1216,6 +1284,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // redondant qui re-démarrerait le buffering pour rien).
+     if (next.id == _currentChannel.id) return;
+     if (!_resumeSlotFromUser()) return;
++    _feedDirection = newIndex >= _zapIndex ? 1 : -1;
++    _feedIndex = newIndex;
++    ++_feedGeneration;
++    if (_feedCapacity(next) == 0) {
++      _clearFeed();
++    } else {
++      _feedWarm.retainOnly(next.streamUrl);
++      final keep = _nativeTargets[next.streamUrl];
++      _nativeTargets.removeWhere((raw, _) => raw != next.streamUrl);
++      _nativeMimes.removeWhere((target, _) => target != keep);
++      unawaited(_phoneVideo?.setLookahead(Map.of(_nativeMimes)));
++    }
++    if (swipe) unawaited(_phoneVideo?.beginSwipe(_feedDirection));
+     _fallback.stopRecovery();
+     // Si on enregistre la chaîne qu'on quitte, on clôt proprement
+     // l'enregistrement AVANT de changer : l'enregistrement est lié au
+@@ -1291,7 +1372,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // S3 : la session de métriques de l'ANCIENNE chaîne est résumée
+     // (boîte noire), une neuve démarre pour la chaîne visée.
+     _startStatsSession();
+-    _zapDebounce = Timer(const Duration(milliseconds: 400), () {
++    _zapDebounce = Timer(swipe ? Duration.zero : const Duration(milliseconds: 400), () {
+       _pendingZapChannel = null;
+       if (!mounted || _currentChannel.id != next.id) return;
+       // Seule la chaîne FINALE est rapportée au panel « En ligne »
+@@ -1522,6 +1603,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     // vient de se connecter, on rouvre sans attendre la ronde périodique.
+     if (!isLocal && PrivacyShield.instance.blocksNetworkPlayback) {
+       _shieldBlocked = true;
++      _clearFeed();
+       if (mounted) {
+         setState(() {
+           _hasError = true;
+@@ -1628,7 +1710,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+         await _playerOptionsReady;
+       },
+       waitForSlot: () async {
+-        if (isLocal) return;
++        if (isLocal || (_feedCapacity(_currentChannel) > 0 && _feedWarm.ready(realUrl))) return;
+         // Une sélection plus récente doit pouvoir interrompre immédiatement
+         // le contrôle API de l'ancienne, même si le serveur tarde à répondre.
+         final cancel = Completer<void>();
+@@ -1821,7 +1903,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       // passe l'en-tête Host d'origine pour que le serveur reconnaisse le
+       // vhost. Range/seek natifs conservés (on ne repasse pas par le relais).
+       final (String openUrl, Map<String, String>? headers) =
+-          await _vodDirectTarget(realUrl);
++          _nativeTargets.containsKey(realUrl) && _phoneVideo != null
++          ? (realUrl, null) : await _vodDirectTarget(realUrl);
+       if (_openCancelled(gen) || !_ownsPlayback) return;
+       _beginPlayerOpen();
+       _player.open(Media(openUrl, httpHeaders: headers));
+@@ -1861,6 +1944,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+           realUrl,
+           isCancelled: () => _openCancelled(gen) || !_ownsPlayback);
+       if (_openCancelled(gen) || !_ownsPlayback) return;
++      final warm = _feedWarm.take(realUrl);
++      if (warm != null) LocalStreamRelay.instance.adoptPrepared(realUrl, warm);
+       _beginPlayerOpen(viaStreamRelay: true);
+       _player.open(Media(localUrl));
+     } catch (e) {
+@@ -1939,7 +2024,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// traversées sont ignorées : la sélection a déjà été appliquée au clic.
+   void _onZapPageChanged(int newIndex) {
+     if (_zapAnimating) return;
+-    _applyZap(newIndex);
++    _applyZap(newIndex, swipe: true);
+   }
+ 
+   void _zapNext() => _zapTo(_zapIndex + 1);
+@@ -2008,6 +2093,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       widget.overrideUrl == null && !HlsPreflight.isHlsUrl(_effectiveUrl);
+ 
+   Future<void> _startRecording() async {
++    _clearFeed();
+     if (_recordingBusy || _activeRecording != null) return;
+     _recordingBusy = true;
+     final Channel channel = _currentChannel;
+@@ -2398,6 +2484,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     _wasCasting = engaged;
+     if (!mounted) return;
+     if (engaged) {
++      _clearFeed();
+       // La TV prend le relais → on LIBERE la connexion du telephone
+       // (stop, pas pause) pour ne pas bloquer le slot IPTV unique.
+       _castEndedIdle = false;
+@@ -2450,7 +2537,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   //  precis ou l'on revient sur l'ecran. Jamais en pleine lecture.
+   @override
+   void didChangeAppLifecycleState(AppLifecycleState state) {
+-    if (state != AppLifecycleState.resumed || !_ownsPlayback) return;
++    if (state != AppLifecycleState.resumed) { _clearFeed(); return; }
++    if (!_ownsPlayback) return;
++    unawaited(_warmFeed());
+     unawaited(() async {
+       try {
+         await _player.setAudioDevice(AudioDevice.auto());
+@@ -2469,6 +2558,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+         PipService.instance.onPipControl == _handlePipControl;
+     final List<Object> holds = _downloadHolds.toList(growable: false);
+     _disposing = true;
++    _clearFeed();
+     _nextOpenGeneration();
+     _playbackTerminated = true;
+     _playbackEvidence.revoke();
+@@ -2712,6 +2802,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       return;
+     }
+     if (_player.state.playing) {
++      _clearFeed();
+       _userPaused = true;
+       _player.pause();
+     } else {
+@@ -2846,6 +2937,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     _sawFrame = true;
+     if (_playedChannelId != _currentChannel.id) {
+       _playedChannelId = _currentChannel.id;
++      unawaited(_warmFeed());
+ 
+       // Lecture saine → on réarme les gardes anti-boucle du fallback : un
+       // aller-retour de zap vers cette chaîne re-sondera au lieu de la
+@@ -3008,6 +3100,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+     final bool networkContent = !PrivacyShield.isLocalUrl(_effectiveUrl);
+     if (s.blocksNetworkPlayback && !_shieldBlocked && networkContent) {
+       _shieldBlocked = true;
++      _clearFeed();
+       _nextOpenGeneration();
+       _playbackTerminated = true;
+       _playbackEvidence.revoke();
+@@ -3046,6 +3139,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   String? _lastPlayerError;
+ 
+   Future<void> _declareChannelBlocked() async {
++    _clearFeed();
+     // Parité TV (journal de vol du 19/08) : « format non reconnu » sans
+     // qu'aucune image n'ait été affichée, ce ne sont pas des octets vidéo —
+     // c'est le panel qui répond autre chose (créneau occupé, page d'erreur).
+@@ -3379,6 +3473,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   void _toggleAudioOnly() {
+     if (!_ownsPlayback) return;
+     final bool enabling = !_audioOnly;
++    if (enabling) _clearFeed();
+     setState(() => _audioOnly = enabling);
+     _scheduleHideOverlay();
+     // Mode « Écouteurs » = AUDIO EN ARRIÈRE-PLAN (façon radio). On
+@@ -3625,7 +3720,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+   /// + nom) pour la transition fluide pendant le swipe.
+   Widget _buildTikTokPageView() {
+     final List<Channel> list = widget.zapPlaylist!;
+-    return PageView.builder(
++    final controller = _zapPageController!;
++    final active = _zapIndex;
++    return Stack(fit: StackFit.expand, children: [
++      if (_phoneVideo != null)
++        AnimatedBuilder(
++          animation: controller,
++          child: ListenableBuilder(listenable: PlayerSettings.instance,
++            builder: (_, __) => _nativeSurface(PlayerSettings.instance.aspectMode)),
++          builder: (_, child) => FractionalTranslation(
++            translation: Offset(0, active - (controller.hasClients && controller.position.hasContentDimensions
++                ? controller.page ?? active.toDouble() : active.toDouble())),
++            child: child,
++          ),
++        ),
++      Listener(onPointerDown: (_) => unawaited(_warmFeed()), child: PageView.builder(
+       scrollDirection: Axis.vertical,
+       controller: _zapPageController,
+       // Physics élastique — donne le rebond doux qu'on attend d'un
+@@ -3634,7 +3743,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+       onPageChanged: _onZapPageChanged,
+       itemCount: list.length,
+       itemBuilder: (BuildContext context, int i) {
+-        final bool isCurrent = list[i].id == _currentChannel.id;
++        final bool isCurrent = i == active;
+         return GestureDetector(
+           onTap: _toggleOverlay,
+           child: isCurrent
+@@ -3642,9 +3751,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+               : _ZapPreviewPage(channel: list[i]),
+         );
+       },
+-    );
++    ))]);
+   }
+ 
++  Widget _nativeSurface(AspectRatioMode mode) =>
++      PhoneVideoSurface(key: ValueKey<int>(_playerEpoch), player: _phoneVideo!,
++        fit: _fitFromMode(mode), aspect: _forcedAspect(mode),
++        subtitleStyle: _kSubtitleConfig.style, subtitlePadding: _kSubtitleConfig.padding);
++
+   /// Écran affiché à la place de la vidéo en mode « Écouteurs ».
+   ///
+   /// Fond noir + grosse icône casque + nom de la chaîne. La lecture
+@@ -3732,10 +3846,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
+                 //  En mode audio seul on ne pose PAS le widget `Video` :
+                 //  l'image disparaît mais `_player` continue de jouer le son
+                 //  (façon YouTube). On affiche un fond noir + icône casque.
+-                if (_phoneVideo != null)
+-                  PhoneVideoSurface(key: ValueKey<int>(_playerEpoch),
+-                    player: _phoneVideo!, fit: _fitFromMode(mode), aspect: _forcedAspect(mode),
+-                    subtitleStyle: _kSubtitleConfig.style, subtitlePadding: _kSubtitleConfig.padding),
++                if (_phoneVideo != null && !tikTokZapActif) _nativeSurface(mode),
+                 if (_audioOnly)
+                   _buildAudioOnlyView()
+                 else if (_phoneVideo == null)
+diff --git a/lib/features/vod/presentation/cinema_screen.dart b/lib/features/vod/presentation/cinema_screen.dart
+index 25180f1..f46bd45 100644
+--- a/lib/features/vod/presentation/cinema_screen.dart
++++ b/lib/features/vod/presentation/cinema_screen.dart
+@@ -422,6 +422,7 @@ class _PosterRail extends StatelessWidget {
+             itemCount: movies.length,
+             itemBuilder: (BuildContext context, int i) => _PosterCard(
+               movie: movies[i],
++              feed: movies,
+               progress: progressFor?.call(movies[i]),
+               isNew: newIds.contains(movies[i].id),
+               matchPercent: VodTaste.matchPercent(movies[i],
+@@ -436,11 +437,12 @@ class _PosterRail extends StatelessWidget {
+ 
+ class _PosterCard extends StatelessWidget {
+   const _PosterCard(
+-      {required this.movie,
++      {required this.movie, required this.feed,
+       this.progress,
+       this.isNew = false,
+       this.matchPercent});
+   final VodMovie movie;
++  final List<VodMovie> feed;
+   final double? progress;
+   final bool isNew;
+   final int? matchPercent;
+@@ -454,7 +456,7 @@ class _PosterCard extends StatelessWidget {
+     return GestureDetector(
+       onTap: () => Navigator.of(context).push(
+         MaterialPageRoute<void>(
+-            builder: (_) => MovieDetailScreen(movie: movie)),
++            builder: (_) => MovieDetailScreen(movie: movie, feed: feed)),
+       ),
+       child: Padding(
+         padding: const EdgeInsets.symmetric(horizontal: 4),
+diff --git a/lib/features/vod/presentation/movie_detail_screen.dart b/lib/features/vod/presentation/movie_detail_screen.dart
+index 4aa3825..19a4a20 100644
+--- a/lib/features/vod/presentation/movie_detail_screen.dart
++++ b/lib/features/vod/presentation/movie_detail_screen.dart
+@@ -31,8 +31,9 @@ import '../domain/content_partition.dart';
+ import '../../tv/core/vod_titles.dart';
+ 
+ class MovieDetailScreen extends StatefulWidget {
+-  const MovieDetailScreen({super.key, required this.movie});
++  const MovieDetailScreen({super.key, required this.movie, this.feed = const []});
+   final VodMovie movie;
++  final List<VodMovie> feed;
+ 
+   @override
+   State<MovieDetailScreen> createState() => _MovieDetailScreenState();
+@@ -114,22 +115,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
+     RecentVodRepository.instance.add(widget.movie);
+     // HORS-LIGNE D'ABORD : film téléchargé → fichier local (démarrage
+     // instantané, zéro connexion fournisseur). Sinon URL distante.
+-    final String? local =
+-        VodDownloadService.instance.localFile(widget.movie.id);
+-    final String url = (local != null && File(local).existsSync())
+-        ? Uri.file(local).toString()
+-        : widget.movie.streamUrl;
+-    unawaited(playChannel(
+-      context,
+-      Channel(
+-        id: widget.movie.id,
+-        name: widget.movie.name,
+-        category: widget.movie.category,
+-        streamUrl: url,
+-        isLive: false,
+-        logoUrl: widget.movie.posterUrl,
+-      ),
+-    ));
++    Channel channelFor(VodMovie movie) {
++      final local = VodDownloadService.instance.localFile(movie.id);
++      return Channel(id: movie.id, name: movie.name, category: movie.category,
++        streamUrl: local != null && File(local).existsSync() ? Uri.file(local).toString() : movie.streamUrl,
++        isLive: false, logoUrl: movie.posterUrl);
++    }
++    final films = widget.feed.isEmpty ? [widget.movie, ..._similar] : widget.feed;
++    final selected = channelFor(widget.movie);
++    unawaited(playChannel(context, selected,
++      zapPlaylist: films.map(channelFor).toList(growable: false)));
++
+   }
+ 
+   @override
+@@ -304,7 +300,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
+                           onTap: () => Navigator.of(context).pushReplacement(
+                             MaterialPageRoute<void>(
+                                 builder: (_) =>
+-                                    MovieDetailScreen(movie: s)),
++                                    MovieDetailScreen(movie: s, feed: _similar)),
+                           ),
+                           child: Padding(
+                             padding:
+diff --git a/packages/novatube_video/android/src/main/kotlin/com/manzilionellm/novatube_video/NativeVideoView.kt b/packages/novatube_video/android/src/main/kotlin/com/manzilionellm/novatube_video/NativeVideoView.kt
+index 397fced..dcad358 100644
+--- a/packages/novatube_video/android/src/main/kotlin/com/manzilionellm/novatube_video/NativeVideoView.kt
++++ b/packages/novatube_video/android/src/main/kotlin/com/manzilionellm/novatube_video/NativeVideoView.kt
+@@ -60,6 +60,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
+ import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
+ import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
+ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
++import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
+ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+ import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection
+ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+@@ -256,6 +257,13 @@ class NativeVideoView(
+     private var phoneHeaders: Map<String, String> = emptyMap()
+     private var phoneMime: String? = null
+     private lateinit var phoneHttp: DefaultHttpDataSource.Factory
++    private var feedManager: DefaultPreloadManager? = null
++    private lateinit var feedSourceFactory: DefaultMediaSourceFactory
++    private lateinit var feedLoadControl: DefaultLoadControl
++    private val feedItems = linkedMapOf<String, MediaItem>()
++    private var feedSwipeAt = 0L
++    private var feedSwipe = 0
++    private val expireFeed = Runnable { updateFeed(emptyMap()) }
+     private lateinit var player: ExoPlayer
+     private val handler = Handler(Looper.getMainLooper())
+ 
+@@ -1340,6 +1348,8 @@ class NativeVideoView(
+                 .build(),
+         )
+ 
++        feedSourceFactory = mediaSourceFactory
++        feedLoadControl = loadControl
+         return ExoPlayer.Builder(appContext, renderersFactory)
+             .setTrackSelector(trackSelector)
+             .setLoadControl(loadControl)
+@@ -1416,8 +1426,66 @@ class NativeVideoView(
+ 
+     // ---- Dart → natif -------------------------------------------------------
+ 
++    private fun updateFeed(wanted: Map<String, String>) {
++        handler.removeCallbacks(expireFeed)
++        // A load in the active player owns its own reference to the source.
++        val targets = wanted.entries.take(2).associate { it.key to it.value }
++        if (feedItems.keys == targets.keys && targets.isNotEmpty()) {
++            handler.postDelayed(expireFeed, 12_000)
++            return
++        }
++        var manager = feedManager
++        if (manager == null && targets.isNotEmpty()) {
++            // Playback and preloading share the allocator, selection-capable
++            // media source factory and the ExoPlayer internal playback looper.
++            manager = DefaultPreloadManager.Builder(appContext) { rank ->
++                DefaultPreloadManager.Status(DefaultPreloadManager.Status.STAGE_LOADED_FOR_DURATION_MS,
++                    if (rank == 0) 1600L else 650L)
++            }.setPreloadLooper(player.playbackLooper)
++                .setMediaSourceFactory(feedSourceFactory)
++                .setLoadControl(feedLoadControl)
++                .build()
++            feedManager = manager
++        }
++        if (manager == null) return
++        for (url in feedItems.keys.toList()) {
++            if (url !in targets) manager.remove(feedItems.remove(url)!!)
++        }
++        targets.entries.forEachIndexed { rank, (url, mime) ->
++            if (url !in feedItems) {
++                val item = MediaItem.Builder().setUri(url).setMimeType(mime.ifEmpty { null }).build()
++                manager.add(item, rank)
++                feedItems[url] = item
++            }
++        }
++        manager.setCurrentPlayingIndex(0)
++        manager.invalidate()
++        if (targets.isNotEmpty()) handler.postDelayed(expireFeed, 12_000)
++    }
++
++    private fun releaseFeed() {
++        handler.removeCallbacks(expireFeed)
++        feedItems.clear()
++        feedManager?.release()
++        feedManager = null
++    }
++
+     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+         when (call.method) {
++            "feedPreload" -> {
++                val targets = call.arguments as? Map<*, *> ?: emptyMap<Any,Any>()
++                if (!released && !disposeStarted) updateFeed(
++                    if (castSuspended || !AppForeground.allowsReopen()) emptyMap()
++                    else targets.entries.filter { it.key is String && it.value is String }
++                        .associate { it.key as String to it.value as String }
++                )
++                result.success(null)
++            }
++            "feedSwipe" -> {
++                feedSwipeAt = android.os.SystemClock.elapsedRealtime()
++                feedSwipe = (call.arguments as? Number)?.toInt()?.coerceIn(-1,1) ?: 0
++                result.success(null)
++            }
+             "setUrl" -> {
+                 // L'accusé part APRÈS le silence (volume 0 + stop), dans
+                 // [openCurrent]. Les événements déjà dans le canal (ancienne
+@@ -2050,6 +2118,18 @@ class NativeVideoView(
+         emit("reconnecting", false)
+         emit("buffering", false)
+         unmuteIfThisSession()
++        if (feedSwipe != 0) {
++            android.util.Log.i("SevenMotionFeed", "firstFrameAfterSwipeMs=" + (android.os.SystemClock.elapsedRealtime()-feedSwipeAt))
++            val offset = feedSwipe * 10f * surfaceView.resources.displayMetrics.density
++            feedSwipe = 0
++            surfaceView.animate().cancel()
++            if (Build.VERSION.SDK_INT >= 35) surfaceView.setRequestedFrameRate(60f)
++            surfaceView.translationY = offset
++            surfaceView.animate().translationY(0f).setDuration(112)
++                .setInterpolator(android.view.animation.DecelerateInterpolator())
++                .withEndAction { if (Build.VERSION.SDK_INT >= 35) surfaceView.setRequestedFrameRate(0f) }
++                .start()
++        }
+         emit("firstFrame", null)
+         emitNativeAiStatus()
+         // Une copie tôt : si la coupure arrive dans les secondes qui
+@@ -2410,7 +2490,11 @@ class NativeVideoView(
+         player.trackSelectionParameters = params.build()
+         player.setPlaybackSpeed(phoneRate)
+         val item = MediaItem.Builder().setUri(url).setTag(token).setMimeType(phoneMime).build()
+-        if (startPositionMs != null && startPositionMs > 0L) {
++        val preloaded = feedItems[url]?.let { feedManager?.getMediaSource(it) }
++        if (preloaded != null) {
++            android.util.Log.i("SevenMotionFeed", "promoted prepared native source")
++            player.setMediaSource(preloaded, startPositionMs ?: C.TIME_UNSET)
++        } else if (startPositionMs != null && startPositionMs > 0L) {
+             player.setMediaItem(item, startPositionMs)
+         } else {
+             player.setMediaItem(item)
+@@ -3140,6 +3224,7 @@ class NativeVideoView(
+         }
+         // All calls are serialized above. Set the guard before any callbacks/stop.
+         disposeStarted = true
++        releaseFeed()
+         disposeResult = result
+         try { player.removeAnalyticsListener(this) } catch (_: RuntimeException) {}
+         try { player.clearVideoFrameMetadataListener(frameClock) } catch (_: RuntimeException) {}
+@@ -3656,6 +3741,7 @@ class NativeVideoView(
+      * de contraste. Matériel et logiciel Android partagent le même rendu.
+      */
+     private fun rebuildPlayer() {
++        releaseFeed()
+         if (!::player.isInitialized || released || disposeStarted) return
+         val old = player
+         val oldUsedGl = contrastPipelineInstalled
+diff --git a/packages/novatube_video/lib/novatube_video.dart b/packages/novatube_video/lib/novatube_video.dart
+index b0d8901..d9b9e7f 100644
+--- a/packages/novatube_video/lib/novatube_video.dart
++++ b/packages/novatube_video/lib/novatube_video.dart
+@@ -294,6 +294,20 @@ class PhoneVideoPlayer extends PlatformPlayer {
+     // Media3 suit la sortie Android (Bluetooth, casque, haut-parleur).
+   }
+ 
++  Future<void> setLookahead(Map<String,String> urls) async {
++    if (_closed) return;
++    try { await _channel?.invokeMethod<void>('feedPreload', urls); }
++    on PlatformException { /* A speculative load must never stop playback. */ }
++    on MissingPluginException { /* The surface was released. */ }
++  }
++
++  Future<void> beginSwipe(int direction) async {
++    if (_closed) return;
++    try { await _channel?.invokeMethod<void>('feedSwipe', direction); }
++    on PlatformException { /* The next frame is still rendered normally. */ }
++    on MissingPluginException { /* Already detached. */ }
++  }
++
+   void forceHls() {
+     _nextMime = 'application/x-mpegURL';
+   }
+diff --git a/test/features/player/exit_guards_wave2_test.dart b/test/features/player/exit_guards_wave2_test.dart
+index c64aeb1..7dcc65f 100644
+--- a/test/features/player/exit_guards_wave2_test.dart
++++ b/test/features/player/exit_guards_wave2_test.dart
+@@ -144,28 +144,28 @@ void main() {
+       expect(dispose, isNot(contains('closeOtherPlaybacks(')),
+           reason: 'aucune fermeture globale tardive ne doit contourner '
+               'le droit capturé par networkClosed');
+-      expect(
+-        RegExp(
+-          r"if \(wasOwner\) \{\s*StreamSlot\.instance\s*"
+-          r"\.handOff\(this, shutdown, label: 'fermeture lecteur quitté'\);"
+-          r"\s*\} else \{\s*StreamSlot\.instance\.unregister\(this\);\s*\}",
+-        ).hasMatch(dispose),
+-        isTrue,
+-        reason: 'le propriétaire transmet la fermeture au prochain claim ; '
+-            'un écran déjà révoqué retire seulement sa propre inscription',
+-      );
++      final ownerBranch = dispose.substring(dispose.indexOf('if (wasOwner) {'));
++      final handoff = ownerBranch.indexOf("StreamSlot.instance.handOff(this, release, label: 'fermeture lecteur quitté');");
++      expect(handoff, greaterThan(0));
++      final release = ownerBranch.substring(0, handoff);
++      expect(release, contains('!_openedViaStreamRelay ? shutdown : networkClosed.then<void>'));
++      expect(release, contains('await _stopCurrentPlayer();'));
++      expect(release, contains('catch (_) { await shutdown; }'));
++      expect(ownerBranch.substring(handoff), contains('} else { StreamSlot.instance.unregister(this); }'));
+       expect(
+         network,
+         contains('final Future<void> relayClosed = closeRelay '
+             "? LocalStreamRelay.instance.closeOtherPlaybacks('') "
+             ': Future<void>.value();'),
+       );
+-      final int capturedPlayer =
+-          network.indexOf('final Player stoppedPlayer = _player;');
++      final stopCode = _compact(_member(code, 'Future<void> _stopCurrentPlayer()'));
++      final capture = stopCode.indexOf('final player = _player;');
++      expect(capture, greaterThan(-1));
++      expect(stopCode.indexOf('await player.stop()'), greaterThan(capture));
++      expect(stopCode.indexOf('_playbackStop.run('), greaterThan(capture));
+       final int close = network.indexOf("closeOtherPlaybacks('')");
+-      final int stop = network.indexOf('await stoppedPlayer.stop()');
+-      expect(capturedPlayer, greaterThan(-1));
+-      expect(close, greaterThan(capturedPlayer));
++      final int stop = network.indexOf('await _stopCurrentPlayer()');
++      expect(close, greaterThan(-1));
+       expect(stop, greaterThan(close),
+           reason: 'la fermeture du relais doit commencer avant le premier '
+               'await : un stop lent ne doit pas viser une nouvelle session');
+diff --git a/test/free_play/feed_lookahead_test.dart b/test/free_play/feed_lookahead_test.dart
+new file mode 100644
+index 0000000..4f4f0d4
+--- /dev/null
++++ b/test/free_play/feed_lookahead_test.dart
+@@ -0,0 +1,106 @@
++import 'dart:async';
++import 'dart:io';
++import 'dart:typed_data';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:tv_king/features/player/data/feed_lookahead.dart';
++
++void main() {
++  test('source, freshness and remaining connections bound the window', () {
++    final now = DateTime.utc(2026, 11, 25);
++    final link = Uri.parse('https://demo.test/live/user/pass/1.ts');
++    int budget(int max, int active, {String user = 'user', int age = 0}) =>
++        feedConnectionBudget(link,
++            isXtream: true,
++            sourceUser: 'user',
++            host: 'demo.test',
++            accountUser: user,
++            checkedAt: now.subtract(Duration(seconds: age)),
++            status: 'Active',
++            activeConnections: active,
++            maxConnections: max,
++            now: now);
++    expect(budget(1, 0), 0);
++    expect(budget(2, 0), 1);
++    expect(budget(4, 1), 2);
++    expect(budget(2, 2), 0);
++    expect(budget(4, 1, user: 'other'), 0);
++    expect(budget(4, 1, age: 60), 0);
++    expect(feedConnectionBudget(link, isXtream: false, now: now), 0);
++    expect(
++        feedConnectionBudget(Uri.parse('https://cdn.test/sample.ts'),
++            isXtream: false, now: now),
++        2);
++  });
++
++  test('two slots, promotion replays the exact bytes without a second GET',
++      () async {
++    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    final hits = <String>[];
++    final data = Uint8List(188 * 2200);
++    for (var i = 0; i < data.length; i += 188) {
++      data[i] = 0x47;
++      data[i + 1] = (i ~/ 188) % 256;
++    }
++    server.listen((req) async {
++      hits.add(req.uri.path);
++      req.response.headers.contentType = ContentType('video', 'mp2t');
++      req.response.add(data);
++      try {
++        await req.response.close();
++      } catch (_) {}
++    });
++    final pool = FeedLookahead();
++    addTearDown(() async {
++      pool.clear();
++      await server.close(force: true);
++    });
++    final urls =
++        List.generate(3, (i) => 'http://127.0.0.1:${server.port}/$i.ts');
++    pool.update(urls, '7 MOTION QA');
++    for (var i = 0; i < 200 && !pool.ready(urls.first); i++) {
++      await Future<void>.delayed(const Duration(milliseconds: 10));
++    }
++    expect(pool.ready(urls.first), isTrue);
++    final prepared = pool.take(urls.first)!;
++    final bytes = await prepared.consume().expand((b) => b).toList();
++    expect(bytes, orderedEquals(data));
++    expect(hits.where((p) => p == '/0.ts').length, 1);
++    expect(hits, isNot(contains('/2.ts')));
++    expect(pool.take(urls.first), isNull);
++  });
++  test('a slow live stream can be promoted before 256 KiB arrives', () async {
++    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    final tail = Completer<void>();
++    final prefix = Uint8List(188 * 3);
++    for (var i = 0; i < prefix.length; i += 188) {
++      prefix[i] = 0x47;
++    }
++    var connections = 0;
++    server.listen((request) async {
++      connections++;
++      request.response.headers.contentType = ContentType('video', 'mp2t');
++      request.response.bufferOutput = false;
++      request.response.add(prefix);
++      await request.response.flush();
++      await tail.future;
++      request.response.add([91, 92]);
++      await request.response.close();
++    });
++    final pool = FeedLookahead();
++    addTearDown(() async {
++      if (!tail.isCompleted) tail.complete();
++      pool.clear();
++      await server.close(force: true);
++    });
++    final url = 'http://127.0.0.1:${server.port}/slow.ts';
++    pool.update([url], '7 MOTION QA');
++    for (var i = 0; i < 100 && !pool.ready(url); i++) {
++      await Future<void>.delayed(const Duration(milliseconds: 10));
++    }
++    expect(pool.ready(url), isTrue);
++    final result = pool.take(url)!.consume().expand((part) => part).toList();
++    tail.complete();
++    expect(await result, orderedEquals([...prefix, 91, 92]));
++    expect(connections, 1);
++  });
++}
