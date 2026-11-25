@@ -59,11 +59,14 @@ jobs:
         run: |
           for ((i=0;i<90;i++)); do
             check=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/45647953286/artifacts?name=7motion-swipe-qa" --jq '.artifacts[0].id // empty')
-            if [[ -n "$check" ]]; then break; fi
+            if [[ -n "$check" ]]; then run=45647953286; break; fi
+            check=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/45649592877/artifacts?name=7motion-swipe-qa" --jq '.artifacts[0].id // empty')
+            if [[ -n "$check" ]]; then run=45649592877; break; fi
             sleep 15
           done
           test -n "$check"
-          gh run download 45647953286 -n 7motion-swipe-qa -D "$RUNNER_TEMP/scroll-apks"
+          echo "$run" > diagnostic/candidate-run.txt
+          gh run download "$run" -n 7motion-swipe-qa -D "$RUNNER_TEMP/scroll-apks"
           /usr/bin/python3 .github/scripts/7motion-feed-proof.py bench "$RUNNER_TEMP/scroll-apks/7motion-swipe-qa.apk" swipe
       - name: Conserver les mesures et les écrans effectivement visités
         if: ${{ !cancelled() }}

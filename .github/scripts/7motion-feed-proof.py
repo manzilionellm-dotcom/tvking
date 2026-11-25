@@ -100,6 +100,13 @@ def run(apk,tag):
         tap(lambda n:'Add an M3U list' in label(n));tap(lambda n:n.get('class')=='android.widget.EditText')
         adb('shell','input text '+HOST+'/liste.m3u');time.sleep(.5);adb('shell','input keyevent 4')
         tap(lambda n:'Load my channels' in label(n));tap(lambda n:'Motion Lab' in label(n),seek=True);tap(lambda n:'Station Red' in label(n),seek=True)
+        # Android can identify adb reverse as cellular when both radios are off.
+        for _ in range(3):
+            nodes=doc()
+            if any('Cellular data' in label(n) for n in nodes):
+                tap(lambda n:'Continue' in label(n))
+                break
+            time.sleep(.35)
         print('Chaîne sélectionnée',flush=True)
         wait_color('Red',time.monotonic()+32)
         size=adb('shell','wm size')
