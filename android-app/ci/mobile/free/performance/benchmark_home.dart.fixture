@@ -1,0 +1,40 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:novatube_video/novatube_video.dart' show qaFirstImage;
+
+import 'features/channels/domain/channel.dart';
+import 'features/player/presentation/video_player_screen.dart';
+
+// Installé uniquement dans la copie CI destinée à l’émulateur.
+class BenchmarkHome extends StatefulWidget {
+  const BenchmarkHome(this.child, {super.key});
+  final Widget child;
+
+  @override
+  State<BenchmarkHome> createState() => _BenchmarkHomeState();
+}
+
+class _BenchmarkHomeState extends State<BenchmarkHome> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Android mesure le lancement normal jusqu'à son premier affichage.
+      // L'ouverture du lecteur ne commence qu'une fois l'accueil monté.
+      await Future<void>.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+      const channel = Channel(
+        id: 'ci-h264', name: 'Mire locale', category: 'CI',
+        streamUrl: 'http://127.0.0.1:18910/mire.mp4', isLive: false,
+      );
+      qaFirstImage.start();
+      unawaited(Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const VideoPlayerScreen(channel: channel)),
+      ));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}

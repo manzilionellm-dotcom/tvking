@@ -1,4 +1,5 @@
-"""Prépare le même projet natif que Play, avec un paquet debug isolé."""
+"""Prépare le projet natif Play avec un paquet et une clé réservés aux essais."""
+import argparse
 import os
 from pathlib import Path
 import subprocess
@@ -29,9 +30,15 @@ NATIVE_STEPS = [
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=("debug", "release"), default="debug")
+    mode = parser.parse_args().mode
     recipe = yaml.safe_load(WORKFLOW.read_text())["jobs"]["phone"]["steps"]
-    native = [step for step in recipe if step.get("name") in NATIVE_STEPS]
-    if [step["name"] for step in native] != NATIVE_STEPS:
+    steps = NATIVE_STEPS.copy()
+    if mode == "release":
+        steps.append("Enable R8 + ProGuard (shrink code & resources)")
+    native = [step for step in recipe if step.get("name") in steps]
+    if [step["name"] for step in native] != steps:
         raise SystemExit("La recette native a changé, vérifier la préparation QA")
     for step in native:
         if set(step) != {"name", "run"} or "${{" in step["run"]:
@@ -52,6 +59,14 @@ def main():
     if text.count(start) != 1 or "applicationIdSuffix" in text:
         raise SystemExit("Configuration debug Gradle inattendue")
     debug = '        getByName("debug") { applicationIdSuffix = ".qa" }'
+    if mode == "release":
+        release = "        release {"
+        if text.count(release) != 1:
+            raise SystemExit("Configuration release Gradle inattendue")
+        text = text.replace(release, release + '\n            applicationIdSuffix = ".qa.perf"')
+        # Le contrôle de l’unité AdMob lit le bytecode de la bannière après R8.
+        with Path("android/app/proguard-rules.pro").open("a") as rules:
+            rules.write("\n-keep class com.manzilionellm.tvking.tv_king.SevenMotionAds$Banner { *; }\n")
     # Gradle et le contrôle final utilisent la même clé de test éphémère,
     # indépendamment du profil Android préinstallé sur le runner.
     signing = '''    signingConfigs {
