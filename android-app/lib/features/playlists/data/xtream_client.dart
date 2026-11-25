@@ -52,8 +52,13 @@ import 'xtream_server_clock.dart';
 /// Exception métier pour signaler une erreur Xtream lisible
 /// (login refusé, serveur HS, réponse non-JSON, etc.).
 class XtreamException implements Exception {
-  XtreamException(this.message);
+  XtreamException(this.message, {this.statusCode});
   final String message;
+
+  /// Code HTTP du refus (404, 503…), `null` si ce n'est pas une réponse HTTP.
+  /// Cinéma s'en sert pour distinguer « ce serveur n'a pas de films » (404)
+  /// d'une panne passagère.
+  final int? statusCode;
 
   @override
   String toString() => 'XtreamException: $message';
@@ -554,6 +559,7 @@ class XtreamClient {
         }
         lastError = XtreamException(
           'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
+          statusCode: resp.statusCode,
         );
       } on PlaylistImportTooLarge {
         // Taille indépendante de la signature → on remonte l'erreur claire.
