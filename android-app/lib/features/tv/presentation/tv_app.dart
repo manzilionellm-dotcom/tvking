@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app/repair_flags.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/app/startup_trace.dart';
 import '../../theme/data/remote_theme_repository.dart';
 import '../../playlists/data/import_progress.dart';
@@ -544,7 +545,12 @@ class _TvGateState extends State<TvGate> {
     // client légitime sur une coupure réseau ; le verrou serveur reprend la
     // main dès que la connexion revient (et device-source ne livre plus la
     // source une fois l'essai expiré).
-    final bool showHome = active || (hasOwnList && !mustBlock);
+    // Un client Play peut importer sa liste dès la première ouverture ou
+    // après son ancien essai. Les sanctions explicites du panel restent appliquées.
+    final bool suspended =
+        s == SubscriptionStatus.banned || s == SubscriptionStatus.frozen;
+    final bool showHome = (kFreeZunoPlayer && !suspended) ||
+        active || (hasOwnList && !mustBlock);
     final Widget home = showHome
         ? const TvStartupAdGate(child: TvHubScreen())
         : const TvShell(child: TvActivationScreen());

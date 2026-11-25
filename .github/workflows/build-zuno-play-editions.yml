@@ -197,11 +197,13 @@ jobs:
       - name: Compiler le bundle de cette édition
         run: |
           set -e
+          python3 ci/play_editions/install_mobile_ads.py
+          python3 ci/play_editions/branding/apply.py
           flutter build appbundle --release --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
             --build-number="$PLAY_VERSION_CODE" --build-name="$PLAY_VERSION_NAME" \
             --obfuscate --split-debug-info=build/symbols-play \
-            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_EDITION="$ZUNO_EDITION" \
+            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION="$ZUNO_EDITION" \
             --dart-define=GIT_SHA="$SOURCE_SHA" --dart-define=APP_BUILD_TS="$(date +%s)" \
             --target=lib/main_tv.dart
           mkdir -p build/play

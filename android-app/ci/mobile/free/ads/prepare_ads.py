@@ -32,13 +32,13 @@ def configured_ids(env):
     return app_id, banner_id
 
 
-def install_android(project, ids):
+def install_android(project, ids, *, expected_package=PACKAGE):
     module = project / "android/app"
     gradle = module / "build.gradle.kts"
     build = gradle.read_text()
     application_ids = re.findall(r'^\s*applicationId\s*=\s*"([^"]+)"', build, re.M)
-    if application_ids != [PACKAGE]:
-        raise ValueError("La monétisation est réservée au paquet Play de 7 MOTION")
+    if application_ids != [expected_package]:
+        raise ValueError(f"Le paquet Play attendu pour cette configuration est {expected_package}")
     if ids is None:
         # Une deuxième exécution sur un arbre déjà monétisé ne doit jamais le
         # faire passer silencieusement pour un bundle sans publicité.

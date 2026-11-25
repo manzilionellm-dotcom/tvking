@@ -1,4 +1,5 @@
 {
+  "zunoFreePlayer": "Lecteur IPTV gratuit",
   "@@locale": "fr",
   "@@x-template": true,
   "@@x-description": "Template canonique — toutes les autres langues s'alignent sur ces clefs.",

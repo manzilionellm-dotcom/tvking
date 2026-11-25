@@ -34,6 +34,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../../device/domain/display_mac.dart';
 import '../../feedback/data/feedback_repository.dart';
 import '../../feedback/presentation/tv_feedback_card.dart';
+import '../../../core/update/build_flags.dart';
 import '../../../core/app/repair_flags.dart';
 import '../../../core/app/boot_guard.dart';
 import '../../../core/blackbox/black_box.dart';
@@ -1193,6 +1194,11 @@ class _TvHubScreenState extends State<TvHubScreen> {
   }
 
   ({String label, Color color}) _license(BuildContext context) {
+    if (kFreeZunoPlayer &&
+        SubscriptionState.instance.status != SubscriptionStatus.banned &&
+        SubscriptionState.instance.status != SubscriptionStatus.frozen) {
+      return (label: context.l10n.zunoFreePlayer, color: TvAppTokens.of(context).success);
+    }
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
         // Date de fin connue : on dit combien de jours il reste, en
@@ -1320,7 +1326,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
         const TvLogo(width: 150),
         const SizedBox(height: TvDimens.gutter),
         Text(
-          context.l10n.tvActivationCodeLabel,
+          kFreeZunoPlayer ? context.l10n.tvDeviceAddress : context.l10n.tvActivationCodeLabel,
           style: TvAppTokens.of(context)
               .ui(TvDimens.caption, color: TvAppTokens.of(context).muted),
         ),
