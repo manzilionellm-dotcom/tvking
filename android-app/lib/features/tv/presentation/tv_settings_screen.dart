@@ -14,6 +14,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../ads/presentation/mobile_settings_banner.dart';
+import '../../cast/data/cast_platform.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../core/i18n/locale_repository.dart';
@@ -302,6 +304,11 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
   }
 
   ({String label, Color color}) _statusOf(BuildContext context) {
+    if (kFreeZunoPlayer &&
+        SubscriptionState.instance.status != SubscriptionStatus.banned &&
+        SubscriptionState.instance.status != SubscriptionStatus.frozen) {
+      return (label: context.l10n.zunoFreePlayer, color: TvAppTokens.of(context).success);
+    }
     switch (SubscriptionState.instance.status) {
       // Mêmes teintes que la barre d'accueil (_license) : le thème
       // clair du panel les recolore, un vert/bleu/ambre en dur non.
@@ -627,6 +634,8 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
         // Le contact reste accessible après activation, sans ouvrir un
         // diagnostic ni recopier les identifiants de la liste du client.
         const TvWhatsAppSupportButton(),
+        if (kFreeZunoPlayer && CastPlatform.isAndroidHandset)
+          const SevenMotionAdsBanner(),
         // ----- Avertissement « lecteur » toujours visible (bas de page) -----
         Text(
           context.l10n.tvPlayerDisclaimer,
