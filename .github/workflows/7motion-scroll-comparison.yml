@@ -1,0 +1,71 @@
+name: 7 MOTION — comparer le défilement des deux APK
+on:
+  push:
+    branches: ['test/7motion-scroll-comparison-20261125']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Préparer un téléphone Android 17 et la liste M3U locale
+        run: |
+          mkdir -p diagnostic "$RUNNER_TEMP/scroll-apks"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0660"' | sudo tee /etc/udev/rules.d/99-7motion-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo udevadm settle
+          sudo setfacl -m "u:$(id -un):rw" /dev/kvm
+          image='system-images;android-37.0;google_apis_ps16k;x86_64'
+          sdkmanager emulator "$image" > diagnostic/sdk.txt
+          avdmanager create avd --force --name scroll --package "$image" --device pixel_2 <<< no
+          nohup "$ANDROID_HOME/emulator/emulator" -avd scroll -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader -accel on -cores 2 -memory 3072 -partition-size 3072 >diagnostic/emulator.log 2>&1 < /dev/null &
+          for ((i=0;i<120;i++)); do
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then break; fi
+            sleep 3
+          done
+          adb shell getprop sys.boot_completed | grep 1
+          adb shell wm size 720x1440
+          adb shell wm density 280
+          adb shell svc power stayon true
+          adb shell input keyevent KEYCODE_WAKEUP
+          adb shell wm dismiss-keyguard
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell svc wifi disable
+          adb shell svc data disable
+          adb reverse tcp:18089 tcp:18089
+          nohup python3 .github/scripts/7motion-scroll-sample.py serve > diagnostic/fixture.log 2>&1 < /dev/null &
+      - name: Parcourir la version précédente
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 45611973771 -n 7motion-startup-qa -D "$RUNNER_TEMP/scroll-apks"
+          apk="$RUNNER_TEMP/scroll-apks/7motion-startup-qa.apk"
+          echo "b6f05175aa75d10eda0e365c62abf2aa9b62bf6a72fd323e09f9b536057dd669  $apk" | sha256sum -c
+          python3 .github/scripts/7motion-scroll-sample.py bench "$apk" startup
+        continue-on-error: true
+      - name: Parcourir le nouvel APK de test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for ((i=0;i<90;i++)); do
+            check=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/45625369954/artifacts?name=7motion-scroll-qa" --jq '.artifacts[0].id // empty')
+            if [[ -n "$check" ]]; then break; fi
+            sleep 15
+          done
+          test -n "$check"
+          gh run download 45625369954 -n 7motion-scroll-qa -D "$RUNNER_TEMP/scroll-apks"
+          python3 .github/scripts/7motion-scroll-sample.py bench "$RUNNER_TEMP/scroll-apks/7motion-scroll-qa.apk" scroll
+      - name: Conserver les mesures et les écrans effectivement visités
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-comparatif-scroll
+          path: diagnostic/
+          retention-days: 7
