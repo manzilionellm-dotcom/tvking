@@ -5,3 +5,4 @@ recipe="$(cd "$(dirname "$0")" && pwd)"
 git apply "$recipe/phone.patch"
 python3 "$recipe/ads/prepare_ads.py" dart
 git apply "$recipe/performance.patch"
+git apply "$recipe/bootstrap-optional-diagnostics.patch"

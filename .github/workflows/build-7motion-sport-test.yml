@@ -439,6 +439,11 @@ jobs:
       run: |
         set -e
         cp ci/proguard-rules.pro android/app/proguard-rules.pro
+        # Room retrouve cette classe et son constructeur par réflexion au démarrage de WorkManager.
+        cat >> android/app/proguard-rules.pro <<'PROGUARD'
+        -keepnames class androidx.work.impl.WorkDatabase
+        -keep class androidx.work.impl.WorkDatabase_Impl { public <init>(); }
+        PROGUARD
         python3 << 'PYEOF'
         f = "android/app/build.gradle.kts"
         s = open(f).read()
@@ -546,6 +551,7 @@ jobs:
         PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" "$RUNNER_TEMP/badging.txt")
         [ "$PKG" = "com.manzilionellm.tvking.tv_king" ]
+        bash ../mission/android-app/ci/mobile/verify_work_database.sh "$APK" --if-present
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py "$APK"
         for TAG in 7motion-test phone-latest; do
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p 7motion.apk -O "$RUNNER_TEMP/previous-$TAG.apk"
@@ -584,7 +590,7 @@ jobs:
         # PHONE_VERSION_CODE est déjà vérifié supérieur aux versions publiées.
         PLAY_VERSION_CODE="$PHONE_VERSION_CODE"
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PLAY_VERSION_CODE" --build-name=0.4.1 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.4.2 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
@@ -609,6 +615,7 @@ jobs:
           --ks=android/app/release.jks --ks-pass="file:$PLAY_PASS_DIR/store.pass" \
           --ks-key-alias="${KS_ALIAS:-sevenmotion}" --key-pass="file:$PLAY_PASS_DIR/key.pass"
         unzip -p build/play-review/7motion.apks universal.apk > build/play-review/7motion-play.apk
+        bash ../mission/android-app/ci/mobile/verify_work_database.sh build/play-review/7motion-play.apk --if-present
         "$RUNNER_TEMP/mobile-audit/bin/python" ../mission/android-app/ci/mobile/verify_apk.py \
           build/play-review/7motion-play.apk --play | tee build/play-review/native-audit.json
         python3 - "$PLAY_VERSION_CODE" <<'PLAYCODE'

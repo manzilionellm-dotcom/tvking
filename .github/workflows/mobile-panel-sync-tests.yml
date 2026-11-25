@@ -192,10 +192,14 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.pull_request.base.ref == 'ccr-b93e1afd-gwirw0' &&
       (github.head_ref == 'feature/7motion-free-player-admob-20261125' ||
-       github.head_ref == 'feature/7motion-performance-20261125') &&
+       github.head_ref == 'feature/7motion-performance-20261125' ||
+       github.head_ref == 'fix/7motion-startup-20261125') &&
       github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      artifact_id: ${{ steps.apk_output.outputs.artifact-id }}
+      apk_sha256: ${{ steps.verify_apk.outputs.apk_sha256 }}
     env:
-      QA_MODE: ${{ github.head_ref == 'feature/7motion-performance-20261125' && 'release' || 'debug' }}
+      QA_MODE: ${{ github.head_ref == 'feature/7motion-free-player-admob-20261125' && 'debug' || 'release' }}
     runs-on: ubuntu-latest
     timeout-minutes: 55
     defaults:
@@ -210,7 +214,14 @@ jobs:
       - *android_sdk
       - name: Choisir le paquet et la version de test
         run: |
-          if [[ "$QA_MODE" == release ]]; then
+          if [[ "$GITHUB_HEAD_REF" == fix/7motion-startup-20261125 ]]; then
+            {
+              echo 'QA_VERSION=0.4.2'
+              echo "QA_BUILD_NUMBER=$(date +%s)"
+              echo 'QA_PACKAGE=com.manzilionellm.tvking.qa.startup'
+              echo 'QA_ARTIFACT=7motion-startup-qa'
+            } >> "$GITHUB_ENV"
+          elif [[ "$QA_MODE" == release ]]; then
             # Même convention d’horodatage que le canal mobile, espace de paquet séparé.
             {
               echo 'QA_VERSION=0.4.1'
@@ -240,7 +251,9 @@ jobs:
           keytool -genkeypair -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 30 \
             -keystore "$RUNNER_TEMP/7motion-qa.jks" -storetype JKS -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
-          python ../mission/android-app/ci/mobile/free/prepare_qa_android.py --mode "$QA_MODE"
+          args=(--mode "$QA_MODE")
+          if [[ "${QA_PACKAGE:-}" == com.manzilionellm.tvking.qa.startup ]]; then args+=(--startup); fi
+          python ../mission/android-app/ci/mobile/free/prepare_qa_android.py "${args[@]}"
       - name: Vérifier les parcours du lecteur et du panel et compiler l’APK
         run: |
           bash ../mission/android-app/ci/mobile/free/test-release.sh
@@ -248,11 +261,15 @@ jobs:
             --dart-define=PLAY_BUILD=true --build-name="$QA_VERSION" --build-number="$QA_BUILD_NUMBER" \
             --target=lib/main.dart
       - name: Contrôler le paquet, la signature, les annonces et l’architecture
+        id: verify_apk
         run: |
           apk="build/app/outputs/flutter-apk/app-arm64-v8a-$QA_MODE.apk"
           tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           "$tools/aapt2" dump badging "$apk" > "$RUNNER_TEMP/qa-package"
           grep -F "package: name='$QA_PACKAGE'" "$RUNNER_TEMP/qa-package"
+          if [[ "$QA_PACKAGE" == com.manzilionellm.tvking.qa.startup ]]; then
+            grep -Fx "application-label:'7 MOTION Test'" "$RUNNER_TEMP/qa-package"
+          fi
           grep -F "versionName='$QA_VERSION'" "$RUNNER_TEMP/qa-package"
           # Flutter ajoute 2000 au code des APK ARM64 avec --split-per-abi.
           grep -F "versionCode='$((QA_BUILD_NUMBER + 2000))'" "$RUNNER_TEMP/qa-package"
@@ -271,15 +288,27 @@ jobs:
             -storepass android -file "$RUNNER_TEMP/qa-expected.der"
           cmp "$RUNNER_TEMP/qa-signer.der" "$RUNNER_TEMP/qa-expected.der"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          bash ../mission/android-app/ci/mobile/verify_work_database.sh "$apk"
           python3 ../mission/android-app/ci/mobile/free/verify_qa_ads.py "$apk" "$tools/aapt2"
           ln "$apk" "build/$QA_ARTIFACT.apk"
+          echo "apk_sha256=$(sha256sum "$apk" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Conserver l’APK de test pendant sept jours
+        id: apk_output
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ env.QA_ARTIFACT }}
           path: phone/build/${{ env.QA_ARTIFACT }}.apk
           if-no-files-found: error
           retention-days: 7
+
+  startup-android:
+    if: github.head_ref == 'fix/7motion-startup-20261125'
+    needs: free-play-apk
+    uses: ./.github/workflows/7motion-delivered-apk-diagnostics.yml
+    with:
+      test_built_apk: true
+      artifact_id: ${{ needs.free-play-apk.outputs.artifact_id }}
+      apk_sha256: ${{ needs.free-play-apk.outputs.apk_sha256 }}
 
   performance-android:
     name: Mesurer le lancement et la première image du lecteur sur émulateur

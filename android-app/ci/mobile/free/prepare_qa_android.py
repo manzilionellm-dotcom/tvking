@@ -32,7 +32,11 @@ NATIVE_STEPS = [
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("debug", "release"), default="debug")
-    mode = parser.parse_args().mode
+    parser.add_argument("--startup", action="store_true", help="Préparer la variante Android 7 MOTION Test")
+    args = parser.parse_args()
+    mode = args.mode
+    if args.startup and mode != "release":
+        parser.error("--startup requiert --mode release")
     recipe = yaml.safe_load(WORKFLOW.read_text())["jobs"]["phone"]["steps"]
     steps = NATIVE_STEPS.copy()
     if mode == "release":
@@ -63,7 +67,15 @@ def main():
         release = "        release {"
         if text.count(release) != 1:
             raise SystemExit("Configuration release Gradle inattendue")
-        text = text.replace(release, release + '\n            applicationIdSuffix = ".qa.perf"')
+        suffix = ".qa.startup" if args.startup else ".qa.perf"
+        text = text.replace(release, release + f'\n            applicationIdSuffix = "{suffix}"')
+        if args.startup:
+            manifest = Path("android/app/src/main/AndroidManifest.xml")
+            xml = manifest.read_text()
+            label = 'android:label="7 MOTION"'
+            if xml.count(label) != 1:
+                raise SystemExit("Libellé Android 7 MOTION introuvable ou ambigu")
+            manifest.write_text(xml.replace(label, 'android:label="7 MOTION Test"'))
         # Le contrôle de l’unité AdMob lit le bytecode de la bannière après R8.
         with Path("android/app/proguard-rules.pro").open("a") as rules:
             rules.write("\n-keep class com.manzilionellm.tvking.tv_king.SevenMotionAds$Banner { *; }\n")
