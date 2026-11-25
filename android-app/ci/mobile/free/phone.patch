@@ -61,7 +61,7 @@ index 71522773b7c88b102bc0e49b4f3d9e822e6c8665..2b76e6b5aa50500745bf09d70d0f0fb3
    });
 
 diff --git a/lib/core/app/panel_live_wait.dart b/lib/core/app/panel_live_wait.dart
-index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a27a396509 100644
+index 303938d3dc4be731b25cef7f413763e1d19ba880..9fce121a332ee5eb529df8bff61a9dab77dfe3ba 100644
 --- a/lib/core/app/panel_live_wait.dart
 +++ b/lib/core/app/panel_live_wait.dart
 @@ -1,33 +1,8 @@
@@ -103,7 +103,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
  import 'dart:async';
  import 'dart:convert';
 
-@@ -35,11 +10,14 @@ import 'package:flutter/foundation.dart';
+@@ -35,11 +10,22 @@ import 'package:flutter/foundation.dart';
  import 'package:flutter/widgets.dart';
  import 'package:http/http.dart' as http;
  import 'package:shared_preferences/shared_preferences.dart';
@@ -115,10 +115,18 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
  import '../../features/subscription/data/subscription_backend.dart';
  import '../../features/subscription/data/subscription_state.dart';
 +import '../../features/simple_home/data/announcement_repository.dart';
++import '../../features/theme/data/remote_theme_repository.dart';
++import '../../features/pricing/data/pricing_repository.dart';
++import '../../features/simple_home/data/home_layout_repository.dart';
++import '../../features/country_home/data/featured_repository.dart';
++import '../../features/ads/data/startup_ad_repository.dart';
++import '../../features/feedback/data/feedback_repository.dart';
++import '../../features/playlists/data/default_servers.dart';
++import '../../features/about/data/force_update_checker.dart';
 
  /// Préférence de repli : vrai = pas d'écoute en direct (ancien comportement).
  const String kLiveWaitOffKey = 'zuno.mobile.live_wait_off';
-@@ -87,7 +65,7 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
+@@ -87,7 +73,7 @@ LiveWaitStep readLiveWait(Object? body, int cursor) {
  /// Délai avant de réessayer après [failures] échecs d'affilée.
  Duration liveWaitBackoff(int failures) {
    if (failures <= 0) return Duration.zero;
@@ -127,7 +135,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
    return Duration(seconds: s > 30 ? 30 : s);
  }
 
-@@ -102,8 +80,17 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -102,8 +88,17 @@ class PanelLiveWait with WidgetsBindingObserver {
    http.Client Function() clientFactory = http.Client.new;
 
    static Future<void> _defaultOnChange() async {
@@ -146,7 +154,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
      // sync() rend un résultat, elle ne lève pas en cas de panne. Sans
      // ce contrôle, une suppression reçue pendant une coupure réseau
      // était marquée « traitée » avant d'avoir été appliquée localement.
-@@ -111,16 +98,253 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -111,16 +106,315 @@ class PanelLiveWait with WidgetsBindingObserver {
          result == RemoteSyncResult.sourceFailed) {
        throw StateError('synchronisation des sources : ${result.name}');
      }
@@ -299,7 +307,8 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
 +              result['error'] == null &&
 +              (result['state'] == order['state'] ||
 +                  (order['state'] == 'received' &&
-+                      result['state'] == 'applied')),
++                      (result['state'] == 'applied' ||
++                          result['state'] == 'failed'))),
 +        ),
 +      );
 +    } catch (_) {
@@ -349,17 +358,78 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
 +      final List<dynamic> commands = body is Map && body['box'] is List
 +          ? body['box'] as List<dynamic>
 +          : <dynamic>[];
-+      if (commands.any(
-+        (dynamic item) => item is Map && item['kind'] != 'message',
-+      ))
-+        await trigger();
-+      if (tracked.any(
-+            (item) => <String>{
-+              'source',
-+              'source_clear',
-+              'reset',
-+            }.contains(item['kind']),
-+          ) &&
++      final Set<String> kinds = commands
++          .whereType<Map>()
++          .map((item) => '${item['kind'] ?? ''}')
++          .toSet();
++      const statusKinds = <String>{
++        'activate',
++        'renew',
++        'expire',
++        'suspend',
++        'resume',
++        'block',
++        'transfer',
++        'device_delete',
++        'license',
++        'source',
++        'source_clear',
++      };
++      const configKinds = <String>{
++        'theme',
++        'pricing',
++        'home',
++        'featured',
++        'ad',
++        'feedback',
++        'servers',
++        'force_update',
++        'message',
++      };
++      if (kinds.any(statusKinds.contains)) await trigger();
++      // Chaque accusé attend la relecture de SON réglage. Un serveur en
++      // erreur ne transforme jamais un ancien cache en succès appliqué.
++      for (final String kind in kinds) {
++        switch (kind) {
++          case 'theme':
++            await RemoteThemeRepository.fetchAndApply(strict: true);
++            break;
++          case 'pricing':
++            await PricingRepository.fetch(strict: true);
++            break;
++          case 'home':
++            await HomeLayoutRepository.instance.refresh(strict: true);
++            break;
++          case 'featured':
++            await FeaturedRepository.instance.refresh(strict: true);
++            break;
++          case 'ad':
++            await StartupAdRepository.instance.fetch(strict: true);
++            break;
++          case 'feedback':
++            await FeedbackRepository.instance.reload(strict: true);
++            break;
++          case 'servers':
++            await DefaultServersApi.fetch(forceRefresh: true, strict: true);
++            break;
++          case 'force_update':
++            await ForceUpdateChecker.instance.mustUpdate(strict: true);
++            ForceUpdateChecker.instance.requestRecheck();
++            break;
++        }
++      }
++      const sourceKinds = <String>{'source', 'source_clear'};
++      final restricted = SubscriptionState.instance.remote.shouldBlock;
++      String? rejection(Object? kind) {
++        if (sourceKinds.contains(kind) && restricted)
++          return 'source_access_restricted';
++        if (!statusKinds.contains(kind) && !configKinds.contains(kind))
++          return 'unsupported_on_phone';
++        return null;
++      }
++
++      if (!restricted &&
++          tracked.any((item) => sourceKinds.contains(item['kind'])) &&
 +          RemoteSourceRepository.lastConfigRev == null) {
 +        throw StateError('révision des listes non appliquée');
 +      }
@@ -375,16 +445,16 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
 +        for (final item in tracked)
 +          <String, Object?>{
 +            'order_id': item['order_id'],
-+            'state': 'applied',
++            'state': rejection(item['kind']) == null ? 'applied' : 'failed',
 +            'received_at': received,
 +            'applied_at': DateTime.now().millisecondsSinceEpoch,
 +            'app_version': version,
-+            'result': 'refreshed',
-+            if (<String>{
-+                  'source',
-+                  'source_clear',
-+                  'reset',
-+                }.contains(item['kind']) &&
++            if (rejection(item['kind']) == null)
++              'result': 'refreshed'
++            else
++              'error': rejection(item['kind']),
++            if (!restricted &&
++                sourceKinds.contains(item['kind']) &&
 +                RemoteSourceRepository.lastConfigRev != null)
 +              'config_rev': RemoteSourceRepository.lastConfigRev,
 +          },
@@ -400,7 +470,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
    /// À appeler une fois au démarrage du téléphone.
    Future<void> install() async {
      if (_installed) return;
-@@ -145,6 +369,7 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -145,6 +439,7 @@ class PanelLiveWait with WidgetsBindingObserver {
 
    void start() {
      if (_running) return;
@@ -408,7 +478,7 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
      _running = true;
      final int gen = ++_generation;
      unawaited(_loop(gen));
-@@ -187,76 +412,40 @@ class PanelLiveWait with WidgetsBindingObserver {
+@@ -187,76 +482,40 @@ class PanelLiveWait with WidgetsBindingObserver {
    }
 
    Future<void> _loop(int gen) async {
@@ -458,6 +528,26 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
 -          if (kDebugMode) debugPrint('[PanelLiveWait] pas de canal (404)');
 -          _running = false;
 -          return;
+-        }
+-        if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
+-        final LiveWaitStep step = readLiveWait(jsonDecode(resp.body), cursor);
+-        // Le serveur conserve le signal dans son anneau. On attend la
+-        // vraie relecture AVANT d'avancer le curseur : un échec rejoue
+-        // le même ordre après backoff au lieu de le perdre jusqu'au poll.
+-        if (step.changed) await trigger();
+-        if (gen != _generation) return;
+-        final String currentMac = await DeviceIdentity.instance.mac;
+-        if (gen != _generation) return;
+-        if (currentMac != mac) continue;
+-        failures = 0;
+-        if (step.cursor != cursor) {
+-          cursor = step.cursor;
+-          try {
+-            await (await SharedPreferences.getInstance()).setInt(
+-              liveWaitCursorKey(mac),
+-              cursor,
+-            );
+-          } catch (_) {}
 +          final String mac = await DeviceIdentity.instance.mac;
 +          final int cursor = await cursorFor(mac);
 +          final http.Response response = await _wait(client, mac, cursor);
@@ -482,26 +572,6 @@ index 303938d3dc4be731b25cef7f413763e1d19ba880..4327e11543b1d25e9542fdb73925f3a2
 +          client.close();
 +          if (identical(_client, client)) _client = null;
          }
--        if (resp.statusCode != 200) throw StateError('HTTP ${resp.statusCode}');
--        final LiveWaitStep step = readLiveWait(jsonDecode(resp.body), cursor);
--        // Le serveur conserve le signal dans son anneau. On attend la
--        // vraie relecture AVANT d'avancer le curseur : un échec rejoue
--        // le même ordre après backoff au lieu de le perdre jusqu'au poll.
--        if (step.changed) await trigger();
--        if (gen != _generation) return;
--        final String currentMac = await DeviceIdentity.instance.mac;
--        if (gen != _generation) return;
--        if (currentMac != mac) continue;
--        failures = 0;
--        if (step.cursor != cursor) {
--          cursor = step.cursor;
--          try {
--            await (await SharedPreferences.getInstance()).setInt(
--              liveWaitCursorKey(mac),
--              cursor,
--            );
--          } catch (_) {}
--        }
 -      } catch (e) {
 -        if (gen != _generation) return;
 -        failures++;
@@ -714,6 +784,97 @@ index 8b5cec4636e4a048144caac6dac6da6f4a910fde..2f01907a6d2e20b22daf2b5c6497fd32
        final RtEvent? event = RtEvent.parse(data);
        if (event == null) return; // non-JSON / type inconnu → silencieux
        switch (event.type) {
+diff --git a/lib/features/about/data/force_update_checker.dart b/lib/features/about/data/force_update_checker.dart
+index f318d873c116f702bdbaff59cc3cdc942c7068d0..e7a1e7263d8e3bcb34121ed99786ff8934b2ecbd 100644
+--- a/lib/features/about/data/force_update_checker.dart
++++ b/lib/features/about/data/force_update_checker.dart
+@@ -48,7 +48,7 @@ class ForceUpdateChecker {
+
+   /// `true` si l'app installée doit être mise à jour de force.
+   Future<bool> mustUpdate(
+-      {Duration timeout = const Duration(seconds: 6)}) async {
++      {Duration timeout = const Duration(seconds: 6), bool strict = false}) async {
+     // Play Store : la mise à jour forcée passe par le Store, pas par
+     // le sideload GitHub. On ne déclenche jamais ce flux côté Play.
+     if (kIsPlayBuild) return false;
+@@ -59,16 +59,23 @@ class ForceUpdateChecker {
+         '&platform=${AppPlatform.id}',
+       );
+       final http.Response resp = await http.get(uri).timeout(timeout);
+-      if (resp.statusCode != 200) return false;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Seuil de mise à jour non confirmé');
++        return false;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return false;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Seuil de mise à jour invalide');
++        return false;
++      }
+       final Object? raw = decoded['minBuildTs'];
+       final int minBuildTs =
+           raw is int ? raw : int.tryParse('${raw ?? 0}') ?? 0;
+       // Obsolète UNIQUEMENT si l'admin a posé un seuil ET qu'on est avant.
+       return minBuildTs > 0 && kBuildTs < minBuildTs;
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[ForceUpdate] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[ForceUpdate] ${e.runtimeType}');
+       return false; // fail-open
+     }
+   }
+diff --git a/lib/features/about/presentation/about_screen.dart b/lib/features/about/presentation/about_screen.dart
+index e9d6d219f0b13394e6b811e55c4de4a07930c771..922b2c13d7a13b6efae59a6f01b564ade066d11d 100644
+--- a/lib/features/about/presentation/about_screen.dart
++++ b/lib/features/about/presentation/about_screen.dart
+@@ -164,7 +164,7 @@ class _AboutScreenState extends State<AboutScreen> {
+                 label: context.l10n.aboutPrivacyPolicy,
+                 onTap: () => _openUrl(
+                   // Même politique et domaine que la fiche du store.
+-                  'https://app.7themotion.com/privacy',
++                  'https://7themotion.pages.dev/7motion-free/privacy/',
+                 ),
+                 external: true,
+               ),
+diff --git a/lib/features/ads/data/startup_ad_repository.dart b/lib/features/ads/data/startup_ad_repository.dart
+index 881d8eddb0bbc9823a205d6e4b9cb2783c42d119..3138a40ad31ecf5fd352c49116e6d688863dedaa 100644
+--- a/lib/features/ads/data/startup_ad_repository.dart
++++ b/lib/features/ads/data/startup_ad_repository.dart
+@@ -42,14 +42,20 @@ class StartupAdRepository {
+   AdConfig get config => _config;
+
+   /// Récupère la config distante. Retourne la config (mise en cache).
+-  Future<AdConfig> fetch() async {
++  Future<AdConfig> fetch({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/ad'))
+           .timeout(const Duration(seconds: 5));
+-      if (resp.statusCode != 200) return _config;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return _config;
++      }
+       final Object? d = jsonDecode(resp.body);
+-      if (d is! Map) return _config;
++      if (d is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return _config;
++      }
+       final String url = (d['url'] ?? '').toString();
+       final Object? rawSkip = d['skip'];
+       final int skip = rawSkip is int
+@@ -62,7 +68,8 @@ class StartupAdRepository {
+         freq: (d['freq'] ?? 'always').toString(),
+       );
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[StartupAd] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[StartupAd] ${e.runtimeType}');
+     }
+     return _config;
+   }
 diff --git a/lib/features/channels/presentation/widgets/source_choice_sheet.dart b/lib/features/channels/presentation/widgets/source_choice_sheet.dart
 index 60dea573735797ae62db2a2f17d88c27f0fe50c3..4010a5ccaecbd82db6eec5449ba4b68a9eac9966 100644
 --- a/lib/features/channels/presentation/widgets/source_choice_sheet.dart
@@ -734,6 +895,103 @@ index 60dea573735797ae62db2a2f17d88c27f0fe50c3..4010a5ccaecbd82db6eec5449ba4b68a
    return showModalBottomSheet<void>(
      context: context,
      backgroundColor: AppColors.surface,
+diff --git a/lib/features/country_home/data/featured_repository.dart b/lib/features/country_home/data/featured_repository.dart
+index 2216627d81323680e7fee010e95b9967d9656fcd..022393e22a0c43b43120a6f277a4d352ab63a8bc 100644
+--- a/lib/features/country_home/data/featured_repository.dart
++++ b/lib/features/country_home/data/featured_repository.dart
+@@ -2,7 +2,7 @@
+ //  featured_repository.dart — "Favori du jour" (piloté panel)
+ // =========================================================
+ //  L'admin met une chaîne en avant chaque jour (ex. TF1 + « Mondial
+-// aujourd'hui »). L'app la lit ici et l'affiche dans son grand HERO
++//  aujourd'hui ⚽ »). L'app la lit ici et l'affiche dans son grand HERO
+ //  d'accueil à la place du #1 automatique — pour que l'app vive au
+ //  quotidien. Vide = HERO normal.
+ //
+@@ -29,7 +29,7 @@ class FeaturedRepository extends ChangeNotifier {
+   /// Nom de la chaîne mise en avant ('' = aucune).
+   String get name => _name;
+
+-  /// Note associée (ex. « Mondial aujourd'hui »).
++  /// Note associée (ex. « Mondial aujourd'hui ⚽ »).
+   String get note => _note;
+
+   bool get hasFeatured => _name.trim().isNotEmpty;
+@@ -40,14 +40,20 @@ class FeaturedRepository extends ChangeNotifier {
+     unawaited(refresh());
+   }
+
+-  Future<void> refresh() async {
++  Future<void> refresh({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/featured'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final String name = (decoded['name'] ?? '').toString();
+       final String note = (decoded['note'] ?? '').toString();
+       if (name != _name || note != _note) {
+@@ -56,7 +62,8 @@ class FeaturedRepository extends ChangeNotifier {
+         notifyListeners();
+       }
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Featured] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[Featured] ${e.runtimeType}');
+     }
+   }
+ }
+diff --git a/lib/features/feedback/data/feedback_repository.dart b/lib/features/feedback/data/feedback_repository.dart
+index 00c06f9d168fbabd89b93a12364ec81de683106c..6561ffcee40385513cb3ce20a11c867518319ce9 100644
+--- a/lib/features/feedback/data/feedback_repository.dart
++++ b/lib/features/feedback/data/feedback_repository.dart
+@@ -32,18 +32,32 @@ class FeedbackRepository {
+     await _fetch();
+   }
+
+-  Future<void> _fetch() async {
++  /// Relit l'invitation. Appelé quand le panel vient d'en poser une,
++  /// sans attendre le prochain démarrage de l'app.
++  Future<void> reload({bool strict = false}) async {
++    _initialized = true;
++    await _fetch(strict: strict);
++  }
++
++  Future<void> _fetch({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/feedback-prompt'))
+           .timeout(const Duration(seconds: 5));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? d = jsonDecode(resp.body);
+-      if (d is! Map) return;
++      if (d is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       _enabled = d['enabled'] == true;
+       _message = (d['message'] ?? '').toString();
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Feedback] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[Feedback] ${e.runtimeType}');
+     }
+   }
+
 diff --git a/lib/features/playlists/data/cloud_backup_repository.dart b/lib/features/playlists/data/cloud_backup_repository.dart
 index c91128b370a23a7d5f5e4c0c8608575235085838..8b1b52db268eefff3abdcdb9c37ddadfbd47c905 100644
 --- a/lib/features/playlists/data/cloud_backup_repository.dart
@@ -833,6 +1091,41 @@ index c91128b370a23a7d5f5e4c0c8608575235085838..8b1b52db268eefff3abdcdb9c37ddadf
 
        final Map<String, dynamic> body =
            jsonDecode(resp.body) as Map<String, dynamic>;
+diff --git a/lib/features/playlists/data/default_servers.dart b/lib/features/playlists/data/default_servers.dart
+index 54f49d66c4369648ff795f3941f05097c2d2b6ba..9d096e074161f5547f3c46a3a2dba484839f3fda 100644
+--- a/lib/features/playlists/data/default_servers.dart
++++ b/lib/features/playlists/data/default_servers.dart
+@@ -82,8 +82,8 @@ abstract final class DefaultServersApi {
+   ///
+   /// Ne throw jamais : en dernier recours renvoie une liste vide,
+   /// et l'UI affiche un message « serveurs indisponibles, réessaie ».
+-  static Future<List<DefaultServer>> fetch({bool forceRefresh = false}) async {
+-    if (!forceRefresh && _memoryCache != null) {
++  static Future<List<DefaultServer>> fetch({bool forceRefresh = false, bool strict = false}) async {
++    if (!forceRefresh && !strict && _memoryCache != null) {
+       return _memoryCache!;
+     }
+
+@@ -94,6 +94,8 @@ abstract final class DefaultServersApi {
+       return network;
+     }
+
++    if (strict) throw StateError('Liste des serveurs non confirmée');
++
+     // Réseau KO → on retombe sur le dernier cache disque connu.
+     final List<DefaultServer> disk = await _readCache();
+     _memoryCache = disk;
+@@ -116,8 +118,8 @@ abstract final class DefaultServersApi {
+       }
+       final Map<String, dynamic> body =
+           jsonDecode(resp.body) as Map<String, dynamic>;
+-      final List<dynamic> raw =
+-          (body['servers'] as List<dynamic>?) ?? const <dynamic>[];
++      if (body['servers'] is! List) return null;
++      final List<dynamic> raw = body['servers'] as List<dynamic>;
+       final List<DefaultServer> servers = raw
+           .whereType<Map<String, dynamic>>()
+           .map(DefaultServer.fromJson)
 diff --git a/lib/features/playlists/data/remote_source_repository.dart b/lib/features/playlists/data/remote_source_repository.dart
 index 2d23943633d66766b9bba6dd2f27beac952df59f..1997ac1e013bc80b52a08320693506c134343728 100644
 --- a/lib/features/playlists/data/remote_source_repository.dart
@@ -1177,6 +1470,44 @@ index b7914e6e053cc2823d600ed4c5eb126b4e7803ca..b6e19bfaf72fa65bf4627509fda57382
                  const SizedBox(height: 14),
                  // ----- Sélecteur M3U / Xtream -----
                  Row(
+diff --git a/lib/features/pricing/data/pricing_repository.dart b/lib/features/pricing/data/pricing_repository.dart
+index 0b1147361bb2b444e387c2f6d9cdd436c761c76c..eb9037392a923f514177186fd5b74a8af52ac730 100644
+--- a/lib/features/pricing/data/pricing_repository.dart
++++ b/lib/features/pricing/data/pricing_repository.dart
+@@ -75,14 +75,20 @@ abstract final class PricingRepository {
+   static PricingConfig get current => notifier.value;
+
+   /// Récupère les tarifs distants et met à jour [notifier]. Best-effort.
+-  static Future<void> fetch() async {
++  static Future<void> fetch({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/pricing'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+
+       String str(String key, String fallback) {
+         final String v = (decoded[key] ?? '').toString().trim();
+@@ -102,7 +108,8 @@ abstract final class PricingRepository {
+         promoMessage: (decoded['promoMessage'] ?? '').toString(),
+       );
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[Pricing] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[Pricing] ${e.runtimeType}');
+     }
+   }
+ }
 diff --git a/lib/features/privacy/presentation/shield_settings_screen.dart b/lib/features/privacy/presentation/shield_settings_screen.dart
 index 8bb1caa893157a3282977bb750596edf8ae8d3d9..4d1847428c7834767deee9a09593d2937956fdfc 100644
 --- a/lib/features/privacy/presentation/shield_settings_screen.dart
@@ -1346,6 +1677,56 @@ index 373efb131130a959a6770dc17df29035ae131b36..36a7dc21545cd1db397108109b872542
        if (kDebugMode) debugPrint('[Announcement] fetch: $e');
        return null;
      }
+diff --git a/lib/features/simple_home/data/home_layout_repository.dart b/lib/features/simple_home/data/home_layout_repository.dart
+index 8cfa08dccf8e8f56d18ae97dc3426d22a6d93022..d290eab7eb3913081cb63a18e30b881fa8152f46 100644
+--- a/lib/features/simple_home/data/home_layout_repository.dart
++++ b/lib/features/simple_home/data/home_layout_repository.dart
+@@ -135,22 +135,32 @@ class HomeLayoutRepository extends ChangeNotifier {
+   }
+
+   /// Va chercher la config distante. Silencieux en cas d'échec.
+-  Future<void> refresh() async {
++  Future<void> refresh({bool strict = false}) async {
+     try {
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/home-layout'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map<String, dynamic>) return;
++      if (decoded is! Map<String, dynamic>) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? items = decoded['items'];
+-      if (items is! List) return;
++      if (items is! List) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       _applyJsonList(items);
+       // Mémorise la dernière config valide.
+       final SharedPreferences prefs = await SharedPreferences.getInstance();
+       await prefs.setString(_cacheKey, jsonEncode(items));
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[HomeLayout] refresh: $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[HomeLayout] refresh: ${e.runtimeType}');
+     }
+   }
+
+@@ -163,7 +173,6 @@ class HomeLayoutRepository extends ChangeNotifier {
+         if (c != null) next[c.key] = c;
+       }
+     }
+-    if (next.isEmpty) return;
+     _byKey = next;
+     notifyListeners();
+   }
 diff --git a/lib/features/simple_home/presentation/simple_home_screen.dart b/lib/features/simple_home/presentation/simple_home_screen.dart
 index f1b500b92c8776bd8429de789bf2cca6b4110007..dc33cbae029170da1b4c6d0f0ab47f1d4d13650d 100644
 --- a/lib/features/simple_home/presentation/simple_home_screen.dart
@@ -1555,6 +1936,46 @@ index a7b2afc782caefad889610748ecda644ce9fbd5a..8882e8d4c05a703540431c8ca7e74406
      } catch (e) {
        if (kDebugMode) debugPrint('[Subscription] syncWithBackend error: $e');
        StructuredLogger.instance.warn(
+diff --git a/lib/features/theme/data/remote_theme_repository.dart b/lib/features/theme/data/remote_theme_repository.dart
+index f582f60fdbb9871fca0648f200fbecba633a9dfc..2b57982425c332cdba776371e9fd520d198e47c8 100644
+--- a/lib/features/theme/data/remote_theme_repository.dart
++++ b/lib/features/theme/data/remote_theme_repository.dart
+@@ -25,16 +25,22 @@ import '../../subscription/data/subscription_backend.dart';
+
+ abstract final class RemoteThemeRepository {
+   /// Récupère le thème distant et l'applique (nom + couleur d'accent).
+-  static Future<void> fetchAndApply() async {
++  static Future<void> fetchAndApply({bool strict = false}) async {
+     try {
+       // Thème PAR PLATEFORME : le mobile lit le thème mobile, DeFew TV
+       // lit le thème TV (?platform=tv).
+       final http.Response resp = await http
+           .get(Uri.parse('$kSubscriptionBaseUrl/api/theme?platform=${AppPlatform.id}'))
+           .timeout(const Duration(seconds: 6));
+-      if (resp.statusCode != 200) return;
++      if (resp.statusCode != 200) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+       final Object? decoded = jsonDecode(resp.body);
+-      if (decoded is! Map) return;
++      if (decoded is! Map) {
++        if (strict) throw StateError('Réglage distant non confirmé');
++        return;
++      }
+
+       // Nom affiché ('' = on garde le nom du flavor).
+       final String name = (decoded['appName'] ?? '').toString();
+@@ -46,7 +52,8 @@ abstract final class RemoteThemeRepository {
+         AccentController.instance.applyCustom(accent);
+       }
+     } catch (e) {
+-      if (kDebugMode) debugPrint('[RemoteTheme] $e');
++      if (strict) rethrow;
++      if (kDebugMode) debugPrint('[RemoteTheme] ${e.runtimeType}');
+     }
+   }
+
 diff --git a/lib/l10n/app_ar.arb b/lib/l10n/app_ar.arb
 index fd6c4419e47d3504be893f2e06ce9e6b9fef58b0..b1ad49aaf2c1e4baf9fd856701d5429244bd1bdc 100644
 --- a/lib/l10n/app_ar.arb
@@ -1694,7 +2115,7 @@ index 6a549608b2d0b339d31278f031337d4f0141fc39..0d08384ef0f7d94ddde988fad2862b16
    "appTagline": "Sinema bila mipaka",
    "navHome": "Mwanzo",
 diff --git a/test/core/app/panel_live_wait_test.dart b/test/core/app/panel_live_wait_test.dart
-index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0d99a31de 100644
+index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..313352583128d748e7d2cd4c697e360f99eba08b 100644
 --- a/test/core/app/panel_live_wait_test.dart
 +++ b/test/core/app/panel_live_wait_test.dart
 @@ -14,6 +14,7 @@ import 'package:http/testing.dart';
@@ -1719,10 +2140,18 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0
        expect(liveWaitBackoff(9), const Duration(seconds: 30));
      });
    });
-@@ -77,6 +78,73 @@ void main() {
+@@ -77,6 +78,81 @@ void main() {
 
      tearDown(() => w.stop());
 
++    // Le transport simulé du canal ne couvre pas à lui seul l'enregistrement
++    // de la preuve HTTP. Tous les autres appels restent aussi dans ce test.
++    void start() => http.runWithClient(w.start, () => MockClient((r) async {
++      expect(r.url.path, '/api/device-proof');
++      return http.Response('{}', 200);
++    }));
++
++
 +    test('ordre suivi : reçu avant import, puis appliqué avec sa révision', () async {
 +      final Completer<void> importing = Completer<void>();
 +      final Completer<void> finish = Completer<void>();
@@ -1751,7 +2180,7 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0
 +        if (r.url.queryParameters['after'] == '12') return http.Response('{}', 404);
 +        return http.Response('{"box":[{"id":12,"kind":"source","order_id":"ord_fixture1234"}]}', 200);
 +      });
-+      w.start();
++      start();
 +      await importing.future.timeout(const Duration(seconds: 1));
 +      await Future<void>.delayed(const Duration(milliseconds: 20));
 +      expect(states, <String>['received']);
@@ -1781,7 +2210,7 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0
 +        if (r.url.queryParameters['after'] == '12') { completed.complete(); return http.Response('{}',404); }
 +        return http.Response('{"box":[{"id":12,"kind":"activate","order_id":"ord_fixture1234"}]}',200);
 +      });
-+      w.start();
++      start();
 +      await firstAck.future.timeout(const Duration(seconds:1));
 +      expect((await SharedPreferences.getInstance()).getInt(_cursorKey('MK:30:70:0E:D7:5B')),isNull);
 +      await completed.future.timeout(const Duration(seconds:12));
@@ -1793,7 +2222,25 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0
      test('« Effacer les listes » au panel → relecture immédiate, pas au bout de 60 s', () async {
        final Completer<void> panelClick = Completer<void>();
        int calls = 0;
-@@ -171,9 +239,9 @@ void main() {
+@@ -104,7 +180,7 @@ void main() {
+           200,
+         );
+       });
+-      w.start();
++      start();
+       await Future<void>.delayed(const Duration(milliseconds: 100));
+       expect(syncs, 0, reason: 'rien tant que le panel n’a rien envoyé');
+
+@@ -163,7 +239,7 @@ void main() {
+           );
+         });
+
+-        w.start();
++        start();
+         await firstAttempt.future.timeout(const Duration(seconds: 1));
+         final SharedPreferences prefs = await SharedPreferences.getInstance();
+         expect(
+@@ -171,9 +247,9 @@ void main() {
            isNull,
            reason: 'recevoir un ordre ne prouve pas son application',
          );
@@ -1805,11 +2252,13 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0
          expect(syncs, 2);
          expect(prefs.getInt(_cursorKey('MK:30:70:0E:D7:5B')), 12);
        },
-@@ -209,13 +277,14 @@ void main() {
+@@ -208,14 +284,15 @@ void main() {
+           return http.Response('{}', 404);
          });
 
-         w.start();
+-        w.start();
 -        await secondIdentitySeen.future.timeout(const Duration(seconds: 1));
++        start();
 +        await secondIdentitySeen.future.timeout(const Duration(seconds: 12));
 +        await Future<void>.delayed(const Duration(milliseconds: 50));
          expect(requests, <String>[
@@ -1822,7 +2271,16 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0
          expect(prefs.getInt(_cursorKey(nextMac)), 1);
          expect(prefs.getInt(_cursorKey(firstMac)), 500);
        },
-@@ -246,7 +315,7 @@ void main() {
+@@ -232,7 +309,7 @@ void main() {
+         (http.Request r) async =>
+             http.Response('{"box":[{"id":12,"kind":"source_clear"}]}', 200),
+       );
+-      w.start();
++      start();
+       await started.future.timeout(const Duration(seconds: 1));
+       w.stop();
+       finish.complete();
+@@ -246,17 +323,17 @@ void main() {
      });
 
      test(
@@ -1831,8 +2289,11 @@ index 07d1bccc22b8c4b32a55f7a114a5c8ed13ad6c1f..12b512e177fb8cb89b37f678a8a233e0
        () async {
          int calls = 0;
          w.clientFactory = () => MockClient((http.Request r) async {
-@@ -256,7 +325,7 @@ void main() {
-         w.start();
+           calls++;
+           return http.Response('{}', 404);
+         });
+-        w.start();
++        start();
          await Future<void>.delayed(const Duration(milliseconds: 200));
          expect(calls, 1);
 -        expect(syncs, 0);
@@ -1869,10 +2330,10 @@ index 0000000000000000000000000000000000000000..905cec0293b302948acf9903a8acfe5c
 +}
 diff --git a/test/free_play/panel_roundtrip_test.dart b/test/free_play/panel_roundtrip_test.dart
 new file mode 100644
-index 0000000000000000000000000000000000000000..1c6562cc155bc69a173ccf122b2c2007993d3681
+index 0000000000000000000000000000000000000000..734be6cd40026f9a14b04923dc27a2beb3b7ad32
 --- /dev/null
 +++ b/test/free_play/panel_roundtrip_test.dart
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,232 @@
 +import 'dart:convert';
 +
 +import 'package:flutter/services.dart';
@@ -1923,7 +2384,7 @@ index 0000000000000000000000000000000000000000..1c6562cc155bc69a173ccf122b2c2007
 +    bool rejectFirst = true;
 +    bool frozen = false;
 +    final body0 = {'id': 1, 'kind': 'source', 'order_id': 'ord_00000001'};
-+    final body1 = {'id': 2, 'kind': 'freeze', 'order_id': 'ord_00000002'};
++    final body1 = {'id': 2, 'kind': 'suspend', 'order_id': 'ord_00000002'};
 +    http.Response reply(Object data) => http.Response(jsonEncode(data), 200);
 +    Future<http.Response> handler(http.Request request) async {
 +      expect(request.url.host, 'api.zuno8k.com');
@@ -2009,14 +2470,21 @@ index 0000000000000000000000000000000000000000..1c6562cc155bc69a173ccf122b2c2007
 +      await panel.acceptSocketFrame({
 +        'seq': 3,
 +        'mac': mac,
-+        'type': 'freeze',
++        'type': 'suspend',
 +        'order_id': 'ord_00000003',
 +      });
 +      expect(state.remote.frozen, isTrue);
 +      final readsWhileFrozen = calls.where((call) => call == 'sources').length;
-+      frozen = false;
 +      await panel.acceptSocketFrame({
 +        'seq': 4,
++        'mac': mac,
++        'type': 'source',
++        'order_id': 'ord_00000005',
++      });
++      expect(calls, contains('ord_00000005:failed:200'));
++      frozen = false;
++      await panel.acceptSocketFrame({
++        'seq': 5,
 +        'mac': mac,
 +        'type': 'resume',
 +        'order_id': 'ord_00000004',
@@ -2028,7 +2496,7 @@ index 0000000000000000000000000000000000000000..1c6562cc155bc69a173ccf122b2c2007
 +      );
 +      expect(
 +        (await SharedPreferences.getInstance()).getInt(liveWaitCursorKey(mac)),
-+        4,
++        5,
 +      );
 +    }, () => MockClient(handler));
 +  });
@@ -2095,6 +2563,137 @@ index 0000000000000000000000000000000000000000..1c6562cc155bc69a173ccf122b2c2007
 +        expect(await panel.cursorFor(mac), 32);
 +        expect(batches, [20, 20, 12, 12]);
 +      }, () => MockClient(handler));
++    },
++  );
++}
+diff --git a/test/free_play/panel_settings_refresh_test.dart b/test/free_play/panel_settings_refresh_test.dart
+new file mode 100644
+index 0000000000000000000000000000000000000000..5fed16d99115805b6743b01ba016fb0a0c850525
+--- /dev/null
++++ b/test/free_play/panel_settings_refresh_test.dart
+@@ -0,0 +1,125 @@
++import 'dart:convert';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:http/http.dart' as http;
++import 'package:http/testing.dart';
++import 'package:shared_preferences/shared_preferences.dart';
++import 'package:tv_king/core/branding/brand_config.dart';
++import 'package:tv_king/features/theme/data/remote_theme_repository.dart';
++import 'package:tv_king/features/pricing/data/pricing_repository.dart';
++import 'package:tv_king/features/simple_home/data/home_layout_repository.dart';
++import 'package:tv_king/features/country_home/data/featured_repository.dart';
++import 'package:tv_king/features/ads/data/startup_ad_repository.dart';
++import 'package:tv_king/features/feedback/data/feedback_repository.dart';
++import 'package:tv_king/features/playlists/data/default_servers.dart';
++
++void main() {
++  TestWidgetsFlutterBinding.ensureInitialized();
++  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
++  final Map<String, Future<void> Function()> readers =
++      <String, Future<void> Function()>{
++        'thème': () => RemoteThemeRepository.fetchAndApply(strict: true),
++        'tarifs': () => PricingRepository.fetch(strict: true),
++        'accueil': () => HomeLayoutRepository.instance.refresh(strict: true),
++        'vedette': () => FeaturedRepository.instance.refresh(strict: true),
++        'publicité': () async {
++          await StartupAdRepository.instance.fetch(strict: true);
++        },
++        'avis': () => FeedbackRepository.instance.reload(strict: true),
++        'serveurs': () async {
++          await DefaultServersApi.fetch(forceRefresh: true, strict: true);
++        },
++      };
++  for (final entry in readers.entries) {
++    test(
++      '${entry.key} : une panne HTTP ou un JSON invalide ne vaut pas application',
++      () async {
++        for (final response in <http.Response>[
++          http.Response('indisponible', 503),
++          http.Response('[]', 200),
++        ]) {
++          await expectLater(
++            http.runWithClient(
++              entry.value,
++              () => MockClient((_) async => response),
++            ),
++            throwsA(anyOf(isA<StateError>(), isA<FormatException>())),
++          );
++        }
++      },
++    );
++  }
++  test(
++    'les valeurs distantes remplacent les réglages courants sans redémarrage',
++    () async {
++      final data = <String, Object>{
++        '/api/theme': <String, Object>{
++          'appName': 'Nom du panel',
++          'accent': '#884422',
++        },
++        '/api/pricing': <String, Object>{
++          'currency': '€',
++          'yearly': '7',
++          'lifetime': '15',
++          'trialDays': 0,
++          'promoEnabled': false,
++        },
++        '/api/home-layout': <String, Object>{
++          'items': <Object>[
++            <String, Object>{
++              'key': 'recent',
++              'position': 0,
++              'enabled': true,
++              'ribbon': 'Nouveau',
++              'featured': false,
++            },
++          ],
++        },
++        '/api/featured': <String, Object>{
++          'name': 'Chaîne locale',
++          'note': 'À voir',
++        },
++        '/api/ad': <String, Object>{
++          'enabled': false,
++          'url': '',
++          'skip': 9,
++          'freq': 'daily',
++        },
++        '/api/feedback-prompt': <String, Object>{
++          'enabled': true,
++          'message': 'Votre avis',
++        },
++        '/api/servers': <String, Object>{
++          'servers': <Object>[
++            <String, Object>{
++              'id': 'fixture',
++              'label': 'Fixture',
++              'url': 'https://example.invalid',
++            },
++          ],
++        },
++      };
++      await http.runWithClient(
++        () async {
++          for (final reader in readers.values) {
++            await reader();
++          }
++        },
++        () => MockClient(
++          (request) async => http.Response.bytes(
++            utf8.encode(jsonEncode(data[request.url.path])),
++            200,
++            headers: {'content-type': 'application/json; charset=utf-8'},
++          ),
++        ),
++      );
++      expect(BrandConfig.instance.appName, 'Nom du panel');
++      expect(PricingRepository.current.yearly, '7');
++      expect(HomeLayoutRepository.instance.config('recent')?.ribbon, 'Nouveau');
++      expect(FeaturedRepository.instance.note, 'À voir');
++      expect(StartupAdRepository.instance.config.skip, 9);
++      expect(FeedbackRepository.instance.message, 'Votre avis');
++      expect((await DefaultServersApi.fetch()).single.id, 'fixture');
 +    },
 +  );
 +}

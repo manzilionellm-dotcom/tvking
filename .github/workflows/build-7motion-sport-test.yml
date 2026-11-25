@@ -578,7 +578,9 @@ jobs:
         python3 ../mission/android-app/ci/mobile/free/ads/prepare_ads.py android
         flutter gen-l10n
         flutter analyze --no-fatal-infos --no-fatal-warnings
-        flutter test --dart-define=PLAY_BUILD=true test/free_play
+        flutter test --dart-define=PLAY_BUILD=true test/free_play \
+          test/features/playlists/panel_getphp_reconcile_test.dart \
+          test/features/playlists/panel_source_decision_test.dart
         # Un code neuf pour chaque livraison, partagé avec l’APK de ce build.
         # Le code fixe 1727 ne pouvait pas être réimporté sur Google Play.
         # PHONE_VERSION_CODE est déjà vérifié supérieur aux versions publiées.

@@ -103,7 +103,9 @@ jobs:
           bash ../mission/android-app/ci/mobile/free/prepare-sources.sh
           flutter gen-l10n
           flutter analyze --no-fatal-infos --no-fatal-warnings
-          flutter test --reporter expanded --dart-define=PLAY_BUILD=true test/free_play
+          flutter test --reporter expanded --dart-define=PLAY_BUILD=true test/free_play \
+            test/features/playlists/panel_getphp_reconcile_test.dart \
+            test/features/playlists/panel_source_decision_test.dart
       - name: Conserver les captures du vrai accueil mobile
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
