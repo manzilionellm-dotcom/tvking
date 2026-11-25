@@ -14,6 +14,7 @@ assert actual == expected['sourceSha'], 'Le code mobile diffère de la revue'
 assert base == expected['mobileBaseSha'], 'La base téléphone diffère de la revue'
 PY
 bash "$reviewed_dir/android-app/ci/mobile/prepare-gold-trial-test.sh"
+git apply "$recipe_dir/release-index-read.patch"
 # Les contrôles panel corrigés sont un overlay limité, commun aux tests et
 # au constructeur mobile. Le téléphone garde le main, les traductions, le
 # protocole APPLIED et le Cast de la recette revue ci-dessus.
