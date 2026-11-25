@@ -11,7 +11,7 @@ import 'package:media_kit/media_kit.dart';
 
 class PhoneVideoPlayer extends PlatformPlayer {
   PhoneVideoPlayer({required this.vod, required this.userAgent})
-    : super(configuration: const PlayerConfiguration());
+      : super(configuration: const PlayerConfiguration());
 
   final bool vod;
   final String Function() userAgent;
@@ -141,8 +141,8 @@ class PhoneVideoPlayer extends PlatformPlayer {
           if (width is int && width > 0 && height is int && height > 0) {
             final scale =
                 pixelRatio is num && pixelRatio.isFinite && pixelRatio > 0
-                ? pixelRatio.toDouble()
-                : 1.0;
+                    ? pixelRatio.toDouble()
+                    : 1.0;
             displayAspect.value = width * scale / height;
           }
         }
@@ -376,21 +376,29 @@ class PhoneVideoSurface extends StatelessWidget {
       valueListenable: player.displayAspect,
       builder: (context, decodedAspect, _) => LayoutBuilder(
         builder: (context, box) {
-          final ratio =
-              aspect ??
+          final ratio = aspect ??
               decodedAspect ??
               (box.maxHeight > 0 ? box.maxWidth / box.maxHeight : 1.0);
+          final viewport = box.biggest;
+          final source = Size(viewport.height * ratio, viewport.height);
+          final fitted = applyBoxFit(fit, source, viewport);
+          // La SurfaceView Android reçoit ses vraies dimensions. Un FittedBox
+          // laisserait la surface à sa taille d'avant le zoom ou la rotation.
+          final rendered = fitted.source.isEmpty
+              ? Size.zero
+              : Size(
+                  source.width * fitted.destination.width / fitted.source.width,
+                  source.height *
+                      fitted.destination.height /
+                      fitted.source.height,
+                );
           return Stack(
             fit: StackFit.expand,
             children: [
-              FittedBox(
-                fit: fit,
-                clipBehavior: Clip.hardEdge,
-                child: SizedBox(
-                  width: box.maxHeight * ratio,
-                  height: box.maxHeight,
-                  child: surface,
-                ),
+              Positioned.fromRect(
+                rect:
+                    Alignment.center.inscribe(rendered, Offset.zero & viewport),
+                child: surface,
               ),
               Align(
                 alignment: Alignment.bottomCenter,

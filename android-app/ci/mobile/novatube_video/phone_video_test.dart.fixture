@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_kit/media_kit.dart';
@@ -93,6 +94,72 @@ void main() {
       expect(player.displayAspect.value, closeTo(16 / 9, 0.0001));
     },
   );
+
+  testWidgets(
+      'la vue Android occupe le cadre natif de MAX après rotation et zoom',
+      (tester) async {
+    // La composition hybride crée un canal par vue. Une réponse vide simule
+    // la création, sans substituer un widget au PlatformViewLink du produit.
+    final viewChannels = <MethodChannel>[];
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    messenger.setMockMethodCallHandler(SystemChannels.platform_views,
+        (call) async {
+      if (call.method == 'create') {
+        final local = MethodChannel('novatube_video/${call.arguments['id']}');
+        viewChannels.add(local);
+        messenger.setMockMethodCallHandler(local, (_) async => null);
+      }
+      return null;
+    });
+    addTearDown(() {
+      for (final local in viewChannels) {
+        messenger.setMockMethodCallHandler(local, null);
+      }
+      messenger.setMockMethodCallHandler(SystemChannels.platform_views, null);
+    });
+
+    const referenceKey = ValueKey<String>('novatube-reference');
+    Future<void> show(Size viewport, BoxFit fit) async {
+      tester.view.physicalSize = viewport;
+      await tester.pumpWidget(Directionality(
+        textDirection: TextDirection.ltr,
+        child: Stack(fit: StackFit.expand, children: [
+          const Center(
+              child: AspectRatio(
+                  key: referenceKey,
+                  aspectRatio: 16 / 9,
+                  child: SizedBox.expand())),
+          PhoneVideoSurface(
+              player: player,
+              fit: fit,
+              aspect: 16 / 9,
+              subtitleStyle: const TextStyle(),
+              subtitlePadding: EdgeInsets.zero),
+        ]),
+      ));
+      await tester.pump();
+    }
+
+    final view = find.byType(PlatformViewLink);
+    // Même layout que le Center/AspectRatio de MAX, sans réduction à la peinture.
+    await show(const Size(360, 800), BoxFit.contain);
+    expect(tester.getSize(view), tester.getSize(find.byKey(referenceKey)));
+    expect(tester.getSize(view), const Size(360, 202.5));
+    await show(const Size(800, 360), BoxFit.contain);
+    expect(tester.getRect(view), tester.getRect(find.byKey(referenceKey)));
+    expect(tester.getSize(view), const Size(640, 360));
+
+    // « Remplir » recadre les bords dans le cadre sans étirer les pixels.
+    await show(const Size(800, 360), BoxFit.cover);
+    expect(tester.getSize(view), const Size(800, 450));
+    expect(tester.getTopLeft(view), const Offset(0, -45));
+    await show(const Size(800, 360), BoxFit.fill);
+    expect(tester.getSize(view), const Size(800, 360));
+    expect(viewChannels.length, 1); // même vue, sans réouvrir le flux
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   test('l’arrêt avant attachement annule le flux et ses callbacks', () async {
     await player.open(media('a'));

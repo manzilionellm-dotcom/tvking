@@ -93,10 +93,25 @@ from PIL import Image, ImageStat
 import sys
 with Image.open(sys.argv[1]) as shot:
     x, y = shot.width // 2, shot.height // 2
-    rgb = ImageStat.Stat(shot.convert('RGB').crop((x-30,y-30,x+30,y+30))).mean
-channel = 1 if sys.argv[2] == '2' else 0
-print(f"Capture {sys.argv[2]} : RVB moyen à l'écran = {rgb}", flush=True)
-assert rgb[channel] > 120 and all(rgb[channel] > value*2 for i,value in enumerate(rgb) if i != channel), "Mire attendue absente à l'écran"
+    pixels = shot.convert('RGB')
+    rgb = ImageStat.Stat(pixels.crop((x-30,y-30,x+30,y+30))).mean
+    channel = 1 if sys.argv[2] == '2' else 0
+    def is_pattern(pixel):
+        return pixel[channel] > 120 and all(pixel[channel] > value*2 for i,value in enumerate(pixel) if i != channel)
+    assert is_pattern(rgb), "Mire attendue absente à l'écran"
+    # Le cadre de référence MAX est Center/AspectRatio(16/9). L'émulateur
+    # en portrait le limite par la largeur. Mesurer le segment continu de
+    # la mire au centre exclut les icônes Android des bords du résultat.
+    def extent(line, middle):
+        start = end = middle
+        while start > 0 and is_pattern(line[start-1]): start -= 1
+        while end+1 < len(line) and is_pattern(line[end+1]): end += 1
+        return end - start + 1
+    width = extent([pixels.getpixel((col,y)) for col in range(shot.width)], x)
+    height = extent([pixels.getpixel((x,row)) for row in range(shot.height)], y)
+    print(f"Capture {sys.argv[2]} : {width}×{height} px, RVB moyen = {rgb}", flush=True)
+    assert abs(width - shot.width) <= 3, "La mire ne remplit pas la largeur du téléphone"
+    assert abs(height - width*9/16) <= 3, "Cadre visible différent du 16:9 de NOVATUBE MAX"
 PIXEL
     touch "$trial/media/capture-$step"
     captured=$step
