@@ -222,6 +222,9 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/qa-python"
           source "$RUNNER_TEMP/qa-python/bin/activate"
           pip install PyYAML==6.0.2 numpy==2.2.6
+          keytool -genkeypair -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 30 \
+            -keystore "$RUNNER_TEMP/7motion-qa.jks" -storetype JKS -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
           python ../mission/android-app/ci/mobile/free/prepare_qa_android.py
       - name: Vérifier les parcours du lecteur et du panel et compiler l’APK
         run: |
@@ -239,10 +242,11 @@ jobs:
           grep -F "package: name='com.manzilionellm.tvking.qa'" "$RUNNER_TEMP/qa-package"
           grep -Fx "native-code: 'arm64-v8a'" "$RUNNER_TEMP/qa-package"
           grep -Fx 'application-debuggable' "$RUNNER_TEMP/qa-package"
-          "$tools/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/qa-cert"
-          digest=$(keytool -exportcert -alias androiddebugkey -keystore "$HOME/.android/debug.keystore" \
-            -storepass android | sha256sum | cut -d' ' -f1)
-          grep -Fx "Signer #1 certificate SHA-256 digest: $digest" "$RUNNER_TEMP/qa-cert"
+          "$tools/apksigner" verify --print-certs-pem "$apk" > "$RUNNER_TEMP/qa-cert.pem"
+          openssl x509 -in "$RUNNER_TEMP/qa-cert.pem" -outform DER -out "$RUNNER_TEMP/qa-signer.der"
+          keytool -exportcert -alias androiddebugkey -keystore "$RUNNER_TEMP/7motion-qa.jks" \
+            -storepass android -file "$RUNNER_TEMP/qa-expected.der"
+          cmp "$RUNNER_TEMP/qa-signer.der" "$RUNNER_TEMP/qa-expected.der"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           python3 ../mission/android-app/ci/mobile/free/verify_qa_ads.py "$apk" "$tools/aapt2"
           cp "$apk" build/7motion-free-qa.apk

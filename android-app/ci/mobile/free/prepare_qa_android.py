@@ -52,7 +52,16 @@ def main():
     if text.count(start) != 1 or "applicationIdSuffix" in text:
         raise SystemExit("Configuration debug Gradle inattendue")
     debug = '        getByName("debug") { applicationIdSuffix = ".qa" }'
-    gradle.write_text(text.replace(start, start + "\n" + debug))
+    # Gradle et le contrôle final utilisent la même clé de test éphémère,
+    # indépendamment du profil Android préinstallé sur le runner.
+    signing = '''    signingConfigs {
+        getByName("debug") {
+            storeFile = file(System.getenv("RUNNER_TEMP") + "/7motion-qa.jks")
+        }
+    }
+
+'''
+    gradle.write_text(text.replace(start, signing + start + "\n" + debug))
 
 
 if __name__ == "__main__":
