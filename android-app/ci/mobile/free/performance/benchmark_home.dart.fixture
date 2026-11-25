@@ -15,10 +15,14 @@ class BenchmarkHome extends StatefulWidget {
   State<BenchmarkHome> createState() => _BenchmarkHomeState();
 }
 
-class _BenchmarkHomeState extends State<BenchmarkHome> {
+class _BenchmarkHomeState extends State<BenchmarkHome> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(WidgetsBinding.instance.waitUntilFirstFrameRasterized.then((_) {
+      debugPrint('SEVEN_PERF_FIRST_UI');
+    }));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       // Android mesure le lancement normal jusqu'à son premier affichage.
       // L'ouverture du lecteur ne commence qu'une fois l'accueil monté.
@@ -33,6 +37,17 @@ class _BenchmarkHomeState extends State<BenchmarkHome> {
         MaterialPageRoute<void>(builder: (_) => const VideoPlayerScreen(channel: channel)),
       ));
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) debugPrint('SEVEN_PERF_RESUMED');
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override

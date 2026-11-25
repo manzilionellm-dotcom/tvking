@@ -340,9 +340,10 @@ jobs:
           sudo setfacl -m "u:$(id -un):rw" /dev/kvm
           bash ../mission/android-app/ci/mobile/free/performance/measure.sh
       - name: Conserver les mesures et la capture du lecteur
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: 7motion-performance-mesures
           path: phone/build/performance/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14

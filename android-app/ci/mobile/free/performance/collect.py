@@ -17,17 +17,26 @@ def adb(*args):
     return subprocess.check_output(["adb", *args], timeout=45, text=True).strip()
 
 
-def start(activity):
-    response = adb("shell", "am", "start", "-W", "-a", "android.intent.action.MAIN",
+def start(activity, completion):
+    adb("logcat", "-c")
+    adb("shell", "log", "-t", "SevenPerf", "SEVEN_PERF_LAUNCH")
+    # am start -W peut rester en attente de WindowManager lors d'un changement
+    # d'orientation. Le raster Flutter et la reprise indiquent l'événement réel.
+    response = adb("shell", "am", "start", "-a", "android.intent.action.MAIN",
                    "-c", "android.intent.category.LAUNCHER", "-n", activity)
-    values = dict(line.split(": ", 1) for line in response.splitlines() if ": " in line)
-    if values.get("Status") != "ok":
+    if "Error" in response:
         raise RuntimeError(response)
-    return {
-        "launch_state": values.get("LaunchState"),
-        "android_total_ms": int(values["TotalTime"]) if "TotalTime" in values else None,
-        "command_wait_ms": int(values["WaitTime"]),
-    }
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        events = adb("logcat", "-d", "-v", "epoch", "-s", "SevenPerf:I", "flutter:I", "AndroidRuntime:E")
+        start_at = re.search(r"^(\d+\.\d+).*SEVEN_PERF_LAUNCH\b", events, re.M)
+        end_at = re.search(r"^(\d+\.\d+).*" + completion + r"\b", events, re.M)
+        if start_at and end_at:
+            return round((float(end_at[1]) - float(start_at[1])) * 1000, 1)
+        if "FATAL EXCEPTION" in events:
+            raise RuntimeError("Le processus Android s'est arrêté pendant le lancement")
+        time.sleep(0.25)
+    raise TimeoutError("L'événement Flutter attendu n'est pas arrivé : " + completion)
 
 
 def first_image():
@@ -69,8 +78,7 @@ def measure_trial(apk, shot):
     if not activity.startswith(PACKAGE + "/"):
         raise RuntimeError("Activité principale de 7 MOTION QA introuvable")
     adb("shell", "am", "force-stop", PACKAGE)
-    adb("logcat", "-c")
-    cold = start(activity)
+    cold = start(activity, "SEVEN_PERF_FIRST_UI")
     ttff_ms = first_image()
     capture_pattern(shot)
     adb("shell", "input", "keyevent", "KEYCODE_BACK")
@@ -79,7 +87,8 @@ def measure_trial(apk, shot):
     time.sleep(1)
     if not adb("shell", "pidof", PACKAGE):
         raise RuntimeError("Processus fermé avant la mesure de reprise")
-    return {"cold": cold, "resume": start(activity), "open_to_first_frame_ms": ttff_ms}
+    return {"intent_to_first_raster_ms": cold, "intent_to_resume_event_ms": start(activity, "SEVEN_PERF_RESUMED"),
+            "open_to_first_frame_ms": ttff_ms}
 
 
 def main():
@@ -89,8 +98,11 @@ def main():
     for index in range(3):
         order = ("before", "after") if index % 2 == 0 else ("after", "before")
         for sample in order:
+            print(f"Essai {index + 1} : {sample}", flush=True)
             trial = measure_trial(apks[sample], output / f"lecteur-{sample}.png")
             measurements.append({"edition": sample, "trial": index + 1, **trial})
+            (output / "essais.json").write_text(json.dumps(measurements, indent=2) + "\n")
+            print(trial, flush=True)
     medians = {
         edition: statistics.median(t["open_to_first_frame_ms"] for t in measurements if t["edition"] == edition)
         for edition in apks

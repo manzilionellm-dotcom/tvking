@@ -27,9 +27,24 @@ done
 [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
 adb shell wm size 720x1280
 adb shell wm density 320
+adb shell svc power stayon true
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard
 adb shell input keyevent 82
 # Les mesures utilisent le loopback USB virtuel. Aucun flux commercial ou panel distant.
 adb shell svc wifi disable
 adb shell svc data disable
 adb reverse tcp:18910 tcp:18910
-/usr/bin/python3 "$bench/collect.py" build/performance "$RUNNER_TEMP/phone-before.apk" "$RUNNER_TEMP/phone-after.apk"
+if ! /usr/bin/python3 "$bench/collect.py" build/performance "$RUNNER_TEMP/phone-before.apk" "$RUNNER_TEMP/phone-after.apk"; then
+  adb logcat -d -v threadtime -s ActivityTaskManager:I ActivityManager:I AndroidRuntime:E flutter:I \
+    FlutterEngine:I SevenPerf:I libc:F DEBUG:F > build/performance/android.log || true
+  adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity|mLastPausedActivity' \
+    > build/performance/activity.txt || true
+  adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp|mShowingLockscreen' \
+    > build/performance/window.txt || true
+  adb exec-out screencap -p > build/performance/echec.png || true
+  cp "$trial/http.log" build/performance/flux-local.log
+  tail -80 build/performance/android.log
+  cat build/performance/{activity,window}.txt
+  exit 1
+fi
