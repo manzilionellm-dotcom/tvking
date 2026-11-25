@@ -1,15 +1,17 @@
 diff --git a/lib/features/player/data/feed_lookahead.dart b/lib/features/player/data/feed_lookahead.dart
 new file mode 100644
-index 0000000..e03f125
+index 0000000..5957e54
 --- /dev/null
 +++ b/lib/features/player/data/feed_lookahead.dart
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,204 @@
 +import 'dart:async';
 +import 'dart:io';
 +
 +/// At most two prospective TS connections, each paused after its first 256 KiB.
 +/// Promotion continues the SAME HTTP response, including the buffered prefix.
 +class FeedLookahead {
++  FeedLookahead({this.onExpire});
++  final void Function()? onExpire;
 +  final Map<String, PreparedTransport> _entries = {};
 +  static const maxItems = 2;
 +
@@ -24,7 +26,7 @@ index 0000000..e03f125
 +      _entries[url] = item;
 +      item.start(url, userAgent, () {
 +        if (identical(_entries[url], item)) _entries.remove(url);
-+      });
++      }, onExpire: onExpire);
 +    }
 +  }
 +
@@ -51,19 +53,26 @@ index 0000000..e03f125
 +class PreparedTransport {
 +  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
 +  final List<List<int>> _prefix = [];
-+  StreamIterator<List<int>>? _source;
++  StreamSubscription<List<int>>? _upstream;
++  StreamController<List<int>>? _downstream;
 +  Timer? _expiry;
++  int _bytes = 0;
 +  bool _closed = false;
++  bool _ended = false;
 +  bool ready = false;
 +  bool consumed = false;
 +
-+  Future<void> start(String url, String ua, void Function() evict) async {
++  Future<void> start(String url, String ua, void Function() evict,
++      {void Function()? onExpire}) async {
 +    void abandon() {
 +      close();
 +      evict();
 +    }
 +
-+    _expiry = Timer(const Duration(seconds: 12), abandon);
++    _expiry = Timer(const Duration(seconds: 12), () {
++      abandon();
++      onExpire?.call();
++    });
 +    try {
 +      _client.autoUncompress = false;
 +      _client.userAgent = ua;
@@ -81,29 +90,44 @@ index 0000000..e03f125
 +        abandon();
 +        return;
 +      }
-+      final frames = _source = StreamIterator(res);
-+      var bytes = 0;
-+      while (bytes < 256 * 1024 && await frames.moveNext()) {
++      _upstream = res.listen((chunk) {
 +        if (_closed) return;
-+        _prefix.add(frames.current);
-+        bytes += frames.current.length;
-+      }
-+      if (_closed || bytes == 0) {
-+        abandon();
-+        return;
-+      }
-+      // A server can label an HTML error or an HLS manifest as transport stream.
-+      final probe = _prefix.expand((part) => part).take(564).toList();
-+      ready = false;
-+      for (var i = 0; i < 188 && i + 376 < probe.length; i++) {
-+        if (probe[i] == 0x47 &&
-+            probe[i + 188] == 0x47 &&
-+            probe[i + 376] == 0x47) {
-+          ready = true;
-+          break;
++        final sink = _downstream;
++        if (sink != null && sink.hasListener) {
++          sink.add(chunk);
++          return;
 +        }
-+      }
-+      if (!ready) abandon();
++        _prefix.add(chunk);
++        _bytes += chunk.length;
++        // Promote a slow live connection as soon as three MPEG-TS packets
++        // are visible, even while the remainder of the prefix is arriving.
++        if (!ready && _bytes >= 564) {
++          final probe = _prefix.expand((part) => part).take(564).toList();
++          for (var i = 0; i < 188; i++) {
++            if (probe[i] == 0x47 &&
++                probe[i + 188] == 0x47 &&
++                probe[i + 376] == 0x47) {
++              ready = true;
++              break;
++            }
++          }
++          if (!ready) {
++            abandon();
++            return;
++          }
++        }
++        if (_bytes >= 256 * 1024) _upstream?.pause();
++      }, onError: (Object error, StackTrace stack) {
++        _downstream?.addError(error, stack);
++        abandon();
++      }, onDone: () {
++        _ended = true;
++        if (!ready) {
++          abandon();
++          return;
++        }
++        if (_downstream?.hasListener == true) unawaited(_downstream!.close());
++      });
 +    } catch (_) {
 +      abandon();
 +    }
@@ -114,23 +138,25 @@ index 0000000..e03f125
 +  }
 +
 +  Stream<List<int>> consume() {
++    if (consumed || _closed)
++      throw StateError('Prepared transport already closed or transferred');
 +    consumed = true;
-+    return _drain();
-+  }
-+
-+  Stream<List<int>> _drain() async* {
-+    try {
++    final sink = _downstream = StreamController<List<int>>();
++    sink.onListen = () {
 +      for (final part in _prefix) {
-+        yield part;
++        sink.add(part);
 +      }
 +      _prefix.clear();
-+      final frames = _source!;
-+      while (!_closed && await frames.moveNext()) {
-+        yield frames.current;
++      if (_ended) {
++        unawaited(sink.close());
++      } else if (_upstream?.isPaused == true) {
++        _upstream!.resume();
 +      }
-+    } finally {
-+      close();
-+    }
++    };
++    sink.onPause = () => _upstream?.pause();
++    sink.onResume = () => _upstream?.resume();
++    sink.onCancel = close;
++    return sink.stream;
 +  }
 +
 +  void close() {
@@ -139,9 +165,10 @@ index 0000000..e03f125
 +    ready = false;
 +    _expiry?.cancel();
 +    _client.close(force: true);
-+    unawaited(_source?.cancel());
-+    // consume() may be suspended in the prefix loop. It owns that list until
-+    // cancellation completes; dropping the owning session releases the prefix.
++    unawaited(_upstream?.cancel());
++    _prefix.clear();
++    final sink = _downstream;
++    if (sink != null && !sink.isClosed) unawaited(sink.close());
 +  }
 +}
 +
@@ -253,7 +280,7 @@ index e74005b..d272947 100644
  
    /// `true` si la dernière réponse amont était une PAGE (HTML/texte/JSON)
 diff --git a/lib/features/player/presentation/video_player_screen.dart b/lib/features/player/presentation/video_player_screen.dart
-index 3069ca7..413aaca 100644
+index 3069ca7..d440832 100644
 --- a/lib/features/player/presentation/video_player_screen.dart
 +++ b/lib/features/player/presentation/video_player_screen.dart
 @@ -68,6 +68,7 @@ import '../../vod/data/playback_position_repository.dart';
@@ -295,7 +322,7 @@ index 3069ca7..413aaca 100644
  
 +  int _feedIndex = -1;
 +  int _feedDirection = 1;
-+  final _feedWarm = FeedLookahead();
++  late final _feedWarm = FeedLookahead(onExpire: () => unawaited(_warmFeed()));
 +  Map<String, String> _nativeTargets = {};
 +  Map<String, String> _nativeMimes = {};
 +  int _feedGeneration = 0;
@@ -627,7 +654,7 @@ index 25180f1..f46bd45 100644
        child: Padding(
          padding: const EdgeInsets.symmetric(horizontal: 4),
 diff --git a/lib/features/vod/presentation/movie_detail_screen.dart b/lib/features/vod/presentation/movie_detail_screen.dart
-index 4aa3825..6b35a5a 100644
+index 4aa3825..19a4a20 100644
 --- a/lib/features/vod/presentation/movie_detail_screen.dart
 +++ b/lib/features/vod/presentation/movie_detail_screen.dart
 @@ -31,8 +31,9 @@ import '../domain/content_partition.dart';
@@ -684,15 +711,6 @@ index 4aa3825..6b35a5a 100644
                            ),
                            child: Padding(
                              padding:
-@@ -354,7 +350,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
- /// LE MÊME singleton : un téléchargement lancé au téléphone se retrouve
- /// dans les mêmes états/écrans).
- class _DownloadButton extends StatelessWidget {
--  const _DownloadButton({required this.movie});
-+  const _DownloadButton({required this.movie, this.feed = const []});
-   final VodMovie movie;
- 
-   @override
 diff --git a/packages/novatube_video/android/src/main/kotlin/com/manzilionellm/novatube_video/NativeVideoView.kt b/packages/novatube_video/android/src/main/kotlin/com/manzilionellm/novatube_video/NativeVideoView.kt
 index 397fced..dcad358 100644
 --- a/packages/novatube_video/android/src/main/kotlin/com/manzilionellm/novatube_video/NativeVideoView.kt
@@ -868,12 +886,60 @@ index b0d8901..d9b9e7f 100644
    void forceHls() {
      _nextMime = 'application/x-mpegURL';
    }
+diff --git a/test/features/player/exit_guards_wave2_test.dart b/test/features/player/exit_guards_wave2_test.dart
+index c64aeb1..7dcc65f 100644
+--- a/test/features/player/exit_guards_wave2_test.dart
++++ b/test/features/player/exit_guards_wave2_test.dart
+@@ -144,28 +144,28 @@ void main() {
+       expect(dispose, isNot(contains('closeOtherPlaybacks(')),
+           reason: 'aucune fermeture globale tardive ne doit contourner '
+               'le droit capturé par networkClosed');
+-      expect(
+-        RegExp(
+-          r"if \(wasOwner\) \{\s*StreamSlot\.instance\s*"
+-          r"\.handOff\(this, shutdown, label: 'fermeture lecteur quitté'\);"
+-          r"\s*\} else \{\s*StreamSlot\.instance\.unregister\(this\);\s*\}",
+-        ).hasMatch(dispose),
+-        isTrue,
+-        reason: 'le propriétaire transmet la fermeture au prochain claim ; '
+-            'un écran déjà révoqué retire seulement sa propre inscription',
+-      );
++      final ownerBranch = dispose.substring(dispose.indexOf('if (wasOwner) {'));
++      final handoff = ownerBranch.indexOf("StreamSlot.instance.handOff(this, release, label: 'fermeture lecteur quitté');");
++      expect(handoff, greaterThan(0));
++      final release = ownerBranch.substring(0, handoff);
++      expect(release, contains('!_openedViaStreamRelay ? shutdown : networkClosed.then<void>'));
++      expect(release, contains('await _stopCurrentPlayer();'));
++      expect(release, contains('catch (_) { await shutdown; }'));
++      expect(ownerBranch.substring(handoff), contains('} else { StreamSlot.instance.unregister(this); }'));
+       expect(
+         network,
+         contains('final Future<void> relayClosed = closeRelay '
+             "? LocalStreamRelay.instance.closeOtherPlaybacks('') "
+             ': Future<void>.value();'),
+       );
+-      final int capturedPlayer =
+-          network.indexOf('final Player stoppedPlayer = _player;');
++      final stopCode = _compact(_member(code, 'Future<void> _stopCurrentPlayer()'));
++      final capture = stopCode.indexOf('final player = _player;');
++      expect(capture, greaterThan(-1));
++      expect(stopCode.indexOf('await player.stop()'), greaterThan(capture));
++      expect(stopCode.indexOf('_playbackStop.run('), greaterThan(capture));
+       final int close = network.indexOf("closeOtherPlaybacks('')");
+-      final int stop = network.indexOf('await stoppedPlayer.stop()');
+-      expect(capturedPlayer, greaterThan(-1));
+-      expect(close, greaterThan(capturedPlayer));
++      final int stop = network.indexOf('await _stopCurrentPlayer()');
++      expect(close, greaterThan(-1));
+       expect(stop, greaterThan(close),
+           reason: 'la fermeture du relais doit commencer avant le premier '
+               'await : un stop lent ne doit pas viser une nouvelle session');
 diff --git a/test/free_play/feed_lookahead_test.dart b/test/free_play/feed_lookahead_test.dart
 new file mode 100644
-index 0000000..cfc16ef
+index 0000000..4f4f0d4
 --- /dev/null
 +++ b/test/free_play/feed_lookahead_test.dart
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,106 @@
 +import 'dart:async';
 +import 'dart:io';
 +import 'dart:typed_data';
@@ -943,5 +1009,40 @@ index 0000000..cfc16ef
 +    expect(hits.where((p) => p == '/0.ts').length, 1);
 +    expect(hits, isNot(contains('/2.ts')));
 +    expect(pool.take(urls.first), isNull);
++  });
++  test('a slow live stream can be promoted before 256 KiB arrives', () async {
++    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
++    final tail = Completer<void>();
++    final prefix = Uint8List(188 * 3);
++    for (var i = 0; i < prefix.length; i += 188) {
++      prefix[i] = 0x47;
++    }
++    var connections = 0;
++    server.listen((request) async {
++      connections++;
++      request.response.headers.contentType = ContentType('video', 'mp2t');
++      request.response.bufferOutput = false;
++      request.response.add(prefix);
++      await request.response.flush();
++      await tail.future;
++      request.response.add([91, 92]);
++      await request.response.close();
++    });
++    final pool = FeedLookahead();
++    addTearDown(() async {
++      if (!tail.isCompleted) tail.complete();
++      pool.clear();
++      await server.close(force: true);
++    });
++    final url = 'http://127.0.0.1:${server.port}/slow.ts';
++    pool.update([url], '7 MOTION QA');
++    for (var i = 0; i < 100 && !pool.ready(url); i++) {
++      await Future<void>.delayed(const Duration(milliseconds: 10));
++    }
++    expect(pool.ready(url), isTrue);
++    final result = pool.take(url)!.consume().expand((part) => part).toList();
++    tail.complete();
++    expect(await result, orderedEquals([...prefix, 91, 92]));
++    expect(connections, 1);
 +  });
 +}
