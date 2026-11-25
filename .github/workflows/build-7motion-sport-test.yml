@@ -571,8 +571,8 @@ jobs:
       id: play_build
       if: ${{ inputs.play_aab }}
       env:
-        SEVEN_ADMOB_APP_ID: ${{ vars.SEVEN_ADMOB_APP_ID }}
-        SEVEN_ADMOB_BANNER_ID: ${{ vars.SEVEN_ADMOB_BANNER_ID }}
+        SEVEN_ADMOB_APP_ID: 'ca-app-pub-3909645366985922~6550717938'
+        SEVEN_ADMOB_BANNER_ID: 'ca-app-pub-3909645366985922/1669800033'
         KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
