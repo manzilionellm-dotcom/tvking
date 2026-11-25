@@ -1,0 +1,46 @@
+name: 7 MOTION — ouvrir l’APK livré sur Android
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/7motion-delivered-apk-diagnostics.yml'
+      - 'android-app/ci/mobile/free/diagnose-delivered-apk.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    name: Démarrage réel de l’APK arm64 sur Android API ${{ matrix.api }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 35]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Télécharger et vérifier exactement le binaire livré
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostic
+          url='https://github.com/manzilionellm-dotcom/tvking/releases/download/7motion-free-qa-0.4.1-20261125/7motion-free-0.4.1-test.apk'
+          curl --fail --location --retry 3 "$url" --output "$RUNNER_TEMP/delivered.apk"
+          test "$(stat -c %s "$RUNNER_TEMP/delivered.apk")" = 78519637
+          echo '8b37c5c17c00611868c952084af9b37d268ea62490cbc698b929fd3bb8559334  delivered.apk' > diagnostic/SHA256SUMS
+          (cd "$RUNNER_TEMP" && sha256sum -c "$GITHUB_WORKSPACE/diagnostic/SHA256SUMS")
+      - name: Lancer l’activité et relever les traces du système
+        env:
+          ANDROID_API: ${{ matrix.api }}
+        run: bash android-app/ci/mobile/free/diagnose-delivered-apk.sh
+      - name: Conserver le diagnostic de l’émulateur vierge
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: 7motion-ouverture-apk-api-${{ matrix.api }}
+          path: diagnostic/
+          if-no-files-found: error
+          retention-days: 7
