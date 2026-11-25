@@ -10,6 +10,7 @@ for patch in patches/mobile-{sport-gratuit,radio,panel-sync,identity,stability}.
     android-app/ci/mobile/{adult-classification,player-terminal-fallback,mobile-back-gestures,football-upcoming,player-session-handoff}.patch; do
   git apply "$source_dir/$patch"
 done
+git apply "$recipe/release-index-read.patch"
 git diff --check
 # Le bundle de production ne doit pas résoudre de nouvelles versions de paquets.
 cp "$recipe/novatube_video/production-pubspec.lock.fixture" pubspec.lock

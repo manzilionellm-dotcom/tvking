@@ -1,0 +1,146 @@
+diff --git a/ci/build_label.sh b/ci/build_label.sh
+index c6970c2..1d7ad84 100755
+--- a/ci/build_label.sh
++++ b/ci/build_label.sh
+@@ -200,6 +200,6 @@ RELEASE_BASE="${BUILD_LABEL_RELEASE_BASE:-https://github.com/${REPO}/releases/do
+ # ---------------------------------------------------------
+ #  Un tag seul, une release brouillon ou un fichier encore vide ne
+-#  consomme pas de numéro. L'API est publique : aucun secret n'est
+-#  transmis. On suit toutes les pages, avec une borne qui fait échouer
++#  consomme pas de numéro. La CI lit l'API GitHub avec son droit de lecture.
++#  On suit toutes les pages, avec une borne qui fait échouer
+ #  la lecture plutôt que tronquer silencieusement le maximum.
+ #  Rien n'est émis avant la fin : une panne à la page 2 ne doit pas
+@@ -209,6 +209,9 @@ lire_releases_immuables() {
+     "${BUILD_LABEL_RELEASES_API:-https://api.github.com/repos/${REPO}/releases}" <<'PYRELEASES'
+ import json
++import os
+ import re
+ import sys
++import time
++import urllib.error
+ import urllib.request
+ from pathlib import Path
+@@ -219,4 +222,32 @@ page_size = 100
+ max_pages = 100
+ max_bytes = 16 * 1024 * 1024
++
++def read_page(page):
++    request = urllib.request.Request(
++        f"{endpoint}?per_page={page_size}&page={page}",
++        headers={"Accept": "application/vnd.github+json", "User-Agent": "7motion-build-label"},
++    )
++    # Le jeton de lecture du job ne quitte pas l'API GitHub officielle,
++    # même en présence d'un endpoint de test ou d'une redirection HTTP.
++    token = os.environ.get("GH_TOKEN")
++    if (token and not os.environ.get("BUILD_LABEL_RELEASES_API") and
++            re.fullmatch(r"https://api\.github\.com/repos/[\w.-]+/[\w.-]+/releases", endpoint)):
++        request.add_unredirected_header("Authorization", f"Bearer {token}")
++    for attempt in range(3):
++        try:
++            with urllib.request.urlopen(request, timeout=12) as response:
++                if response.status != 200:
++                    raise ValueError("HTTP inattendu")
++                return response.read(max_bytes + 1)
++        except urllib.error.HTTPError as error:
++            if error.code not in (408, 429, 500, 502, 503, 504) or attempt == 2:
++                raise
++            error.close()
++        except (urllib.error.URLError, TimeoutError):
++            if attempt == 2:
++                raise
++        time.sleep(2 ** attempt)
++
++
+ labels = {}
+ page = 1
+@@ -231,13 +262,5 @@ try:
+                     payload = stream.read(max_bytes + 1)
+         else:
+-            request = urllib.request.Request(
+-                f"{endpoint}?per_page={page_size}&page={page}",
+-                headers={"Accept": "application/vnd.github+json",
+-                         "User-Agent": "7motion-build-label"},
+-            )
+-            with urllib.request.urlopen(request, timeout=12) as response:
+-                if response.status != 200:
+-                    raise ValueError("HTTP inattendu")
+-                payload = response.read(max_bytes + 1)
++            payload = read_page(page)
+         if len(payload) > max_bytes:
+             raise ValueError("Page trop grande")
+@@ -267,8 +290,9 @@ try:
+     else:
+         raise ValueError("Pagination trop longue")
+-except Exception:
++except Exception as error:
+     # Ne pas recopier le corps d'une réponse, une URL de test ou des
+     # détails réseau. La page suffit à localiser la lecture à reprendre.
+-    sys.stderr.write(f"build_label: index des releases inaccessible ou invalide (page {page})\n")
++    reason = f"HTTP {error.code}" if isinstance(error, urllib.error.HTTPError) else type(error).__name__
++    sys.stderr.write(f"build_label: index des releases inaccessible ou invalide (page {page}, {reason})\n")
+     sys.exit(1)
+ for tag, label in labels.items():
+diff --git a/ci/build_label_test.sh b/ci/build_label_test.sh
+index 01c8d96..c85c601 100755
+--- a/ci/build_label_test.sh
++++ b/ci/build_label_test.sh
+@@ -294,4 +294,58 @@ ok "$([[ "$statut" -ne 0 && -z "$got" ]] && echo 1 || echo 0)" \
+   "API réellement injoignable : 7motion-test échoue sans numéro [status=${statut}]"
+
++# Une page 503 doit être relue. Un endpoint de test ne reçoit jamais le
++# jeton CI, y compris lorsque le premier appel est en échec.
++python3 - "$SCRIPT" <<'PYRETRY'
++import json
++import os
++import subprocess
++import sys
++import threading
++from http.server import BaseHTTPRequestHandler, HTTPServer
++
++
++class Releases(BaseHTTPRequestHandler):
++    index_requests = 0
++    received_credentials = False
++
++    def do_GET(self):
++        if self.headers.get("Authorization") is not None:
++            Releases.received_credentials = True
++        if not self.path.startswith("/releases?"):
++            self.send_error(404)
++            return
++        Releases.index_requests += 1
++        if Releases.index_requests == 1:
++            self.send_error(503)
++            return
++        data = [{"tag_name": "7motion-1988127", "draft": False,
++                 "published_at": "2026-10-20T00:25:55Z",
++                 "assets": [{"name": "7motion.apk", "state": "uploaded", "size": 1}]}]
++        self.send_response(200)
++        self.end_headers()
++        self.wfile.write(json.dumps(data).encode())
++
++    def log_message(self, *args):
++        pass
++
++
++with HTTPServer(("127.0.0.1", 0), Releases) as server:
++    thread = threading.Thread(target=server.serve_forever, daemon=True)
++    thread.start()
++    base = f"http://127.0.0.1:{server.server_port}"
++    result = subprocess.run([sys.argv[1], "exemple/telephone", "7motion-test"],
++                            env={**os.environ, "GH_TOKEN": "synthetic-header-check",
++                                 "BUILD_LABEL_RELEASES_API": base + "/releases",
++                                 "BUILD_LABEL_RELEASE_BASE": base, "BUILD_LABEL_FAMILY": "7motion-test",
++                                 "BUILD_LABEL_FIXTURE_DIR": ""},
++                            text=True, capture_output=True, timeout=20)
++    server.shutdown()
++    thread.join()
++if (result.returncode or result.stdout.strip() != "1988128" or
++        Releases.index_requests != 2 or Releases.received_credentials):
++    raise SystemExit("Relecture 503 ou isolation du jeton incorrecte")
++PYRETRY
++ok 1 "un 503 transitoire est relu sans transmettre le jeton au serveur de test"
++
+ echo
+ echo "${pass} pass, ${fail} fail"
