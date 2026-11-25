@@ -198,7 +198,9 @@ jobs:
         run: |
           set -e
           python3 ci/play_editions/install_mobile_ads.py
-          python3 ci/play_editions/branding/apply.py
+          python3 -m venv "$RUNNER_TEMP/zuno-branding"
+          "$RUNNER_TEMP/zuno-branding/bin/pip" install --only-binary=:all: Pillow==12.1.1
+          "$RUNNER_TEMP/zuno-branding/bin/python" ci/play_editions/branding/apply.py
           flutter build appbundle --release --no-tree-shake-icons \
             --android-skip-build-dependency-validation \
             --build-number="$PLAY_VERSION_CODE" --build-name="$PLAY_VERSION_NAME" \

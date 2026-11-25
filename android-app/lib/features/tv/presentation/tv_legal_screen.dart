@@ -14,6 +14,9 @@
 //  quitte l'écran.
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/update/build_flags.dart';
 
 import '../../../core/i18n/l10n_extension.dart';
 
@@ -38,12 +41,16 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
   List<(String, String)> get _sections => <(String, String)>[
     (context.l10n.tvLegalSection1Title, context.l10n.tvLegalSection1Body),
     (context.l10n.tvLegalSection2Title, context.l10n.tvLegalSection2Body),
-    (context.l10n.tvLegalSection3Title, context.l10n.tvLegalSection3Body),
+    if (kFreeZunoPlayer)
+      (context.l10n.zunoFreePlayer, 'M3U · Xtream Codes')
+    else
+      (context.l10n.tvLegalSection3Title, context.l10n.tvLegalSection3Body),
     (context.l10n.tvLegalSection4Title, context.l10n.tvLegalSection4Body),
     (context.l10n.tvLegalSection5Title, context.l10n.tvLegalSection5Body),
     (context.l10n.tvLegalSection6Title, context.l10n.tvLegalSection6Body),
     (context.l10n.tvLegalSection7Title, context.l10n.tvLegalSection7Body),
-    (context.l10n.tvLegalSection8Title, context.l10n.tvLegalSection8Body),
+    if (!kFreeZunoPlayer)
+      (context.l10n.tvLegalSection8Title, context.l10n.tvLegalSection8Body),
     (context.l10n.tvLegalSection9Title, context.l10n.tvLegalSection9Body),
   ];
 
@@ -103,6 +110,13 @@ class _TvLegalScreenState extends State<TvLegalScreen> {
                 color: TvAppTokens.of(context).mutedDim,
               ),
             ),
+            if (kFreeZunoPlayer)
+              TextButton(
+                onPressed: () async {
+                  await launchUrl(Uri.parse('https://7themotion.pages.dev/zuno/'));
+                },
+                child: Text(context.l10n.aboutPrivacyPolicy),
+              ),
             const SizedBox(height: 24),
             for (final (String title, String body) in _sections) ...<Widget>[
               Text(

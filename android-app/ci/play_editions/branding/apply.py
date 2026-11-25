@@ -12,7 +12,7 @@ def apply():
         artwork = icon.convert('RGBA')
     for name in ('mipmap-*/ic_launcher.png', 'drawable-*/ic_launcher_foreground.png'):
         paths = list(res.glob(name))
-        if not paths:
+        if not paths and name.startswith('mipmap'):
             raise ValueError(f'Icônes Android absentes : {name}')
         for path in paths:
             with Image.open(path) as image:
