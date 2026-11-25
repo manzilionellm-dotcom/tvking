@@ -53,6 +53,47 @@ void main() {
       expect(player.state.width, 1920);
     },
   );
+  test(
+    'un flux PAL anamorphique conserve son 16:9 et sa résolution mesurée',
+    () async {
+      await player.attach(4);
+      await player.open(media('pal'));
+      await event('ack', 1);
+      await event('phoneVideoGeometry', {
+        'width': 720,
+        'height': 576,
+        'pixelRatio': 64 / 45,
+      });
+      await event('videoSize', {'width': 720, 'height': 576});
+      await event('firstFrame', null);
+      expect(player.displayAspect.value, closeTo(16 / 9, 0.0001));
+      expect(player.state.width, 720);
+      expect(player.state.height, 576);
+
+      await event('phoneVideoGeometry', {
+        'width': 720,
+        'height': 576,
+        'pixelRatio': 16 / 15,
+      });
+      expect(player.displayAspect.value, closeTo(4 / 3, 0.0001));
+      await player.open(media('hd'));
+      expect(player.displayAspect.value, isNull);
+      await event('phoneVideoGeometry', {
+        'width': 720,
+        'height': 576,
+        'pixelRatio': 64 / 45,
+      });
+      expect(player.displayAspect.value, isNull);
+      await event('ack', 2);
+      await event('phoneVideoGeometry', {
+        'width': 1920,
+        'height': 1080,
+        'pixelRatio': 1.0,
+      });
+      expect(player.displayAspect.value, closeTo(16 / 9, 0.0001));
+    },
+  );
+
   test('l’arrêt avant attachement annule le flux et ses callbacks', () async {
     await player.open(media('a'));
     await player.stop();

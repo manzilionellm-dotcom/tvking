@@ -16,16 +16,28 @@ phone, TV, Chromecast — with a smooth, elegant experience.”
 
 ---
 
-## 2. Google Play
+## 2. Google Play — édition gratuite Android
 
-- **Titre** (≤ 30 car.) : `7 MOTION — Lecteur IPTV`
-- **Description courte** (≤ 80 car.) :
-  `Lecteur IPTV premium : ta source M3U/Xtream, sur mobile, TV & Chromecast.`
-- **Description longue** (≤ 4000 car.) : voir §4.
-- **Catégorie :** Vidéo et lecteurs / Divertissement.
-- ⚠️ Google Play est **strict** sur l'IPTV : exige un AAB
-  (`flutter build appbundle`), insiste bien sur « lecteur, apporte ta
-  source », pas de contenu. Canal secondaire — privilégie Amazon + direct.
+La fiche française et la fiche anglaise du paquet `com.manzilionellm.tvking`
+figurent dans [les métadonnées de la version gratuite](../assets/store/campaign-20261125/play-store-metadata.json).
+Leur publication accompagne la mise en production de cette version.
+
+### Déclarations Play de cette édition
+
+| Écran Play Console | Réponse à préparer avec la version distribuée |
+|---|---|
+| Contenu de l’application → Publicités | Choisir **Oui, mon application contient des annonces** pour la version avec AdMob. Cette mention couvre aussi les annonces promotionnelles gérées depuis le panel. |
+| Politique de confidentialité | Dans le champ de cette fiche Play, utiliser la [politique publiée de 7 MOTION gratuit](https://7themotion.pages.dev/7motion-free/privacy/). Le site sert le même document français et anglais que [la copie du projet](../legal/privacy-7motion-free.html). |
+| Sécurité des données → SDK publicitaire | Pour le SDK Google Mobile Ads activé, déclarer la collecte **et** le partage des types réellement utilisés pour la publicité, les statistiques et la prévention de la fraude. Le SDK standard traite l’IP (localisation approximative), les interactions dans l’application, les diagnostics et les identifiants d’appareil ou autres identifiants. Vérifier la fiche du SDK effectivement empaqueté et ses réglages avant l’envoi. |
+| Sécurité des données → Lecteur et panel | L’identité Android et l’identifiant 7 MOTION remontent au panel pour le fonctionnement et l’assistance. Le lecteur communique aussi l’état de lecture et, selon les réglages de télémétrie, la chaîne courante, l’historique récent et l’inventaire des sources. Examiner les rubriques **Identifiants d’appareil**, **Activité dans l’application**, **Identifiants utilisateur** et **Diagnostics** selon les champs effectivement transmis. |
+| Sécurité des données → Sauvegarde | Avec l’accord de l’utilisateur, le serveur reçoit également les URL M3U complètes ou les accès Xtream, y compris le mot de passe, les paramètres de source et les favoris. Déclarer ces traitements facultatifs pour la sauvegarde/restauration. Distinguer le nom d’utilisateur éventuellement transmis dans l’inventaire du panel et le mot de passe transmis dans la sauvegarde. Le choix de sauvegarde ne désactive pas la gestion de l’appareil. |
+| Sécurité des données → Chiffrement et suppression | Les échanges AdMob sont chiffrés. L’utilisateur peut saisir une source HTTP et y transmettre des identifiants. Examiner le parcours complet avant de répondre à la question sur le chiffrement de **toutes** les données. Vérifier le traitement effectif des demandes de suppression des enregistrements du panel et des sauvegardes via `support@7themotion.com`. |
+| Identifiant publicitaire | Si le manifeste **fusionné de la version distribuée** contient `com.google.android.gms.permission.AD_ID` et si le SDK utilise l’identifiant, le déclarer pour les usages activés. |
+| Public cible et contenu | Vérifier l’audience réellement déclarée et la classification à partir du comportement du lecteur. Les catégories de la source importée, le contrôle parental, la radio publique et les scores sportifs sont distincts. La gratuité porte sur le logiciel. |
+
+AdMob associe l’application publiée au paquet `com.manzilionellm.tvking`. Dans le compte de l’éditeur, relier la fiche existante, créer le bloc d’annonces choisi et configurer les messages de confidentialité adaptés. Pour vérifier la propriété, publier la ligne `app-ads.txt` fournie par ce compte à la racine du site développeur lié à la fiche. Vérifier l’état de l’application dans AdMob après l’exploration du fichier. La notice bilingue est en ligne. L’inscription AdMob et les déclarations Play s’effectuent dans les comptes de l’éditeur.
+
+Sources Google pour les déclarations et l’inscription : [publicités et contenu](https://support.google.com/googleplay/android-developer/answer/9859455), [rubriques Sécurité des données](https://support.google.com/googleplay/android-developer/answer/10787469), [données du SDK AdMob](https://developers.google.com/admob/android/privacy/play-data-disclosure), [app-ads.txt](https://support.google.com/admob/answer/9363762).
 
 ---
 
@@ -45,7 +57,7 @@ phone, TV, Chromecast — with a smooth, elegant experience.”
 
 ---
 
-## 4. Description longue (réutilisable Play / Amazon / site)
+## 4. Description longue de l’édition premium (Amazon / site)
 
 ### FR
 

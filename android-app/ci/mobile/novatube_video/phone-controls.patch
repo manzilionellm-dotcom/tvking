@@ -109,7 +109,18 @@ index 3ebcd6c..6190938 100644
                      )
                  )
                  if (type == "audio") {
-@@ -2365,7 +2403,8 @@ class NativeVideoView(
+@@ -2106,5 +2144,10 @@ class NativeVideoView(
+     override fun onVideoSizeChanged(eventTime: AnalyticsListener.EventTime, videoSize: VideoSize) {
+         if (!fresh(eventTime)) return
++        // La forme des pixels appartient au format du décodeur, pas à la taille de l'écran.
++        emit("phoneVideoGeometry", mapOf(
++            "width" to videoSize.width, "height" to videoSize.height,
++            "pixelRatio" to videoSize.pixelWidthHeightRatio.toDouble(),
++        ))
+         // Taille confirmée par le renderer avant la première image et à
+         // chaque changement. Le téléviseur peut encore la mettre à l'échelle.
+         emitMeasuredOutputSize(
+@@ -2365,7 +2408,8 @@ class NativeVideoView(
          val lang = prefAudio
          if (!lang.isNullOrBlank()) params.setPreferredAudioLanguage(lang)
          player.trackSelectionParameters = params.build()
@@ -119,7 +130,7 @@ index 3ebcd6c..6190938 100644
          if (startPositionMs != null && startPositionMs > 0L) {
              player.setMediaItem(item, startPositionMs)
          } else {
-@@ -2577,7 +2616,7 @@ class NativeVideoView(
+@@ -2577,7 +2621,7 @@ class NativeVideoView(
          // Perte de focus pendant le zap : on ne remonte pas. Le GAIN le fera.
          if (pausedByFocus) return
          try {

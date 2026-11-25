@@ -565,6 +565,8 @@ jobs:
       id: play_build
       if: ${{ inputs.play_aab }}
       env:
+        SEVEN_ADMOB_APP_ID: ${{ vars.SEVEN_ADMOB_APP_ID }}
+        SEVEN_ADMOB_BANNER_ID: ${{ vars.SEVEN_ADMOB_BANNER_ID }}
         KS_PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         KS_KEY_PW: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -572,12 +574,19 @@ jobs:
         set -euo pipefail
         # L'APK de test reste distinct. Le Store doit garder son propre identifiant.
         python3 ../mission/android-app/ci/mobile/prepare_play.py
+        bash ../mission/android-app/ci/mobile/free/prepare-sources.sh
+        python3 ../mission/android-app/ci/mobile/free/ads/prepare_ads.py android
+        flutter gen-l10n
+        flutter analyze --no-fatal-infos --no-fatal-warnings
+        flutter test --dart-define=PLAY_BUILD=true test/free_play \
+          test/features/playlists/panel_getphp_reconcile_test.dart \
+          test/features/playlists/panel_source_decision_test.dart
         # Un code neuf pour chaque livraison, partagé avec l’APK de ce build.
         # Le code fixe 1727 ne pouvait pas être réimporté sur Google Play.
         # PHONE_VERSION_CODE est déjà vérifié supérieur aux versions publiées.
         PLAY_VERSION_CODE="$PHONE_VERSION_CODE"
         flutter build appbundle --release --no-tree-shake-icons \
-          --build-number="$PLAY_VERSION_CODE" --build-name=0.3.9 \
+          --build-number="$PLAY_VERSION_CODE" --build-name=0.4.0 \
           --obfuscate --split-debug-info=build/play-symbols \
           --dart-define=APP_BUILD_TS="$PHONE_VERSION_CODE" --dart-define=APP_BUILD_LABEL="$PHONE_BUILD_LABEL" \
           --dart-define=GIT_SHA=${{ env.SOURCE_SHA }} \
