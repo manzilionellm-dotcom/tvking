@@ -11,7 +11,7 @@ build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d 
 "$build_tools/apksigner" verify --print-certs "$apk" > "$out/signature.txt"
 grep -qF "package: name='$package'" "$out/apk.txt"
 grep -qF "native-code: 'arm64-v8a'" "$out/apk.txt"
-image="system-images;android-$ANDROID_API;google_apis;x86_64"
+image="system-images;android-$ANDROID_API;$IMAGE_TAG;x86_64"
 sudo setfacl -m "u:$(id -un):rw" /dev/kvm
 sdkmanager emulator "$image" > "$out/sdk.txt"
 avdmanager create avd --force --name diagnostic --package "$image" --device pixel_2 <<< no
@@ -28,7 +28,7 @@ done
 [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]
 abi="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
 bridge="$(adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
-printf 'API=%s\nAVD=x86_64 google_apis\nABI=%s\nNative bridge=%s\n' "$ANDROID_API" "$abi" "$bridge" | tee "$out/device.txt"
+printf 'API=%s\nAVD=x86_64 %s\nABI=%s\nNative bridge=%s\nPage bytes=%s\n' "$ANDROID_API" "$IMAGE_TAG" "$abi" "$bridge" "$(adb shell getconf PAGE_SIZE | tr -d '\r')" | tee "$out/device.txt"
 if [[ ",$abi," != *,arm64-v8a,* ]]; then
   echo 'INCOMPATIBLE_ABI — cette image ne déclare pas arm64-v8a.' | tee "$out/result.txt"
   exit 1
