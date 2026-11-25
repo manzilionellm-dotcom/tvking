@@ -1,0 +1,109 @@
+name: 7 MOTION — construire le test par le miroir Maven
+'on':
+  push:
+    branches:
+    - test/7motion-swipe-mirror-20261125
+permissions:
+  contents: read
+jobs:
+  apk:
+    name: APK de test complet 7 MOTION gratuit (arm64)
+    env:
+      QA_MODE: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: phone
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        path: mission
+        persist-credentials: false
+        ref: bf569eb4edc45911970e93883bb2c381de1f77b2
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 8ea5a55075d8b5ad334643b780067c486a917f61
+        path: production
+        persist-credentials: false
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+        path: phone
+        persist-credentials: false
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: true
+    - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+    - name: Résoudre les dépendances Kotlin avec le miroir Maven Central de Google
+      run: "mkdir -p ~/.gradle/init.d\ncat > ~/.gradle/init.d/central.gradle <<'GRADLE'\ndef centralMirror = \"\
+        https://maven-central.storage-download.googleapis.com/maven2/\"\ngradle.beforeSettings { s ->\n    s.pluginManagement.repositories\
+        \ {\n        maven { url = uri(centralMirror); content { includeGroupByRegex(\"org[.]jetbrains.*\") } }\n\
+        \        gradlePluginPortal()\n    }\n}\ngradle.beforeProject { p ->\n    p.buildscript.repositories {\n\
+        \        maven { url = uri(centralMirror); content { includeGroupByRegex(\"org[.]jetbrains.*\") } }\n  \
+        \  }\n}\nGRADLE"
+    - name: Choisir le paquet et la version de test
+      run: 'echo "QA_VERSION=0.4.4" >> "$GITHUB_ENV"
+
+        echo "QA_BUILD_NUMBER=$(date +%s)" >> "$GITHUB_ENV"
+
+        echo "QA_PACKAGE=com.manzilionellm.tvking.qa.swipe" >> "$GITHUB_ENV"
+
+        echo "QA_ARTIFACT=7motion-swipe-qa" >> "$GITHUB_ENV"
+
+        '
+    - name: Assembler les sources du téléphone, du lecteur et du panel
+      run: 'recipe=../mission/android-app/ci/mobile
+
+        bash "$recipe/free/assemble-qa-sources.sh" "$recipe" ../production
+
+        '
+    - name: Préparer Android avec les annonces de test et la signature debug
+      run: "python3 -m venv \"$RUNNER_TEMP/qa-python\"\nsource \"$RUNNER_TEMP/qa-python/bin/activate\"\npip install\
+        \ PyYAML==6.0.2 numpy==2.2.6\nkeytool -genkeypair -alias androiddebugkey -keyalg RSA -keysize 2048 -validity\
+        \ 30 \\\n  -keystore \"$RUNNER_TEMP/7motion-qa.jks\" -storetype JKS -storepass android -keypass android\
+        \ \\\n  -dname \"CN=Android Debug,O=Android,C=US\"\nargs=(--mode \"$QA_MODE\")\nif [[ \"${QA_PACKAGE:-}\"\
+        \ == com.manzilionellm.tvking.qa.startup ]]; then args+=(--startup); fi\nif [[ \"${QA_PACKAGE:-}\" == com.manzilionellm.tvking.qa.scroll\
+        \ ]]; then args+=(--scroll); fi\nif [[ \"${QA_PACKAGE:-}\" == com.manzilionellm.tvking.qa.swipe ]]; then\
+        \ args+=(--swipe); fi\npython ../mission/android-app/ci/mobile/free/prepare_qa_android.py \"${args[@]}\"\
+        \n"
+    - name: Vérifier les parcours du lecteur et du panel et compiler l’APK
+      run: "bash ../mission/android-app/ci/mobile/free/test-release.sh\nflutter build apk \"--$QA_MODE\" --no-pub\
+        \ --no-tree-shake-icons --target-platform android-arm64 --split-per-abi \\\n  --dart-define=PLAY_BUILD=true\
+        \ --build-name=\"$QA_VERSION\" --build-number=\"$QA_BUILD_NUMBER\" \\\n  --target=lib/main.dart\n"
+    - name: Contrôler le paquet, la signature, les annonces et l’architecture
+      id: verify_apk
+      run: "apk=\"build/app/outputs/flutter-apk/app-arm64-v8a-$QA_MODE.apk\"\ntools=$(find \"$ANDROID_HOME/build-tools\"\
+        \ -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)\n\"$tools/aapt2\" dump badging \"$apk\" > \"$RUNNER_TEMP/qa-package\"\
+        \ngrep -F \"package: name='$QA_PACKAGE'\" \"$RUNNER_TEMP/qa-package\"\nif [[ \"$QA_PACKAGE\" == com.manzilionellm.tvking.qa.startup\
+        \ ]]; then\n  grep -Fx \"application-label:'7 MOTION Test'\" \"$RUNNER_TEMP/qa-package\"\nfi\nif [[ \"$QA_PACKAGE\"\
+        \ == com.manzilionellm.tvking.qa.scroll ]]; then\n  grep -Fx \"application-label:'7 MOTION Test 0.4.3'\"\
+        \ \"$RUNNER_TEMP/qa-package\"\nfi\nif [[ \"$QA_PACKAGE\" == com.manzilionellm.tvking.qa.swipe ]]; then\n\
+        \  grep -Fx \"application-label:'7 MOTION Test 0.4.4'\" \"$RUNNER_TEMP/qa-package\"\nfi\ngrep -F \"versionName='$QA_VERSION'\"\
+        \ \"$RUNNER_TEMP/qa-package\"\n# Flutter ajoute 2000 au code des APK ARM64 avec --split-per-abi.\ngrep -F\
+        \ \"versionCode='$((QA_BUILD_NUMBER + 2000))'\" \"$RUNNER_TEMP/qa-package\"\ngrep -Fx \"native-code: 'arm64-v8a'\"\
+        \ \"$RUNNER_TEMP/qa-package\"\nif [[ \"$QA_MODE\" == release ]]; then\n  if grep -Fxq 'application-debuggable'\
+        \ \"$RUNNER_TEMP/qa-package\"; then exit 1; fi\n  unzip -Z1 \"$apk\" > \"$RUNNER_TEMP/qa-entries\"\n  grep\
+        \ -Fx 'lib/arm64-v8a/libapp.so' \"$RUNNER_TEMP/qa-entries\"\n  if grep -Fxq 'assets/flutter_assets/kernel_blob.bin'\
+        \ \"$RUNNER_TEMP/qa-entries\"; then exit 1; fi\nelse\n  grep -Fx 'application-debuggable' \"$RUNNER_TEMP/qa-package\"\
+        \nfi\n\"$tools/apksigner\" verify --print-certs-pem \"$apk\" > \"$RUNNER_TEMP/qa-cert.pem\"\nopenssl x509\
+        \ -in \"$RUNNER_TEMP/qa-cert.pem\" -outform DER -out \"$RUNNER_TEMP/qa-signer.der\"\nkeytool -exportcert\
+        \ -alias androiddebugkey -keystore \"$RUNNER_TEMP/7motion-qa.jks\" \\\n  -storepass android -file \"$RUNNER_TEMP/qa-expected.der\"\
+        \ncmp \"$RUNNER_TEMP/qa-signer.der\" \"$RUNNER_TEMP/qa-expected.der\"\nexport PATH=\"$ANDROID_HOME/cmdline-tools/latest/bin:$PATH\"\
+        \nbash ../mission/android-app/ci/mobile/verify_work_database.sh \"$apk\"\npython3 ../mission/android-app/ci/mobile/free/verify_qa_ads.py\
+        \ \"$apk\" \"$tools/aapt2\"\nln \"$apk\" \"build/$QA_ARTIFACT.apk\"\necho \"apk_sha256=$(sha256sum \"$apk\"\
+        \ | cut -d' ' -f1)\" >> \"$GITHUB_OUTPUT\"\n"
+    - name: Conserver l’APK de test pendant sept jours
+      id: apk_output
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: ${{ env.QA_ARTIFACT }}
+        path: phone/build/${{ env.QA_ARTIFACT }}.apk
+        if-no-files-found: error
+        retention-days: 7
