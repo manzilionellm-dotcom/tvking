@@ -194,7 +194,8 @@ jobs:
       (github.head_ref == 'feature/7motion-free-player-admob-20261125' ||
        github.head_ref == 'feature/7motion-performance-20261125' ||
        github.head_ref == 'fix/7motion-startup-20261125' ||
-       github.head_ref == 'fix/7motion-scroll-20261125') &&
+       github.head_ref == 'fix/7motion-scroll-20261125' ||
+       github.head_ref == 'fix/7motion-swipe-20261125') &&
       github.event.pull_request.head.repo.full_name == github.repository
     outputs:
       artifact_id: ${{ steps.apk_output.outputs.artifact-id }}
@@ -215,7 +216,14 @@ jobs:
       - *android_sdk
       - name: Choisir le paquet et la version de test
         run: |
-          if [[ "$GITHUB_HEAD_REF" == fix/7motion-scroll-20261125 ]]; then
+          if [[ "$GITHUB_HEAD_REF" == fix/7motion-swipe-20261125 ]]; then
+            {
+              echo 'QA_VERSION=0.4.4'
+              echo "QA_BUILD_NUMBER=$(date +%s)"
+              echo 'QA_PACKAGE=com.manzilionellm.tvking.qa.swipe'
+              echo 'QA_ARTIFACT=7motion-swipe-qa'
+            } >> "$GITHUB_ENV"
+          elif [[ "$GITHUB_HEAD_REF" == fix/7motion-scroll-20261125 ]]; then
             {
               echo 'QA_VERSION=0.4.3'
               echo "QA_BUILD_NUMBER=$(date +%s)"
@@ -262,6 +270,7 @@ jobs:
           args=(--mode "$QA_MODE")
           if [[ "${QA_PACKAGE:-}" == com.manzilionellm.tvking.qa.startup ]]; then args+=(--startup); fi
           if [[ "${QA_PACKAGE:-}" == com.manzilionellm.tvking.qa.scroll ]]; then args+=(--scroll); fi
+          if [[ "${QA_PACKAGE:-}" == com.manzilionellm.tvking.qa.swipe ]]; then args+=(--swipe); fi
           python ../mission/android-app/ci/mobile/free/prepare_qa_android.py "${args[@]}"
       - name: Vérifier les parcours du lecteur et du panel et compiler l’APK
         run: |
@@ -281,6 +290,9 @@ jobs:
           fi
           if [[ "$QA_PACKAGE" == com.manzilionellm.tvking.qa.scroll ]]; then
             grep -Fx "application-label:'7 MOTION Test 0.4.3'" "$RUNNER_TEMP/qa-package"
+          fi
+          if [[ "$QA_PACKAGE" == com.manzilionellm.tvking.qa.swipe ]]; then
+            grep -Fx "application-label:'7 MOTION Test 0.4.4'" "$RUNNER_TEMP/qa-package"
           fi
           grep -F "versionName='$QA_VERSION'" "$RUNNER_TEMP/qa-package"
           # Flutter ajoute 2000 au code des APK ARM64 avec --split-per-abi.

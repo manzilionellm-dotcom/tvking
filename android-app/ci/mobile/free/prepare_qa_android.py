@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--mode", choices=("debug", "release"), default="debug")
     parser.add_argument("--startup", action="store_true", help="Préparer la variante Android 7 MOTION Test")
     parser.add_argument("--scroll", action="store_true", help="Variante mobile 0.4.3")
+    parser.add_argument("--swipe", action="store_true", help="Variante mobile 0.4.4")
     args = parser.parse_args()
     mode = args.mode
     if args.startup and mode != "release":
@@ -71,14 +72,18 @@ def main():
         suffix = ".qa.startup" if args.startup else ".qa.perf"
         if args.scroll:
             suffix = ".qa.scroll"
+        if args.swipe:
+            suffix = ".qa.swipe"
         text = text.replace(release, release + f'\n            applicationIdSuffix = "{suffix}"')
-        if args.startup or args.scroll:
+        if args.startup or args.scroll or args.swipe:
             manifest = Path("android/app/src/main/AndroidManifest.xml")
             xml = manifest.read_text()
             label = 'android:label="7 MOTION"'
             if xml.count(label) != 1:
                 raise SystemExit("Libellé Android 7 MOTION introuvable ou ambigu")
             name = "7 MOTION Test 0.4.3" if args.scroll else "7 MOTION Test"
+            if args.swipe:
+                name = "7 MOTION Test 0.4.4"
             manifest.write_text(xml.replace(label, f'android:label="{name}"'))
         # Le contrôle de l’unité AdMob lit le bytecode de la bannière après R8.
         with Path("android/app/proguard-rules.pro").open("a") as rules:
