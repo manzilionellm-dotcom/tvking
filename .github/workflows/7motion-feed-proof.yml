@@ -58,12 +58,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for ((i=0;i<90;i++)); do
-            check=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/45646769804/artifacts?name=7motion-swipe-qa" --jq '.artifacts[0].id // empty')
+            check=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/45647953286/artifacts?name=7motion-swipe-qa" --jq '.artifacts[0].id // empty')
             if [[ -n "$check" ]]; then break; fi
             sleep 15
           done
           test -n "$check"
-          gh run download 45646769804 -n 7motion-swipe-qa -D "$RUNNER_TEMP/scroll-apks"
+          gh run download 45647953286 -n 7motion-swipe-qa -D "$RUNNER_TEMP/scroll-apks"
           /usr/bin/python3 .github/scripts/7motion-feed-proof.py bench "$RUNNER_TEMP/scroll-apks/7motion-swipe-qa.apk" swipe
       - name: Conserver les mesures et les écrans effectivement visités
         if: ${{ !cancelled() }}

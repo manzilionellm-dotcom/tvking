@@ -4,7 +4,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 from PIL import Image
 from io import BytesIO
-import json, os, re, runpy, subprocess, sys, time
+import json, os, re, runpy, shlex, subprocess, sys, time
 
 ADB=runpy.run_path(str(Path(__file__).with_name('7motion-scroll-sample.py')))['adb']
 HOST='http://127.0.0.1:18089'
@@ -63,7 +63,8 @@ def run(apk,tag):
         (out/'last.xml').write_text(data)
         return list(ElementTree.fromstring(data).iter('node'))
     def label(n): return n.get('content-desc','')+' '+n.get('text','')
-    def tap(match):
+    def tap(match,seek=False):
+        polls=0
         deadline=time.monotonic()+65
         while time.monotonic()<deadline:
             nodes=doc()
@@ -71,6 +72,9 @@ def run(apk,tag):
                 if match(n):
                     x,y,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')))
                     adb('shell',f'input tap {(x+x2)//2} {(y+y2)//2}');time.sleep(.3);return
+            polls+=1
+            if seek and polls>=2:
+                adb('shell', 'input swipe 340 1060 340 690 320')
             time.sleep(.4)
         raise ValueError('Contrôle absent : '+str([label(n) for n in nodes if label(n).strip()][:18]))
     def snap():return subprocess.check_output(['adb','exec-out','screencap','-p'])
@@ -89,12 +93,14 @@ def run(apk,tag):
         raise ValueError('Première image de '+name+' absente')
     results=[]
     try:
+        print('INSTALL',tag,flush=True)
         adb('install','-r',apk)
         adb('shell','pm grant '+pkg+' android.permission.POST_NOTIFICATIONS',check=False)
         adb('shell','monkey -p '+pkg+' -c android.intent.category.LAUNCHER 1')
         tap(lambda n:'Add an M3U list' in label(n));tap(lambda n:n.get('class')=='android.widget.EditText')
         adb('shell','input text '+HOST+'/liste.m3u');time.sleep(.5);adb('shell','input keyevent 4')
-        tap(lambda n:'Load my channels' in label(n));tap(lambda n:'Motion Lab' in label(n));tap(lambda n:'Station Red' in label(n))
+        tap(lambda n:'Load my channels' in label(n));tap(lambda n:'Motion Lab' in label(n),seek=True);tap(lambda n:'Station Red' in label(n),seek=True)
+        print('Chaîne sélectionnée',flush=True)
         wait_color('Red',time.monotonic()+32)
         size=adb('shell','wm size')
         sw,sh=map(int,re.findall(r'(\d+)x(\d+)',size)[-1])
@@ -103,13 +109,24 @@ def run(apk,tag):
         for name,_ in CLIPS[1:]:
             time.sleep(2.1)
             adb('shell','dumpsys SurfaceFlinger --timestats -clear -enable')
+            listing=adb('shell','dumpsys SurfaceFlinger --list').splitlines()
+            layers=[n for n in listing if pkg in n and 'SurfaceView' in n and not n.startswith('Background')]
             start=time.monotonic()
-            adb('shell',f'input swipe {sw//2} {int(.77*sh)} {sw//2} {int(.26*sh)} 300')
+            timing=adb('shell',f'cat /proc/uptime; input swipe {sw//2} {int(.77*sh)} {sw//2} {int(.26*sh)} 300; cat /proc/uptime')
+            bounds=[float(l.split()[0])*1e9 for l in timing.splitlines() if re.fullmatch(r'[0-9.]+ [0-9.]+',l)]
             shown=wait_color(name,start+25)
             adb('shell','dumpsys SurfaceFlinger --timestats -disable')
             ts=adb('shell','dumpsys SurfaceFlinger --timestats -dump -maxlayers 180')
             (out/(name+'-frames.txt')).write_text(ts)
             stats={'station':name,'gesture_to_observed_image_ms':round((shown-start)*1000)}
+            render=[]
+            for layer in layers:
+                raw=adb('shell','dumpsys SurfaceFlinger --latency '+shlex.quote(layer))
+                stamps=sorted({int(a[1]) for line in raw.splitlines() if len(a:=line.split())==3 and all(v.isdigit() for v in a) and len(bounds)==2 and bounds[0]<=int(a[1])<=bounds[1]})
+                if len(stamps)<2:continue
+                delta=sorted((y-x)/1e6 for x,y in zip(stamps,stamps[1:]))
+                render.append({'layer':layer,'frames':len(stamps),'elapsed_ms':round((stamps[-1]-stamps[0])/1e6,1),'median_interval_ms':round(delta[len(delta)//2],2),'fps_during_drag':round(1e9*(len(stamps)-1)/(stamps[-1]-stamps[0]),1)})
+            stats['compositor']=render
             results.append(stats);(out/'swipes.json').write_text(json.dumps(results,indent=2));print(stats,flush=True)
         print('Toutes les couleurs atteintes',flush=True)
     finally:
