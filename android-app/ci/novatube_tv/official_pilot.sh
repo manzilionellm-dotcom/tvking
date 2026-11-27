@@ -120,50 +120,45 @@ for app in "$first" "$second"; do
     test "$match" -eq 1
     
     adb reverse tcp:18471 tcp:18471
-    series_ok=0
-    for series_attempt in 1 2; do
-    ensure_device
-    if [[ "$series_attempt" == 2 ]]; then
-        # Retain the interrupted series separately; never pool it with the fresh series.
-        previous="$out/interrupted-$app"
-        mkdir -p "$previous"
-        for item in device-keys.txt device-clock-calibration.json clocked-video.mp4 recording-status.txt setup-status.txt; do
-            if [[ -e "$version_out/$item" ]]; then mv "$version_out/$item" "$previous/"; fi
+    ready=0
+    for clip in 1 2 3 4 5; do
+        clipdir="$version_out/clip-$clip"
+        success=0
+        for try in 1 2 3; do
+            if ! ensure_device; then
+                echo "Transport ADB unavailable for $app clip $clip attempt $try"
+                ready=0
+                continue
+            fi
+            if [[ "$ready" == 0 ]]; then
+                # This disposable AVD only contains synthetic QA playlists.
+                if [[ "$clip" != 1 || "$try" != 1 ]]; then
+                    adb shell am force-stop "$pkg" || true
+                    adb shell pm clear "$pkg" || true
+                fi
+                adb shell am start -W -n "$pkg/$activity" > "$version_out/launch.txt" || continue
+                sleep 15
+                if ! python3 "$work/${app}_pilot.py" "$version_out" > "$RUNNER_TEMP/$app-setup.log" 2>&1; then
+                    continue
+                fi
+                ready=1
+            fi
+            if python3 "$work/clocked_record.py" "$clipdir"; then
+                success=1
+                break
+            fi
+            if [[ -d "$clipdir" ]]; then
+                mkdir -p "$version_out/failed-clips"
+                mv "$clipdir" "$version_out/failed-clips/$clip-$try"
+            fi
+            ready=0
         done
-        if [[ "$app" == televizo ]]; then
-            # A launcher restart returns some Televizo versions to their last
-            # playlist, where the initial setup menu is no longer available.
-            adb shell pm clear "$pkg" >/dev/null
+        if [[ "$success" != 1 ]]; then
+            echo "Incomplete $app clip $clip"
+            overall_status=1
+            break
         fi
-        adb shell am force-stop "$pkg"
-    fi
-    adb logcat -c
-    adb shell am start -W -n "$pkg/$activity" > "$version_out/launch.txt"
-    sleep 20
-    # Onboarding screens may contain a test device code. Keep their screenshots
-    # and console output private to this temporary runner.
-    if ! python3 "$work/${app}_pilot.py" "$version_out" > "$RUNNER_TEMP/$app-setup.log" 2>&1; then
-        python3 - "$version_out" <<'STATUS'
-from pathlib import Path
-import sys
-root = Path(sys.argv[1])
-steps = [f.stem for f in root.glob('*.png') if f.stem.startswith(('nova-', 'tel-'))]
-(root/'setup-status.txt').write_text('onboarding incomplete; recorded steps: ' + ', '.join(sorted(steps)))
-STATUS
-        cat "$version_out/setup-status.txt"
-        continue
-    fi
-    if ! python3 "$work/clocked_record.py" "$version_out"; then
-        continue
-    fi
-    series_ok=1
-    break
     done
-    if [[ "$series_ok" != 1 ]]; then
-        overall_status=1
-        adb uninstall "$pkg" >/dev/null 2>&1 || true
-        continue
-    fi
     adb uninstall "$pkg" >/dev/null 2>&1 || true
 done
 exit "$overall_status"

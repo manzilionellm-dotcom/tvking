@@ -8,6 +8,7 @@ from pilot_observer import frame
 from read_display_capture import decode
 
 out = Path(sys.argv[1])
+out.mkdir(parents=True,exist_ok=True)
 adb = ['adb', '-s', 'emulator-5554']
 
 
@@ -79,9 +80,45 @@ done
 kill -INT "$pid" || true
 wait "$pid"
 '''.replace('ROOT',root).replace('KEY1',keys[0]).replace('KEY2',keys[1])
-with (out/'device-keys.txt').open('w') as clocks:
-    p=subprocess.run(adb+['shell',guest],stdout=clocks,stderr=subprocess.DEVNULL,timeout=100)
-subprocess.run(adb+['pull',root+'.record-log',str(out/'recording-status.txt')],capture_output=True,timeout=10)
-subprocess.run(adb+['pull',root+'.mp4',str(out/'clocked-video.mp4')],check=True,timeout=60)
-if p.returncode or len((out/'device-keys.txt').read_text().strip().splitlines())!=10:
+# The key clock log and MP4 must survive an ADB transport interruption.
+# Each invocation has a unique per-clip device path and belongs only to the test AVD.
+fixture_id=out.name
+assert fixture_id.startswith('clip-') and int(fixture_id.split('-')[1]) in range(1,6)
+guestroot=root+'-'+out.parent.name+'-'+fixture_id
+guest=guest.replace(root,guestroot)
+script=out/'private-guest.sh'
+script.write_text('(' + guest + ') > ' + guestroot+'.keys 2> '+guestroot+'.errors\n'
+                  + 'echo $? > '+guestroot+'.done\n')
+subprocess.run(adb+['shell','rm','-f',guestroot+'.done',guestroot+'.keys',guestroot+'.errors'],check=True,timeout=15)
+subprocess.run(adb+['push',str(script),guestroot+'.sh'],check=True,capture_output=True,timeout=22)
+subprocess.run(adb+['shell','nohup sh '+guestroot+'.sh </dev/null >/dev/null 2>&1 &'],check=True,timeout=10)
+deadline=time.monotonic()+160
+while time.monotonic()<deadline:
+    try:
+        state=subprocess.run(adb+['shell','cat',guestroot+'.done'],capture_output=True,timeout=5)
+        if state.returncode==0 and state.stdout.strip().isdigit():
+            break
+        if state.returncode and b'offline' in state.stderr:
+            subprocess.run(['adb','reconnect','offline'],capture_output=True,timeout=6)
+    except subprocess.TimeoutExpired:
+        pass
+    time.sleep(4)
+else:
+    raise ValueError('Guest completion not readable, clip cannot be scored')
+for ext,filename in [('.keys','device-keys.txt'),('.record-log','recording-status.txt'),('.mp4','clocked-video.mp4')]:
+    target=out/filename; fetched=False
+    for attempt in range(4):
+        try:
+            subprocess.run(adb+['pull',guestroot+ext,str(target)],check=True,timeout=70,capture_output=True)
+            fetched=True;break
+        except (subprocess.SubprocessError,OSError):
+            time.sleep(2)
+    if not fetched: raise ValueError('Missing device evidence '+filename)
+if int(state.stdout.strip())!=0 or len((out/'device-keys.txt').read_text().strip().splitlines())!=10:
     raise ValueError('Incomplete guest clock series')
+# Check timing tracks and ALL 10 optically verified channel transitions before committing this clip.
+from clocked_analyze import analyse
+scored,_,_=analyse(out/'clocked-video.mp4',out/'device-keys.txt')
+(out/'clock-results.json').write_text(json.dumps(scored,indent=2))
+# Retain every timed-out or unobserved action in the planned denominator.
+(out/'valid.txt').write_text(f'10 time-bracketed commands; {sum(t.get("valid",False) for t in scored["trials"])}/10 target transitions identified\\n')
