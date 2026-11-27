@@ -196,7 +196,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   Timer? _zapSettle;
   bool _zapHolding = false;
   LogicalKeyboardKey? _shortZapKey;
-  bool _shortZapReleased = false;
   _ZapPresentation _zapPresentation = _ZapPresentation.standard;
 
   bool get _profileAllowsPreview =>
@@ -216,6 +215,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       !_controller.engineExhausted && !_controller.holdFrame &&
       !_controller.isEnded && !_isRecording && !_startingRecording &&
       _livePausedAt == null;
+
+  // Avant setUrl, les événements décrivent encore la chaîne de départ.
+  bool get _canPreviewBeforeOpen =>
+      _shortZapKey != null &&
+      _controller.hasRenderedCurrentSource &&
+      !_controller.isBuffering &&
+      _controller.reopenCount == _seenReopen &&
+      _canShowPreviousPicture &&
+      _profileAllowsPreview;
 
   // Un changement de contexte referme le carton jusqu'à une image datée de
   // la destination. Un simple événement de position peut provenir de l'audio.
@@ -572,7 +580,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // affichée. On ignore ses erreurs / sa première image, sinon l'écran
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
-    if (_zapHolding) return;
+    if (_zapHolding) {
+      if (_shortZapKey != null && !_canPreviewBeforeOpen) _coverZap();
+      return;
+    }
     if (_zapPresentation != _ZapPresentation.standard) {
       if (!_canShowPreviousPicture || _controller.reopenCount != _seenReopen) {
         _coverZap();
@@ -699,10 +710,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _offerSubtitles();
   }
 
-  void _open({bool reuse = false, bool compactZap = false}) {
+  void _open({bool reuse = false, bool continueZap = false}) {
     _shortZapKey = null;
-    _zapPresentation =
-        compactZap ? _ZapPresentation.compact : _ZapPresentation.standard;
+    if (!continueZap) _zapPresentation = _ZapPresentation.standard;
     _sinceProgress.reset();
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
@@ -796,8 +806,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             _ordinaryChannel(_current) && _ordinaryChannel(widget.channels[next])
         ? singleKey
         : null;
-    _shortZapReleased = false;
-    _zapPresentation = _ZapPresentation.standard;
+    // Un second appui enlève immédiatement la pastille. Garder le carton
+    // jusqu'au rendu empêche un ancien programme d'être identifié comme direct.
+    if (_zapPresentation != _ZapPresentation.standard) {
+      _zapPresentation = _ZapPresentation.covered;
+    }
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
@@ -822,8 +835,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         if (!mounted) return;
         _zapHolding = false;
         TvAmbientDirector.instance.show(_current.genre);
-        _open(compactZap: _shortZapKey != null && _shortZapReleased &&
-            _canShowPreviousPicture && _profileAllowsPreview);
+        if (_zapPresentation == _ZapPresentation.compact && !_canPreviewBeforeOpen) {
+          _coverZap();
+        }
+        _open(continueZap: true);
       },
     );
   }
@@ -1721,9 +1736,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    // Le relâchement distingue un appui bref sans changer le délai de setUrl.
-    if (event is KeyUpEvent && _shortZapKey == event.logicalKey) {
-      _shortZapReleased = true;
+    // Au relâchement, on peut déjà montrer la destination sur l'ancienne
+    // image. Seul le délai de _zap ouvre la source, même en cas de 2e appui.
+    if (event is KeyUpEvent &&
+        _zapHolding &&
+        _shortZapKey == event.logicalKey &&
+        _canPreviewBeforeOpen) {
+      setState(() => _zapPresentation = _ZapPresentation.compact);
     }
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;

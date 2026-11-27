@@ -200,6 +200,89 @@ void main() {
         {'view': 7, 'epoch': epoch, 'timeMs': 1200 + epoch});
   }
 
+  for (final interruption in ['aucune', 'second appui', 'mode enfants', 'reconnexion']) {
+    testWidgets('la pastille au relâchement respecte les 180 ms et la révocation ($interruption)',
+        (tester) async {
+      final kids = ParentalControls.instance.kidsMode;
+      final initialKids = kids.value;
+      try {
+        await show(tester, TvPlayerScreen(
+          channels: [mire('Mire A'), mire('Mire B'), mire('Mire C')],
+          startIndex: 0,
+        ));
+        final native = tester.widget<NativeVideoView>(find.byType(NativeVideoView)).controller;
+        frame(native, 0);
+        await tester.pump();
+
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.channelDown);
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(spinner, findsOneWidget);
+        expect(notice, findsNothing);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.channelDown);
+        await tester.pump();
+        expect(notice, findsOneWidget, reason: 'dès KeyUp, avant setUrl');
+        expect(spinner, findsNothing);
+        expect(find.text('Chargement de la chaîne… Mire B'), findsOneWidget);
+        expect(find.text('Mire B'), findsNothing);
+
+        // L'ancienne chaîne continue d'envoyer des images jusqu'à setUrl.
+        frame(native, 0);
+        await tester.pump();
+        expect(native.qaRenderedFrame?.epoch, 0);
+        expect(notice, findsOneWidget);
+        Duration beforeOpen = const Duration(milliseconds: 159);
+        if (interruption == 'second appui') {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.channelDown);
+          await tester.pump();
+          expect(spinner, findsOneWidget);
+          expect(notice, findsNothing);
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.channelDown);
+          beforeOpen = const Duration(milliseconds: 179);
+        } else if (interruption == 'mode enfants') {
+          kids.value = true;
+          kids.value = false;
+        } else if (interruption == 'reconnexion') {
+          native.applyBackendEvent('reconnecting', true);
+          native.applyBackendEvent('reconnecting', false);
+        }
+        await tester.pump();
+        if (interruption != 'aucune') {
+          expect(spinner, findsOneWidget);
+          expect(notice, findsNothing);
+        }
+
+        // T + 179 ms depuis le DERNIER appui : la seule source reste A.
+        await tester.pump(beforeOpen);
+        expect(native.qaRenderedFrame?.epoch, 0);
+        await tester.pump(const Duration(milliseconds: 1));
+        // T + 180 ms : la source a changé une fois, son rendu est encore inconnu.
+        expect(native.qaRenderedFrame, isNull);
+        native.applyBackendEvent('ack', 1);
+        frame(native, 0);
+        native.applyBackendEvent('playing', true);
+        native.applyBackendEvent('position', 600);
+        await tester.pump();
+        if (interruption == 'aucune') {
+          expect(notice, findsOneWidget);
+          expect(find.text('Mire B'), findsNothing);
+        } else {
+          expect(spinner, findsOneWidget, reason: 'image de destination non confirmée');
+        }
+        final l10n = AppLocalizations.of(tester.element(find.byType(TvPlayerScreen)))!;
+        expect(find.text(l10n.tvLiveBadge), findsNothing);
+        frame(native, 1);
+        await tester.pump();
+        expect(native.qaRenderedFrame?.epoch, 1);
+        expect(notice, findsNothing);
+        expect(find.text(interruption == 'second appui' ? 'Mire C' : 'Mire B'), findsOneWidget);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 10));
+        kids.value = initialKids;
+      }
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !compactBuild);
+  }
+
   testWidgets('un zap bref identifie la destination jusqu’à sa trame rendue',
       (tester) async {
     try {
