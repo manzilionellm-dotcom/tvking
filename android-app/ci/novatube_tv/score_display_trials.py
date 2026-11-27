@@ -3,7 +3,8 @@
 Événements CSV : id,kind,start_s,end_s,channel. 'zap' démarre à l'appui et
 'recovery_5', 'recovery_15', 'recovery_60' au rétablissement réseau mesuré.
 end_s est l'échéance fixée avant l'essai ; channel est A ou B. 'play' délimite
-la séquence continue utilisée pour compter les images source non affichées.
+la séquence continue utilisée pour compter les images source non affichées
+et dater la plus longue répétition d’une image reconnue.
 Une capture muette, mal cadrée ou sous-échantillonnée doit être rejetée avant
 le classement. Comparer uniquement des acquisitions calibrées sur le même banc.
 """
@@ -52,6 +53,8 @@ def measure(events_path, frames_path):
         previous = None
         first_moving = None
         coverage_gaps = 0
+        same_frame_since = None
+        longest_hold = None
         for i in range(start, stop):
             f = frames[i]
             if i > start and times[i] - times[i-1] > typical_interval * 1.5 + 0.001:
@@ -62,6 +65,21 @@ def measure(events_path, frames_path):
                 previous = None
                 continue
             now = int(f['source_frame'])
+            if kind == 'play':
+                # Une lacune, une image illisible ou un changement de chaîne rompt
+                # la série. Un intervalle entre deux numéros égaux ne compte que
+                # si toutes les captures intermédiaires ont reconnu ce numéro.
+                if previous != now:
+                    same_frame_since = times[i]
+                else:
+                    duration = times[i] - same_frame_since
+                    if longest_hold is None or duration > longest_hold['duration_s']:
+                        longest_hold = {
+                            'source_frame': now,
+                            'start_capture_pts_s': same_frame_since,
+                            'end_capture_pts_s': times[i],
+                            'duration_s': duration,
+                        }
             if previous is not None and previous != now:
                 jump = (now - previous) % counter_size
                 # Une source qui revient en arrière sans boucler est une rupture :
@@ -79,6 +97,9 @@ def measure(events_path, frames_path):
         if kind == 'play':
             result['missing_source_frames_in_contiguous_valid_intervals'] = missing
             result['complete_visual_coverage'] = not unknown and not coverage_gaps
+            # Borne basse : l'écran a pu se figer avant la première observation
+            # ou rester figé après la dernière, notamment en fin d'acquisition.
+            result['longest_observed_frame_hold'] = longest_hold
         else:
             result['motion_confirmed_s'] = first_moving
             result['outcome'] = 'timeout' if first_moving is None else 'ok'
