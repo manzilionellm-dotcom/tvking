@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image
 from read_display_capture import decode
-from pilot_observer import frame
+from pilot_observer import frame, verify_local_fixture
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -60,7 +60,13 @@ def log(action):
     (OUT / 'televizo-actions.json').write_text(json.dumps(history, indent=2))
 
 def screenshot(label):
-    (OUT / ('televizo-' + label + '.png')).write_bytes(run('exec-out','screencap','-p',binary=True))
+    for _ in range(2):
+        image, raw = frame(ADB, OUT, time.monotonic())
+        if image is not None:
+            (OUT / ('televizo-' + label + '.png')).write_bytes(raw)
+            return
+    log('capture unavailable during setup: ' + label)
+
 
 def snapshot(i):
     xml_path = '/sdcard/televizo-pilot-ui.xml'
@@ -159,25 +165,7 @@ def open_fullscreen():
     screenshot('player-unconfirmed')
     raise SystemExit('Mire A sélectionnée, passage en plein écran non vérifié.')
 
-def verify_fixture():
-    port = 'tcp:18471'
-    request = ("{ printf 'GET /channels.m3u?probe=preflight HTTP/1.0\\r\\n"
-               "Host: 127.0.0.1:18471\\r\\nConnection: close\\r\\n\\r\\n'; sleep 1; } "
-               "| toybox timeout 4 toybox nc 127.0.0.1 18471")
-    for attempt in range(3):
-        routes = run('reverse', '--list', check=False)
-        registered = any(line.split()[-2:] == [port, port] for line in routes.splitlines())
-        if not registered or attempt:
-            run('reverse', port, port)
-            log('register fixture route before measurements')
-        response = shell(request, check=False)
-        if re.match(r'HTTP/\S+ 200\b', response) and all(
-                f'http://127.0.0.1:18471/{ch}/index.m3u8' in response for ch in ('A', 'B')):
-            log('verified both fixture URLs from Android before measurements')
-            return
-    raise SystemExit('La mire locale est inaccessible depuis Android avant chronométrage.')
-
-verify_fixture()
+verify_local_fixture(ADB, OUT)
 component=shell('cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN',
                 '-c','android.intent.category.LEANBACK_LAUNCHER',PKG).splitlines()[-1]
 if not component.startswith(PKG+'/'):
@@ -211,7 +199,7 @@ for i in range(46):
     if imported and any('playlist not found' in item.lower() for item in texts):
         refresh = find(nodes, r'update playlist')
         if refresh is not None and refreshes < 3:
-            verify_fixture()
+            verify_local_fixture(ADB, OUT)
             tap(refresh, 'retry fixture import after verifying the local route')
             refreshes += 1
             time.sleep(2)

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from PIL import Image
+from pilot_observer import frame, verify_local_fixture
 
 SERIAL = "emulator-5554"
 URL = "http://127.0.0.1:18471/channels.m3u"
@@ -65,22 +66,21 @@ def run(folder):
     folder.mkdir(parents=True, exist_ok=True)
     def ss(name):
         path = folder / (name+".png")
-        for attempt in range(2):
-            try:
-                raw=adb("exec-out", "screencap", "-p", output=True, timeout=55)
-                with Image.open(io.BytesIO(raw)) as bitmap:
-                    bitmap.verify()
+        for _ in range(2):
+            image, raw = frame(["adb", "-s", SERIAL], folder, time.monotonic())
+            if image is not None:
                 path.write_bytes(raw)
-                break
-            except (subprocess.TimeoutExpired, OSError) as exc:
-                if attempt:
-                    raise RuntimeError("La capture Android ne répond pas après deux essais") from exc
-                time.sleep(.5)
-        return path
+                return path
+        raise RuntimeError("Impossible de relire l’image Android avant navigation.")
+
     def poll(name, predicate, seconds=28):
         end=time.monotonic()+seconds
         while True:
-            ts=words(ss(name))
+            try:
+                ts=words(ss(name))
+            except subprocess.TimeoutExpired:
+                ts=[]
+
             if predicate(ts):
                 return ts
             if time.monotonic() >= end:
@@ -90,7 +90,7 @@ def run(folder):
         adb("shell", "input", "keyevent", name)
     def tap(t):
         adb("shell", "input", "tap", str(t[1]), str(t[2]))
-    adb("reverse","tcp:18471","tcp:18471")
+    verify_local_fixture(["adb", "-s", SERIAL], folder)
     ts=poll("nova-01-start",lambda t:home(t) or bool(labels(t) & {"welcome","bienvenue","xtream"}),45)
     if not home(ts):
         # La télécommande peut démarrer sans bouton focalisé. Seul le
