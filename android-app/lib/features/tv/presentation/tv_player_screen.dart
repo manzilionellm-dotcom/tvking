@@ -2046,9 +2046,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
               SizedBox(
                 width: 36,
                 height: 36,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: TvAppTokens.playbackOf(context).accent,
+                // Seul l'anneau tourne. Le nom et le fond restent peints
+                // pendant que le lecteur prépare la nouvelle chaîne.
+                child: RepaintBoundary(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: TvAppTokens.playbackOf(context).accent,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),

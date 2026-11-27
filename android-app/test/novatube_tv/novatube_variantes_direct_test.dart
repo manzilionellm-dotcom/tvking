@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -160,6 +161,32 @@ void main() {
       await tester.pump(const Duration(seconds: 10));
     }
   });
+  testWidgets('le chargement repeint uniquement la zone de son animation',
+      (tester) async {
+    try {
+      await show(tester, TvPlayerScreen(
+        channels: PlaylistRepository.instance.currentChannels,
+        startIndex: 0,
+      ));
+      final spinner = find.byType(CircularProgressIndicator);
+      final layer = find.ancestor(
+        of: spinner,
+        matching: find.byType(RepaintBoundary),
+      ).first;
+      final render = tester.renderObject<RenderRepaintBoundary>(layer);
+      expect(render.size, tester.getSize(spinner));
+      render.debugResetMetrics();
+      for (int i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      // Au moins une peinture de la zone animée indépendamment de son parent.
+      expect(render.debugAsymmetricPaintCount, greaterThan(0));
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 10));
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
   testWidgets('une seule lecture du guide par chaîne ouverte au zapping', (tester) async {
     final channels = PlaylistRepository.instance.currentChannels;
     await tester.runAsync(() async {
