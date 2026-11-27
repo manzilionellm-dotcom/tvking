@@ -93,7 +93,25 @@ def run(folder):
     adb("reverse","tcp:18471","tcp:18471")
     ts=poll("nova-01-start",lambda t:home(t) or bool(labels(t) & {"welcome","bienvenue","xtream"}),45)
     if not home(ts):
-        key("KEYCODE_DPAD_CENTER")
+        # La télécommande peut démarrer sans bouton focalisé. Seul le
+        # bouton M3U de l’accueil QA peut ouvrir le formulaire attendu.
+        def m3u_button(tokens):
+            eligible = [t for t in tokens if .25 < t[4] < .75]
+            for t in eligible:
+                if t[0] == "m3u":
+                    return t
+            # Certains rendus écrivent M3U de manière illisible. Dans ce cas
+            # utiliser le libellé "playlist" sur la ligne du bouton "add".
+            for t in eligible:
+                if t[0] == "playlist" and any(
+                    other[0] == "add" and .01 < t[3] - other[3] < .25
+                    and abs(other[4] - t[4]) < .02 and t[3] < .5
+                    and t[4] > .35 for other in eligible
+                ):
+                    return t
+            return None
+        ts=poll("nova-01-welcome",lambda t:m3u_button(t) is not None,50)
+        tap(m3u_button(ts))
         poll("nova-02-form",lambda t:bool(labels(t) & {"source","url","http","file","fichier","link","m3u8"}))
         adb("shell","input","text", URL)
         ss("nova-03-url")
