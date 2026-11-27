@@ -120,7 +120,7 @@ def main():
             if not pid:
                 shell('reconnect','offline')
         append('optical.jsonl',rec)
-        if i==6:
+        if i>=6 and not (OUT/'early.json').exists():
             save('early.json',{'elapsed_s':round(t,3),'last_channel':ch,'last_frame':n})
         if i%60==0:
             print(f'observation {i}, {t:.1f} s, channel {ch}, frame {n}',flush=True)
