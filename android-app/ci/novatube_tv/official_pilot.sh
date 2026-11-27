@@ -85,7 +85,22 @@ for app in "$first" "$second"; do
       activity=$(sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p" "$version_out/badging.txt")
     fi
     test -n "$activity"
-    adb install "$apk"
+    # Avant le premier chronométrage : vérifier les octets réellement installés.
+    match=0
+    for attempt in 1 2 3; do
+      timeout 40 adb wait-for-device || continue
+      timeout 90 adb install --no-streaming -r "$apk" >> "$version_out/install.log" 2>&1 || true
+      device_path=$(adb shell pm path "$pkg" 2>/dev/null | tr -d '\r' | sed -n 's/^package:\(.*\/base\.apk\)$/\1/p')
+      if [[ -n "$device_path" ]] && timeout 90 adb pull "$device_path" "$RUNNER_TEMP/base-verified.apk" >> "$version_out/install.log" 2>&1; then
+        installed=$(sha256sum "$RUNNER_TEMP/base-verified.apk" | cut -d' ' -f1)
+        printf '%s\n' "$installed" > "$version_out/installed.sha256"
+        if [[ "$installed" == "$digest" ]]; then match=1; break; fi
+      fi
+      sleep 2
+    done
+    test "$match" -eq 1
+    adb reverse tcp:8788 tcp:8788
+    adb reverse tcp:18471 tcp:18471
     adb logcat -c
     adb shell am start -W -n "$pkg/$activity" > "$version_out/launch.txt"
     sleep 20
