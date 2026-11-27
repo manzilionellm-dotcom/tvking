@@ -12,11 +12,11 @@ if ! { command -v ffmpeg && command -v tesseract && python3 -c 'from PIL import 
   sudo apt-get "${apt_scope[@]}" install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
 fi
 cp qa-apks/NovaTube-TV-emulateur.apk "$RUNNER_TEMP/pilot.apk"
-expected=aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34
+expected=7936acfa8e1064b8d2c58314c59d1ae5f4a2ebed4c5c56beefdcb0b1c6f629ad
 ram="${RAM_MIB:?}"
 case "$ram" in 1024|1536) ;; *) exit 64 ;; esac
 export FREEZE_ROUTE=10.0.2.2
-test "$(cat qa-apks/app-commit)" = fe134dd4c580c4f7c007ca2b9026fb6a17c2e081
+test "$(cat qa-apks/app-commit)" = caf2209bd772ad54e085e8574d1c0cd8be1783b6
 (cd qa-apks && sha256sum -c SHA256SUMS)
 cp qa-apks/{app-commit,build-flags.txt,SHA256SUMS} "$out/"
 printf '%s\n' "$ram" > "$out/ram-requested-mib.txt"
