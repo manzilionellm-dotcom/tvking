@@ -16,8 +16,8 @@ La PR #275 corrige l’enregistrement HLS et deux ouvertures concurrentes du lec
 | Atlas, 5 000 chaînes HTTP | 2 APK sur 2 ont persisté la révision 1 et les 5 000 adresses distinctes après redémarrage. | P0 reproduit, expliqué et validé sur Android émulé. |
 | Capture HLS | 6 segments sur 6 reçus une fois. Vidéo et audio identiques à la source pour le lecteur et le fichier. | Validé pour le HLS MPEG-TS multiplexé en clair. |
 | Mémoire après fermeture | La mémoire augmente pendant les fermetures. Après 15 min, le tas natif alloué du candidat reste plus haut qu’au début. | Évaluer la dérive à durée de repos et PID identiques. |
-| Lecture continue, émulateur américain | NovaTube 44be9e25 se fige à 57 min 53 s. Televizo avance entre les 1 598 paires de captures sur une heure. | Incident à reproduire sur e322cceb avec un témoin indépendant de la source. |
-| Europe et États-Unis | Comparaison croisée sur deux émulateurs à sortie américaine. Sur 100 zaps par lecteur, Televizo atteint 2,936 s et NovaTube a6a5ba5a 5,047 s au P95 du mouvement visible. | Classement des deux marchés INCERTAIN. |
+| Lecture continue, émulateur américain | NovaTube 44be9e25 a présenté un gel à 57 min 53 s. Le témoin strict du même APK a progressé sur 1 836 paires de captures en 72 minutes. Televizo a progressé sur 1 598 paires en une heure. | Cause du gel historique INCERTAINE. Qualifier la lecture du candidat fe134dd4 sur le matériel demandé. |
+| Europe et États-Unis | Comparaison croisée sur deux émulateurs à sortie américaine. Sur les deux paires complètes, NovaTube fe134dd4 atteint 2,564 s et Televizo 2,292 s au P95 du mouvement visible. | Classement des deux marchés INCERTAIN. |
 
 La PR peut rester en revue avec une diffusion du candidat en test interne. Le score de preuve de la première place reste à 3/10. Il qualifie la preuve disponible pour le classement.
 
@@ -294,15 +294,15 @@ Les 12 combinaisons de région, d’appareil et de lecteur restent à qualifier 
 
 | Application | Europe | États-Unis · observations en laboratoire |
 | --- | --- | --- |
-| NovaTube Max TV | INCERTAIN | Candidat a6a5ba5a, 100 zaps confirmés sur 100 et P95 de 5,047 s dans la comparaison croisée sur les mêmes émulateurs. |
-| Televizo 1.9.9.44-d | INCERTAIN | 100 zaps confirmés sur 100. P95 de 2,936 s sur les mêmes émulateurs que le candidat a6a5ba5a, premier des deux lecteurs sur cette métrique. |
+| NovaTube Max TV | INCERTAIN | Candidat fe134dd4 avec indication compacte activée, 100/100 zaps confirmés et P95 de 2,564 s sur les mêmes émulateurs que Televizo. |
+| Televizo 1.9.9.44-d | INCERTAIN | 100/100 zaps confirmés et P95 de 2,292 s face à fe134dd4 sur les mêmes émulateurs. |
 | TiviMate 5.3.3 | INCERTAIN | Installé sur Android TV émulé. Le premier lancement a présenté des conditions comportant un engagement personnel d’indemnisation. La lecture n’a pas été lancée. |
 
 Les APK TiviMate et Televizo ont été obtenus depuis les sites de leurs éditeurs. Les appareils virtuels américains ont été localisés à partir des données du banc ou du point de sortie réseau. Les segments étaient servis en boucle locale. Le délai d’un fournisseur IPTV et les conditions du réseau résidentiel dans chaque région restent à mesurer.
 
 ### Décision de classement
 
-Le classement des trois applications sur les deux appareils est INCERTAIN en Europe et aux États-Unis. Pour le seul zap sur émulateur américain, Televizo est premier des deux lecteurs mesurés et NovaTube deuxième. Le tableau laisse le score vide pour les lectures que le banc n’a pas lancées. Le score de preuve de la première place de NovaTube demeure à 3/10.
+Le classement des trois applications sur les deux appareils est INCERTAIN en Europe et aux États-Unis. Televizo arrive en tête des deux lecteurs au P95 agrégé du mouvement sur ces deux émulateurs. Le tableau laisse le score vide pour les lectures que le banc n’a pas lancées. Le score de preuve de la première place de NovaTube demeure à 3/10.
 
 - [Pilote commun des trois lecteurs](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46004506404)
 - [Vérification du parcours Televizo](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46007134467)
@@ -375,6 +375,40 @@ Le P95 de mouvement est de 4,688 s pour NovaTube et 2,893 s pour Televizo sur l�
 
 - [NovaTube puis Televizo sur MSP](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46049151157/job/140675837083) · [Televizo puis NovaTube sur IAD](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46048554397/job/140673834776)
 - [Les 200 essais horodatés et les identités des exécutables se trouvent dans `same_emulator_televizo_a6a5ba5a`](mesures.json)
+
+## États-Unis · candidat à indication compacte face à Televizo
+
+Le prototype de la PR #279 conserve le nom de la chaîne demandée dans une pastille de chargement en haut de l’écran. Il dégage la zone vidéo lors des changements de chaîne ordinaires autorisés. Le candidat `fe134dd4` a été compilé avec `NOVATUBE_TV=true`, `NOVATUBE_QA_METRICS=true` et `NOVATUBE_COMPACT_ZAP=true`. L’indication compacte est désactivée par défaut. Le test emploie Televizo officiel 1.9.9.44-d et l’APK NovaTube d’empreinte SHA-256 `aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34`.
+
+Deux émulateurs Android TV 36, configurés avec 1,5 Gio, ont chacun servi aux deux lecteurs, en ordre inverse. Sur chaque hôte et pour chaque lecteur, 25 touches ont demandé A et 25 ont demandé B. Les bornes supérieures optiques vont de l’envoi de la touche à la capture de la bonne chaîne puis à une deuxième capture successive dont le numéro de trame avance. Les deux sorties réseau sont américaines et les segments HLS sont servis localement.
+
+| Mesure | NovaTube fe134dd4 | Televizo 1.9.9.44-d |
+| --- | ---: | ---: |
+| Première image de la bonne chaîne, P95 | 2,124 s | 1,933 s |
+| Mouvement confirmé, médiane | 2,213 s | 1,941 s |
+| Mouvement confirmé, P95 | 2,564 s | 2,292 s |
+| Bonne chaîne confirmée en mouvement | 100/100 | 100/100 |
+| Mouvement en moins de 3 s | 100/100 | 100/100 |
+| Au moins une capture sans mire identifiable avant la cible | 97/100 | 0/100 |
+| Ancienne mire vue avant la première nouvelle mire | 6/100 | 83/100 |
+| Ancienne mire revue entre la première nouvelle image et la confirmation du mouvement | 0/100 | 0/100 |
+
+| Sortie réseau et ordre | P95 première image, NovaTube / Televizo | P95 mouvement, NovaTube / Televizo | Moins de 3 s, NovaTube · Televizo |
+| --- | ---: | ---: | ---: |
+| MSP · Televizo puis NovaTube | 2,312 / 1,966 s | 2,693 / 2,327 s | 50/50 · 50/50 |
+| PDX · NovaTube puis Televizo | 1,823 / 1,667 s | 2,218 / 1,964 s | 50/50 · 50/50 |
+
+Televizo arrive en tête des deux lecteurs au P95 agrégé du mouvement sur ces deux émulateurs. L’écart agrégé est de 0,272 s. La campagne précédente sur a6a5ba5a s’est déroulée sur d’autres hôtes. La différence entre les deux campagnes inclut la variabilité du banc et des délais de capture. Le P95 interne de NovaTube entre ouverture native et première image Media3 est de 398 ms. Celui de l’action au rappel Flutter est de 749 ms. Ces durées utilisent la télémétrie du lecteur.
+
+La capture PNG de calibration montre « Loading the channel… Mire A » et la mire A dont le numéro 1 104 est lisible au centre. L’image originale 1 920 × 1 080 et son empreinte SHA-256 `b417c1d23c48d9a1f902abf2d1d8c875165e1135cf07ab5fd8354642949b344a` sont conservées. Cette capture établit la présentation effective de l’indicateur sur le banc. Sa fréquence sur les 100 zaps chronométrés reste INCERTAINE.
+
+![Indication de chargement de Mire A et mire A, image 1 104](transition-compacte-preuve.png)
+
+Deux hôtes supplémentaires ont chacun produit 50 observations NovaTube seules. Sur la sortie ATL, le P95 de mouvement atteint 3,144 s et 31/50 zaps passent sous 3 s. Une capture Android tronquée a interrompu la préparation de Televizo. Sur la sortie SEA, le P95 atteint 2,576 s et 50/50 zaps passent sous 3 s. Televizo a signalé que la liste était inaccessible avant toute mesure. Les 100 essais non appariés sont archivés par hôte, hors classement. La paire de remplacement a réutilisé les mêmes APK et le même chronométrage. La préparation de Televizo vérifie l’intégrité de la capture, l’accès aux deux adresses depuis Android et permet de recharger la liste avant le premier essai.
+
+- [Prototype en revue, PR #279](https://github.com/manzilionellm-dotcom/tvking/pull/279) · [Exécutable NovaTube testé](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46052117945/artifacts/15225143357)
+- [Televizo puis NovaTube · job et archives](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46052117945/job/140688747176) · [NovaTube puis Televizo · job et archives](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46055720434/job/140697601254) · [Essai unilatéral ATL](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46052117945/artifacts/15225278194) · [Essai unilatéral SEA](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46054264546/artifacts/15226711600)
+- [Échantillons, deux premières cibles de calibration, empreintes et mesures par hôte](mesures.json)
 
 ## Diagnostic du carton opaque sur les deux mires de test
 
@@ -546,6 +580,12 @@ Ces interventions reproduisent un gel dû au chemin réseau du banc. La cause de
 Sur l’APK diagnostique d’empreinte `9239c20e…1fc650af`, l’accès HTTP direct à `10.0.2.2` a donné 1 982 captures lisibles sur 1 982 et 1 981 paires en mouvement. Les deux coupures de 180 secondes du relais du banc ont gelé l’image sur le chemin dépendant de ce relais. Après rétablissement, la première nouvelle image était observable dans les 9,971 puis 9,636 s. Deux nouvelles trames confirmaient la reprise dans les 12,321 puis 12,008 s. Les compteurs du banc ont enregistré 95 et 96 paquets rejetés. L’APK historique d’empreinte `d8d4a1b3…17cb145` a également passé un témoin passif distinct de 80 minutes avec 2 024 repères lisibles et une progression sur les 2 023 paires successives. L’attribution de l’arrêt spontané à 57 min 53 s reste **INCERTAINE**.
 
 - [Accès direct, 78 minutes](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46035699249/artifacts/15223271007) · [Relais avec deux coupures de 180 secondes](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46035699249/artifacts/15223349929) · [Témoin passif de 80 minutes](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46033328307/artifacts/15221204363)
+
+### Témoin strict de 72 minutes sur l’APK historique
+
+Sur la version 44be9e25 (`d8d4a1b3…17cb145`), les 1 837 captures ont identifié la bonne mire et les 1 836 paires ont avancé. Le plus grand intervalle observé entre mouvements est de 2,777 s. L’origine a répondu aux 2 160 contrôles et les 144 décodages indépendants ont abouti. Les 2 160 relevés ont conservé le PID 3149. Media3 a compté 107 994 images rendues et zéro image perdue pendant les 2 157 fenêtres de cadence observées. La première interrogation du tunnel par la sonde a eu lieu à 4 320,030 s, après la fenêtre optique de 4 320,000 s. La cause du gel historique à 57 min 53 s et l’endurance du nouveau prototype sur appareil physique restent **INCERTAINES**.
+
+- [Exécution du témoin strict](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46044480391) · [Captures et mesures de la sonde](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46044480391/artifacts/15226745020)
 
 ## Televizo · Coupures et lecture prolongée
 
