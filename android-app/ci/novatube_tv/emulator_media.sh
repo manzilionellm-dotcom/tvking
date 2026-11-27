@@ -94,95 +94,16 @@ for k in $(seq 1 20); do
   sleep .5
 done
 test -s "$out/preparation.log"
-key KEYCODE_BACK 1
-wait_word 'recent|favorites' 0 .45
-wait_word 'mire|barres' .18 .72
-sleep 5
-adb -s "$serial" logcat -c
-anchor() {
-  adb -s "$serial" shell "read a rest < /proc/uptime; log -t NovaDriver CAL_$1; read b rest < /proc/uptime; echo $1 \$a \$b" >> "$out/ancres-boot.txt"
-}
-for k in 1 2 3; do anchor "PRE_$k"; done
-# Dans le même shell Android; seul cet OK est injecté pendant la mesure.
-adb -s "$serial" shell 'read a rest < /proc/uptime; input keyevent KEYCODE_DPAD_CENTER; rc=$?; read b rest < /proc/uptime; printf "%s %s %s\n" "$a" "$b" "$rc"' > "$out/injection-boot.txt"
-for k in $(seq 1 20); do
-  adb -s "$serial" logcat -d --pid="$pid" -v monotonic -s NovaTubeQA:I flutter:I | grep NovaTubeQA > "$out/rendu.log" || true
-  if grep -q 'action=preview_to_full outcome=first_frame .*view=' "$out/rendu.log"; then break; fi
-  sleep .5
-done
-for k in 1 2 3; do anchor "POST_$k"; done
-adb -s "$serial" logcat -d -v monotonic -s NovaDriver:I | grep 'CAL_' > "$out/ancres-logcat.txt"
-adb -s "$serial" shell dumpsys input | grep -iE 'keyCode=23|KEYCODE_DPAD_CENTER' | tail -10 > "$out/derniers-ok.txt" || true
-shot premier-rendu-verifie
+qa=$(dirname "$(readlink -f "$0")")
+python3 "$qa/fade_optics.py" "$serial" "$pkg" "$out" calibrate
 sha256sum "$NOVATUBE_EMULATOR_APK" > "$out/apk-teste.txt"
-python3 - "$out" <<'VERIFY'
-import json,re,sys
-from pathlib import Path
-d=Path(sys.argv[1]); lines=(d/'rendu.log').read_text().splitlines()
-actions=[l for l in lines if 'action=preview_to_full outcome=first_frame' in l]
-assert len(actions)==1,actions
-m=re.search(r'elapsed_ms=(\d+) view=(\d+) epoch=(\d+) render_ms=(\d+)',actions[0]); assert m,actions
-key=f'view={m[2]} epoch={m[3]} phase='
-render=[l for l in lines if key+'first_render' in l]; decoder=[l for l in lines if key+'decoder_ready' in l]; release=[l for l in lines if 'phase=preview_release' in l]
-assert len(render)==1 and len(release)==1 and len(decoder)>=1
-assert lines.index(release[0])<lines.index(decoder[0])<lines.index(render[0])<lines.index(actions[0])
-result={'action_elapsed_ms':int(m[1]),'view':int(m[2]),'epoch':int(m[3]),'render_elapsed_realtime_ms':int(m[4]),'release_log':release[0],'decoder_log':decoder[0],'render_log':render[0],'action_log':actions[0]}
-dispatch=re.search(r'\bdispatch_ms=(\d+)',render[0]+' '+actions[0]); assert dispatch,'dispatch_ms absent des deux traces corrélées'
-result['dispatch_ms']=int(dispatch[1]); result['action_delivery_ms_minus_native_queue']=result['action_elapsed_ms']-result['dispatch_ms']
-from decimal import Decimal
-before,after,rc=(d/'injection-boot.txt').read_text().strip().split()
-assert rc=='0'
-pre=int(Decimal(before)*1000);post=int(Decimal(after)*1000);emitted=result['render_elapsed_realtime_ms']
-assert pre<=post and pre<=emitted
-result['input']='one KEYCODE_DPAD_CENTER (no fallback input after clearing logs)'
-result['inject_pre_boottime_ms']=pre; result['inject_post_boottime_ms']=post
-# /proc/uptime donne 2 décimales tronquées; ajouter 10ms à la borne haute.
-result['injection_to_renderer_dispatch_bounds_ms']=[max(0,emitted-post-10), emitted-pre+1]
-anchors={}
-for line in (d/'ancres-boot.txt').read_text().splitlines():
-    label,left,right=line.strip().split();anchors[label]=[float(left)*1000,float(right)*1000+10]
-for line in (d/'ancres-logcat.txt').read_text().splitlines():
-    m=re.search(r'CAL_(PRE_\d+|POST_\d+)',line)
-    if m:
-       label=m[1];t=float(line.split()[0])*1000;anchors[label].append(t)
-assert len(anchors)==6 and all(len(v)==3 for v in anchors.values())
-result['anchors_boottime_bounds_logcat_ms']=anchors
-(d/'preuve-rendu.json').write_text(json.dumps(result,indent=2)); print(json.dumps(result))
-VERIFY
-
-step "Aller-retour répété entre HLS et TS progressif"
-for n in 1 2 3 4; do
-  pos=$(wc -l < "$out/serveur-local.txt")
-  adb -s "$serial" logcat -c
-  adb -s "$serial" shell input keyevent KEYCODE_CHANNEL_DOWN
-  for k in $(seq 1 30); do
-    adb -s "$serial" logcat -d --pid="$pid" -v monotonic -s NovaTubeQA:I flutter:I | grep NovaTubeQA > "$out/zap-$n.log" || true
-    if grep -q 'action=zap_key outcome=first_frame .*view=' "$out/zap-$n.log"; then break; fi
-    sleep .5
-  done
-  tail -n "+$((pos+1))" "$out/serveur-local.txt" > "$out/zap-$n-http.txt"
-  shot "zap-$n"
+adb -s "$serial" shell cat /proc/meminfo | head -1 > "$out/memoire-appareil.txt"
+sha256sum "$media/A/seg0000.ts" > "$out/source-hls.txt"
+for n in $(seq 1 6); do
+  key KEYCODE_BACK 1
+  wait_word 'recent|favorites' 0 .45
+  wait_word 'mire|barres' .18 .72
+  sleep 4
+  python3 "$qa/fade_optics.py" "$serial" "$pkg" "$out/essai-$n" trial
 done
-python3 - "$out" <<'ZAPVERIFY'
-import json,re,sys
-from pathlib import Path
-d=Path(sys.argv[1]);initial=json.loads((d/'preuve-rendu.json').read_text())
-view=initial['view']; epoch=initial['epoch']; rows=[]
-for n in (1,2,3,4):
-    lines=(d/f'zap-{n}.log').read_text().splitlines()
-    http=(d/f'zap-{n}-http.txt').read_text()
-    act=[l for l in lines if 'action=zap_key outcome=first_frame' in l]
-    assert len(act)==1,(n,lines[-12:])
-    m=re.search(r'elapsed_ms=(\d+) view=(\d+) epoch=(\d+) render_ms=(\d+)',act[0])
-    assert m and int(m[2])==view and int(m[3])>epoch,(n,act[0],view,epoch)
-    epoch=int(m[3]); prefix=f'view={view} epoch={epoch} phase='
-    decoder=[l for l in lines if prefix+'decoder_ready' in l];frames=[l for l in lines if prefix+'first_render' in l]
-    assert len(decoder)==len(frames)==1 and lines.index(decoder[0])<lines.index(frames[0])<lines.index(act[0]),(n,decoder,frames)
-    assert 'open_ms=-' not in decoder[0]+frames[0]
-    ts=bool(re.search(r'"GET /live/barres\.ts HTTP/[^"]+" 2\d\d',http))
-    hls=bool(re.search(r'"GET /live/mire1/index\.m3u8 HTTP/[^"]+" 2\d\d',http))
-    assert ts!=hls,(n,http)
-    rows.append(dict(trial=n,source='ts' if ts else 'hls',view=view,epoch=epoch,latency_ms=int(m[1]),decoder=decoder[0],render=frames[0],action=act[0]))
-assert len(set(r['source'] for r in rows))==2 and all(x['source']!=y['source'] for x,y in zip(rows,rows[1:]))
-(d/'preuve-hls-ts.json').write_text(json.dumps(rows,indent=2));print(rows)
-ZAPVERIFY
+key KEYCODE_BACK 1
