@@ -274,19 +274,38 @@ with contextlib.ExitStack() as stack:
                 subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'screencap', '-p'],
                                stdout=image, check=True)
         from screen_label import chercher
-        def trouver(motif, fichier):
-            for _ in range(10):
-                ecran(fichier)
-                point = chercher(str(fichier), motif, 0, 1)
-                if point:
-                    return point
-                time.sleep(.5)
-            raise RuntimeError(f'Libellé {motif} absent sur la capture {fichier.name}')
         accueil = out / (label + '-accueil.png')
-        x, y = trouver('live|direct', accueil)
-        adb('shell', 'input', 'tap', str(x), str(y))
         direct = out / (label + '-direct.png')
-        trouver('canal|groupe', direct)
+        ecran(accueil)
+        # Le changement de révision peut afficher l'avis de retrait de
+        # l'ancienne liste, y compris après la première pression sur Direct.
+        # Le bouton Live derrière cet avis reste reconnaissable par OCR.
+        prochain_essai = 0.0
+        dialogue_ferme = False
+        for _ in range(16):
+            ecran(direct)
+            image = str(direct)
+            continuer = chercher(image, 'continue|continuer', 0, 1)
+            if continuer and chercher(image, 'removed|retiree|supprimee', 0, 1):
+                adb('shell', 'input', 'tap', *map(str, continuer))
+                dialogue_ferme = True
+                prochain_essai = time.monotonic() + .75
+            elif chercher(image, 'canal|groupe', 0, 1):
+                break
+            elif time.monotonic() >= prochain_essai:
+                # Le libellé peut être peint pendant la transition depuis
+                # Bienvenue avant que la tuile accepte la pression. Réessayer
+                # uniquement si les commandes de l'accueil sont encore visibles.
+                sur_accueil = chercher(image, 'settings|reglages|favorites|favoris', 0, 1)
+                bouton = chercher(image, 'live|direct', 0, 1) if sur_accueil else None
+                if bouton:
+                    adb('shell', 'input', 'tap', *map(str, bouton))
+                    prochain_essai = time.monotonic() + 3
+            time.sleep(.5)
+        else:
+            raise RuntimeError(f'Catalogue {label} enregistré mais Direct inaccessible')
+        trace['avis_retrait_ferme'] = dialogue_ferme
+        journal.write_text(json.dumps(trace, indent=2))
         for colonne, touch in [('chaines',None),('categories','KEYCODE_DPAD_LEFT')]:
             if touch:
                 adb('shell', 'input', 'keyevent', touch)
@@ -301,5 +320,17 @@ with contextlib.ExitStack() as stack:
         time.sleep(1)
         # Rétablit le focus de départ sur l'accueil avant la prochaine liste.
         preparer_demarrage(launcher)
+        # Lecture indépendante avec le processus arrêté, avant tout redémarrage
+        # et avant une éventuelle nouvelle requête du client.
+        trace['processus_arrete'] = catalogue_enregistre(url, n)
+        journal.write_text(json.dumps(trace, indent=2))
         adb('shell','am','start','-W','-n',COMPONENT)
-        time.sleep(4)
+        attendre_demarrage_stable()
+        trace['apres_redemarrage'] = {
+            'sqlite': catalogue_enregistre(url, n),
+            'meme_revision_confirmee': confirme(endpoint, token, rev),
+            'gets': requests.get((tls, n), 0),
+        }
+        journal.write_text(json.dumps(trace, indent=2))
+        if not trace['apres_redemarrage']['meme_revision_confirmee']:
+            raise RuntimeError(f'Révision {rev} introuvable après redémarrage')
