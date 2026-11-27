@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,10 +11,12 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common/sqflite_logger.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:tv_king/core/app/novatube_tv_edition.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
+import 'package:tv_king/features/epg/data/epg_repository.dart';
 import 'package:tv_king/features/tv/core/tv_provider_channel_name.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/favorites_repository.dart';
@@ -30,17 +33,29 @@ const names = ['FOX Sports 1', 'FOX Sports 1 RAW', 'FOX Sports 1 UHD'];
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory dir;
+  final guideReads = <String>[];
   setUpAll(() async {
     installAhemFonts();
     GoogleFonts.config.allowRuntimeFetching = false;
     SharedPreferences.setMockInitialValues({});
     sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    // Le journal SQL expérimental est utilisé uniquement par ce banc local.
+    // ignore: experimental_member_use
+    databaseFactory = SqfliteDatabaseFactoryLogger(
+      databaseFactoryFfiNoIsolate,
+      options: SqfliteLoggerOptions(log: (event) {
+        if (event is SqfliteLoggerSqlEvent &&
+            event.sql.contains('FROM epg_programs WHERE channel_id = ? AND start_time <= ?')) {
+          guideReads.add((event.arguments as List).first as String);
+        }
+      }),
+    );
     FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
     dir = await Directory.systemTemp.createTemp('direct-variantes-');
     PlaylistDatabase.debugFilePath = '${dir.path}/catalogue.db';
     // Préparer SQLite en temps réel, avant l’horloge simulée du widget.
     await FavoritesRepository.instance.initialize();
+    await EpgRepository.instance.initialize();
     final server = MockClient((req) async {
       final action = req.url.queryParameters['action'];
       final Object payload = switch (action) {
@@ -146,6 +161,70 @@ void main() {
       await tester.pump(const Duration(seconds: 10));
     }
   });
+  testWidgets('le chargement repeint uniquement la zone de son animation',
+      (tester) async {
+    try {
+      await show(tester, TvPlayerScreen(
+        channels: PlaylistRepository.instance.currentChannels,
+        startIndex: 0,
+      ));
+      final spinner = find.byType(CircularProgressIndicator);
+      final layer = find.ancestor(
+        of: spinner,
+        matching: find.byType(RepaintBoundary),
+      ).first;
+      final render = tester.renderObject<RenderRepaintBoundary>(layer);
+      expect(render.size, tester.getSize(spinner));
+      render.debugResetMetrics();
+      for (int i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      // Au moins une peinture de la zone animée indépendamment de son parent.
+      expect(render.debugAsymmetricPaintCount, greaterThan(0));
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 10));
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets('une seule lecture du guide par chaîne ouverte au zapping', (tester) async {
+    final channels = PlaylistRepository.instance.currentChannels;
+    await tester.runAsync(() async {
+      final db = await PlaylistDatabase.instance.database;
+      final now = DateTime.now();
+      for (final ch in channels) {
+        await db.insert('epg_programs', {
+          'channel_id': ch.id,
+          'start_time': now.subtract(const Duration(days: 1)).millisecondsSinceEpoch,
+          'stop_time': now.add(const Duration(days: 1)).millisecondsSinceEpoch,
+          'title': 'Programme de ${ch.name}',
+        });
+      }
+    });
+    guideReads.clear();
+    try {
+      await show(tester, TvPlayerScreen(channels: channels, startIndex: 0));
+      await tester.pump();
+      expect(find.textContaining('Programme de ${channels[0].name}'), findsOneWidget);
+      expect(find.text('Suivre'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(find.textContaining('Programme de '), findsNothing);
+      expect(find.text('Suivre'), findsNothing);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.textContaining('Programme de ${channels[2].name}'), findsOneWidget);
+      expect(find.text('Suivre'), findsOneWidget);
+      expect(guideReads, [channels[0].id, channels[2].id]);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 10));
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !kNovatubeTv);
+
   for (final changeFocus in [false, true]) {
     final scenario =
         changeFocus ? 'après un changement de chaîne' : 'sur la même chaîne';
