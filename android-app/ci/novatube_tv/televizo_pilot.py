@@ -159,6 +159,25 @@ def open_fullscreen():
     screenshot('player-unconfirmed')
     raise SystemExit('Mire A sélectionnée, passage en plein écran non vérifié.')
 
+def verify_fixture():
+    port = 'tcp:18471'
+    request = ("{ printf 'GET /channels.m3u?probe=preflight HTTP/1.0\\r\\n"
+               "Host: 127.0.0.1:18471\\r\\nConnection: close\\r\\n\\r\\n'; sleep 1; } "
+               "| toybox timeout 4 toybox nc 127.0.0.1 18471")
+    for attempt in range(3):
+        routes = run('reverse', '--list', check=False)
+        registered = any(line.split()[-2:] == [port, port] for line in routes.splitlines())
+        if not registered or attempt:
+            run('reverse', port, port)
+            log('register fixture route before measurements')
+        response = shell(request, check=False)
+        if re.match(r'HTTP/\S+ 200\b', response) and all(
+                f'http://127.0.0.1:18471/{ch}/index.m3u8' in response for ch in ('A', 'B')):
+            log('verified both fixture URLs from Android before measurements')
+            return
+    raise SystemExit('La mire locale est inaccessible depuis Android avant chronométrage.')
+
+verify_fixture()
 component=shell('cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN',
                 '-c','android.intent.category.LEANBACK_LAUNCHER',PKG).splitlines()[-1]
 if not component.startswith(PKG+'/'):
@@ -166,6 +185,7 @@ if not component.startswith(PKG+'/'):
 shell('am','start','-W','-n',component)
 log('launch official Televizo')
 imported=False
+refreshes=0
 for i in range(46):
     time.sleep(.45)
     nodes=snapshot(i)
@@ -188,6 +208,14 @@ for i in range(46):
         tap(confirm_save,'confirm saving the supplied fixture playlist')
         imported=True
         continue
+    if imported and any('playlist not found' in item.lower() for item in texts):
+        refresh = find(nodes, r'update playlist')
+        if refresh is not None and refreshes < 3:
+            verify_fixture()
+            tap(refresh, 'retry fixture import after verifying the local route')
+            refreshes += 1
+            time.sleep(2)
+            continue
     chan=find(nodes,r'Mire A(?:\s.*)?')
     if chan is not None:
         tap(chan,'play Mire A')
