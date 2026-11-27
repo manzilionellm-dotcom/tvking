@@ -1,7 +1,7 @@
-name: NovaTube TV · endurance du candidat fe134dd4 sur deux profils mémoire
+name: NovaTube TV · endurance du candidat fe134dd4 à 1536 Mio
 on:
   push:
-    branches: ['qa/novatube-fe134dd4-endurance-20261127']
+    branches: ['qa/novatube-fe134dd4-endurance-1536-install']
 permissions:
   contents: read
   actions: read
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ram_mib: [1024, 1536]
+        ram_mib: [1536]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

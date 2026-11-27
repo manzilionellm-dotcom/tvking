@@ -4,8 +4,13 @@ work="$PWD/android-app/ci/novatube_tv"
 out="$PWD/pilot-results"
 mkdir -p "$out"
 export ANDROID_SERIAL=emulator-5554
-sudo apt-get update -qq
-sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
+if ! { command -v ffmpeg && command -v tesseract && python3 -c 'from PIL import Image' && dpkg-query -W -f='${db:Status-Status}' libpulse0 | grep -qx installed; } >/dev/null 2>&1; then
+  ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources
+  test -s "$ubuntu_sources" || ubuntu_sources=/etc/apt/sources.list
+  apt_scope=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o 'Dir::Etc::sourceparts=-' -o 'Acquire::Retries=3')
+  sudo apt-get "${apt_scope[@]}" update -qq
+  sudo apt-get "${apt_scope[@]}" install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
+fi
 cp qa-apks/NovaTube-TV-emulateur.apk "$RUNNER_TEMP/pilot.apk"
 expected=aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34
 ram="${RAM_MIB:?}"
@@ -80,10 +85,7 @@ for attempt in 1 2 3; do
 done
 test "$installed" = 1
 timeout 35 adb wait-for-device
-base_apk=$(adb shell pm path "$pkg" | tr -d '\r' | sed -n 's/^package://p' | head -1)
-test -n "$base_apk"
-timeout 80 adb exec-out cat "$base_apk" | sha256sum | cut -d' ' -f1 > "$out/installed-apk.sha256"
-test "$(cat "$out/installed-apk.sha256")" = "$expected"
+python3 "$work/freeze_verify_apk.py" "$out" "$RUNNER_TEMP/pilot.apk" "$pkg" "$expected"
 # Only the separately embedded Atlas endpoint uses a loopback redirection.
 adb reverse tcp:8788 tcp:8788
 adb reverse --list > "$out/ports-before-playback.txt"
