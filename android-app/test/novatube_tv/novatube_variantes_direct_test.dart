@@ -37,6 +37,8 @@ void main() {
     FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
     dir = await Directory.systemTemp.createTemp('direct-variantes-');
     PlaylistDatabase.debugFilePath = '${dir.path}/catalogue.db';
+    // Préparer SQLite en temps réel, avant l’horloge simulée du widget.
+    await FavoritesRepository.instance.initialize();
     final server = MockClient((req) async {
       final action = req.url.queryParameters['action'];
       final Object payload = switch (action) {
@@ -70,8 +72,6 @@ void main() {
         hasLength(3));
   });
   tearDownAll(() async {
-    // Attendre les lectures du Direct avant de fermer la base temporaire.
-    await FavoritesRepository.instance.initialize();
     removeAhemFonts();
     await PlaylistDatabase.instance.closeForTesting();
     await dir.delete(recursive: true);
