@@ -14,9 +14,9 @@ SERIAL = "emulator-5554"
 URL = "http://127.0.0.1:18471/channels.m3u"
 
 
-def adb(*args, output=False):
+def adb(*args, output=False, timeout=18):
     result = subprocess.run(["adb", "-s", SERIAL, *args], check=True,
-                            capture_output=True, timeout=18)
+                            capture_output=True, timeout=timeout)
     return result.stdout if output else None
 
 
@@ -61,7 +61,17 @@ def run(folder):
     folder.mkdir(parents=True, exist_ok=True)
     def ss(name):
         path = folder / (name+".png")
-        path.write_bytes(adb("exec-out", "screencap", "-p", output=True))
+        for attempt in range(2):
+            try:
+                raw=adb("exec-out", "screencap", "-p", output=True, timeout=55)
+                with Image.open(io.BytesIO(raw)) as bitmap:
+                    bitmap.verify()
+                path.write_bytes(raw)
+                break
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                if attempt:
+                    raise RuntimeError("La capture Android ne répond pas après deux essais") from exc
+                time.sleep(.5)
         return path
     def poll(name, predicate, seconds=28):
         end=time.monotonic()+seconds

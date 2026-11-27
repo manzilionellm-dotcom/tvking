@@ -9,7 +9,7 @@ out=Path(sys.argv[1])
 adb=['adb','-s','emulator-5554']
 def screenshot(name=None):
     start=time.monotonic()
-    raw=subprocess.check_output(adb+['exec-out','screencap','-p'],timeout=15)
+    raw=subprocess.check_output(adb+['exec-out','screencap','-p'],timeout=55)
     if name: (out/(name+'.png')).write_bytes(raw)
     image=Image.open(io.BytesIO(raw)).convert('L')
     w,h=image.size
@@ -50,18 +50,54 @@ for keycode in ['KEYCODE_CHANNEL_DOWN','KEYCODE_DPAD_DOWN','KEYCODE_CHANNEL_UP',
     key(keycode);ch,end,raw=motion(8,target)
     result['probe'].append({'key':keycode,'expected':target,'seen':ch,'samples':raw})
     if ch: selected=keycode;current=ch;break
-    key('KEYCODE_BACK')
     current,_,_=motion(4)
+    if not current:
+        key('KEYCODE_BACK')
+        current,_,_=motion(4)
     if not current:break
 persist();screenshot('tuning-result')
-if not selected: sys.exit('Pas de commande de zap étalonnée sur les deux canaux')
+# Essais complets lorsque le pilote visuel a identifié le canal.
+end_keys = {'KEYCODE_CHANNEL_DOWN': 'KEYCODE_CHANNEL_UP', 'KEYCODE_CHANNEL_UP':'KEYCODE_CHANNEL_DOWN',
+            'KEYCODE_DPAD_DOWN':'KEYCODE_DPAD_UP','KEYCODE_DPAD_UP':'KEYCODE_DPAD_DOWN'}
 result['key']=selected
-for attempt in range(1,7):
+if selected:
+    backwards=end_keys[selected]
     target='B' if current=='A' else 'A'
-    start=time.monotonic();key(selected);ch,end,raw=motion(12,target)
-    result['attempts'].append({'n':attempt,'expected':target,'seen':ch,
-        'upper_bound_s':None if end is None else round(end-start,3),'samples':raw})
+    key(backwards)
+    returned,end,raw=motion(10,target)
+    result['probe'].append({'key':backwards,'expected':target,'seen':returned,'samples':raw})
+    if returned:
+        current=returned
+    else:
+        current,_,_=motion(4)
+        backwards=selected
+    commands=(selected,backwards)
+    fail_streak=0
+    for attempt in range(1,101):
+        if not current or fail_streak >= 3:break
+        target='B' if current=='A' else 'A'
+        start=time.monotonic();key(commands[(attempt-1)%2]);ch,end,raw=motion(12,target)
+        result['attempts'].append({'n':attempt,'expected':target,'seen':ch,
+            'upper_bound_s':None if end is None else round(end-start,3),'samples':raw})
+        persist()
+        if not ch:
+            fail_streak+=1
+            current,_,_=motion(4)
+        else:
+            current=ch
+            fail_streak=0
+    print('ZAPS',len(result['attempts']),flush=True)
+persist()
+current,_,raw=motion(8)
+if not current: sys.exit('Aucun mouvement vérifié avant la lecture continue')
+from extended import hour,recover
+result['hour_channel']=current;persist()
+hour(out,adb,screenshot,current)
+result['cuts']=[]
+for seconds in (5,15,60):
+    channel,_,_=motion(6)
+    if not channel:
+        result['cuts'].append({'cut_s':seconds,'status':'bloqué avant coupure'});persist();continue
+    result['cuts'].append(recover(out,seconds,channel,screenshot))
     persist()
-    if not ch:break
-    current=ch
-print('PILOT',str([(r['n'],r['seen'],r['upper_bound_s']) for r in result['attempts']]),flush=True)
+print('Fin des essais exécutables',flush=True)

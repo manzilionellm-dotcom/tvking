@@ -8,7 +8,7 @@ permissions:
 jobs:
   lecteur:
     runs-on: ubuntu-24.04
-    timeout-minutes: 32
+    timeout-minutes: 115
     strategy:
       fail-fast: false
       matrix:
@@ -36,8 +36,8 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
-          run-id: 45998775045
-          name: novatube-emulateur-apk-b53eb8f56de3515987aae7d99f3e50735167c121
+          run-id: 46002079321
+          name: novatube-emulateur-apk-2e018b0ffe4bd41f53995ec5e336f9e0ed113221
           path: qa-apks
       - name: Installer et comparer sur la mire
         env:

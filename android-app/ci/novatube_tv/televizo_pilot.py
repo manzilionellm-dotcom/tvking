@@ -108,6 +108,13 @@ for i in range(46):
     if button is not None:
         tap(button,'dismiss optional prompt')
         continue
+    warning = find(nodes,r'warning')
+    confirm_save = find(nodes,r'save')
+    if warning is not None and confirm_save is not None and any(
+            'not responsible for your playlists' in item.lower() for item in texts):
+        tap(confirm_save,'confirm saving the supplied fixture playlist')
+        imported=True
+        continue
     if selected:
         fullscreen=find(nodes,r'full[ -]?screen(?: mode)?|enter full[ -]?screen')
         if fullscreen is not None and i<=selection_step+2:
