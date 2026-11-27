@@ -15,7 +15,7 @@ from pilot_observer import frame, verify_local_fixture
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PKG = 'com.ottplay.ottplay'
-URL = 'http://127.0.0.1:18471/channels.m3u'
+URL = 'http://10.0.2.2:18471/channels.m3u'
 NAME = 'Nova QA'
 ADB = ['adb', '-s', 'emulator-5554']
 history = []

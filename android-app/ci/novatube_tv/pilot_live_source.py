@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as directory:
         for ch in ('A','B'):
             p=public/ch;p.mkdir()
             jobs.append(subprocess.Popen(['ffmpeg','-nostdin','-v','error','-re','-stream_loop','-1','-i',str(root/(ch+'.mkv')),'-map','0:v:0','-map','0:a:0','-c','copy','-f','hls','-hls_time','2','-hls_list_size','8','-hls_delete_threshold','2','-hls_flags','delete_segments+temp_file+independent_segments','-hls_segment_filename',str(p/'seg%08d.ts'),str(p/'index.m3u8')]))
-            lines += [f'#EXTINF:-1,Mire {ch}',f'http://127.0.0.1:18471/{ch}/index.m3u8']
+            lines += [f'#EXTINF:-1,Mire {ch}',f'http://10.0.2.2:18471/{ch}/index.m3u8']
         (public/'channels.m3u').write_text('\n'.join(lines)+'\n')
         end=time.monotonic()+args.duration
         while time.monotonic()<end:

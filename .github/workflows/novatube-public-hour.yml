@@ -1,0 +1,85 @@
+name: NovaTube LAB livré et Televizo · une heure en continu
+on:
+  push:
+    branches: [qa/novatube-public-hour-20261127]
+    paths: ['.github/workflows/novatube-public-hour.yml','android-app/ci/novatube_tv/**']
+permissions:
+  contents: read
+jobs:
+  endurance:
+    name: Une heure fixe sur Android TV 36 (${{ matrix.app }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 115
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [novatube, televizo]
+    env:
+      APP: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          accept-android-sdk-licenses: false
+      - name: Installer le binaire public et ouvrir la mire A
+        run: bash android-app/ci/novatube_tv/public_hour_setup.sh
+      - name: Attendre une première fenêtre d'observation
+        run: |
+          for i in $(seq 1 120); do
+            test ! -f hourly-public/endurance.rc || break
+            test ! -s hourly-public/early.json || break
+            sleep 2
+          done
+          if ! test -s hourly-public/early.json; then tail -8 "$RUNNER_TEMP/public-hour.log"; exit 1; fi
+      - name: Conserver le départ contrôlé
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: early-${{ matrix.app }}
+          path: |
+            hourly-public/start.json
+            hourly-public/early.json
+            hourly-public/optical.jsonl
+            hourly-public/canary.jsonl
+            hourly-public/installed.sha256
+            hourly-public/egress-country.txt
+          retention-days: 14
+      - name: Suivre 60 minutes de vidéo et vérifier de nouveau l'APK installé
+        run: |
+          set -euo pipefail
+          while ! test -f hourly-public/endurance.rc; do
+            tail -1 "$RUNNER_TEMP/public-hour.log"
+            sleep 15
+          done
+          test "$(cat hourly-public/endurance.rc)" = 0
+          test -s hourly-public/summary.json
+          pkg=$(cat hourly-public/package.txt)
+          for i in 1 2 3; do
+            installed=$(timeout 15 adb -s emulator-5554 shell pm path "$pkg" 2>/dev/null | tr -d '\r' | sed -n 's/^package:\(.*\/base\.apk\)$/\1/p') || true
+            if test -n "$installed"; then
+              timeout 100 adb -s emulator-5554 pull "$installed" "$RUNNER_TEMP/final.apk" >/dev/null && break
+            fi
+            adb reconnect offline || true
+          done
+          sha256sum "$RUNNER_TEMP/final.apk" | cut -d' ' -f1 > hourly-public/final.sha256
+          cmp hourly-public/installed.sha256 hourly-public/final.sha256
+      - name: Conserver uniquement des mesures et des métadonnées techniques
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: final-${{ matrix.app }}
+          path: |
+            hourly-public/start.json
+            hourly-public/summary.json
+            hourly-public/optical.jsonl
+            hourly-public/canary.jsonl
+            hourly-public/installed.sha256
+            hourly-public/final.sha256
+            hourly-public/egress-country.txt
+            hourly-public/system-image.txt
+            hourly-public/client-memory.txt
+            hourly-public/package.txt
+            hourly-public/SHA256SUMS
+          retention-days: 14
+          if-no-files-found: warn

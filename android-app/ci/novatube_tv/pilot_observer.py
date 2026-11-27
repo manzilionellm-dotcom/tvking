@@ -21,26 +21,16 @@ def command(args,timeout):
 
 
 def verify_local_fixture(adb, out):
-    port = 'tcp:18471'
-    request = ("{ printf 'GET /channels.m3u?probe=preflight HTTP/1.0\\r\\n"
-               "Host: 127.0.0.1:18471\\r\\nConnection: close\\r\\n\\r\\n'; sleep 1; } "
-               "| toybox timeout 4 toybox nc 127.0.0.1 18471")
+    request = ("{ printf 'GET /channels.m3u HTTP/1.0\\r\\nConnection: close\\r\\n\\r\\n'; sleep 1; } "
+               "| toybox timeout 5 toybox nc 10.0.2.2 18471")
     for attempt in range(3):
-        code, listing, _ = command(adb + ['reverse', '--list'], 12)
-        routes = listing.decode() if code == 0 else ''
-        registered = any(line.split()[-2:] == [port, port] for line in routes.splitlines())
-        if not registered or attempt:
-            command(adb + ['reverse', port, port], 12)
         code, raw, _ = command(adb + ['shell', request], 12)
-        response = raw.decode(errors='replace') if code == 0 else ''
-        ok = bool(re.match(r'HTTP/\S+ 200\b', response)) and all(
-                f'http://127.0.0.1:18471/{ch}/index.m3u8' in response for ch in ('A', 'B'))
-        with (out / 'fixture-preflight.jsonl').open('a') as log:
-            log.write(json.dumps({'attempt': attempt + 1, 'route_present': registered, 'verified': ok}) + '\n')
-        if ok:
+        response = raw.decode(errors='replace')
+        if code==0 and re.match(r'HTTP/\S+ 200\b',response) and all(
+              f'http://10.0.2.2:18471/{ch}/index.m3u8' in response for ch in ('A','B')):
             return
         time.sleep(1)
-    raise SystemExit('La mire locale est inaccessible depuis Android avant chronométrage.')
+    raise SystemExit('Direct HLS test source unreachable before playback.')
 
 
 def frame(adb,out,start):

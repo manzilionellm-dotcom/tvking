@@ -13,7 +13,7 @@ from PIL import Image
 from pilot_observer import frame, verify_local_fixture
 
 SERIAL = "emulator-5554"
-URL = "http://127.0.0.1:18471/channels.m3u"
+URL = "http://10.0.2.2:18471/channels.m3u"
 
 
 def adb(*args, output=False, timeout=18):
