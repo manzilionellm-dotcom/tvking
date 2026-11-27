@@ -2,9 +2,9 @@
 
 27 novembre 2026
 
-Relevé vérifié à 15 h 42, heure de Stockholm. Les séries longues et les 100 zaps visuels de la dernière révision sont encore en cours.
-
 [Données par essai](mesures.json)
+
+La série de lecture longue et de coupures de Televizo est en cours de dépouillement. Les 100 zaps comparatifs des deux lecteurs sont vérifiés.
 
 ## Décision de publication
 
@@ -18,7 +18,8 @@ La PR #275 corrige l’enregistrement HLS et deux ouvertures concurrentes du lec
 | Atlas, 5 000 chaînes HTTP | 2 APK sur 2 ont persisté la révision 1 et les 5 000 adresses distinctes après redémarrage. | P0 reproduit, expliqué et validé sur Android émulé. |
 | Capture HLS | 6 segments sur 6 reçus une fois. Vidéo et audio identiques à la source pour le lecteur et le fichier. | Validé pour le HLS MPEG-TS multiplexé en clair. |
 | Mémoire après fermeture | La mémoire augmente pendant les fermetures. Après 15 min, le tas natif alloué du candidat reste plus haut qu’au début. | Évaluer la dérive à durée de repos et PID identiques. |
-| Europe et États-Unis | Sur le banc US et deux lecteurs, Televizo précède NovaTube pour le zap. Comparaison physique à trois encore incomplète. | Classement des deux marchés INCERTAIN. |
+| Lecture continue, émulateur américain | Sur 44be9e25, dernier mouvement à 57 min 53 s, puis écran d’erreur en fin d’heure. | Incident à reproduire sur e322cceb avec un témoin indépendant de la source. |
+| Europe et États-Unis | P95 du mouvement visible sur 100 zaps par lecteur, émulation à sortie américaine. Televizo 1,964 s, NovaTube final 3,693 s. | Classement des deux marchés INCERTAIN. |
 
 La PR peut rester en revue avec une diffusion du candidat en test interne. Le score de preuve de la première place reste à 3/10. Il qualifie la preuve disponible pour le classement.
 
@@ -141,6 +142,45 @@ Pour les appuis simples, le P95 de libération de l’aperçu passe de 144,0 à 
 - [Journaux d’ouverture dans les deux ordres](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46004804211)
 - [Correctif du double appui](https://github.com/manzilionellm-dotcom/tvking/commit/44be9e254e4fe0e41cd743d74885a2eb3fea91fc)
 
+## Premier rendu sur le candidat final
+
+Le candidat e322cceb attribue le signal du moteur vidéo à la source qui l’a émis. Les tests ont alterné un flux HLS et un flux MPEG-TS progressif sur une même vue.
+
+| Passage au plein écran, un appui OK | Durée observée |
+| --- | --- |
+| Libération du lecteur d’aperçu | 9,513 ms |
+| Initialisation du décodeur Media3 | 104 ms |
+| Ouverture native de la source → émission du signal de rendu | 243 ms |
+| Injection de la touche → émission du signal, intervalle | 282 à 853 ms |
+| Émission du signal → réception du rappel natif | 1 904 ms |
+| Prise en charge de la touche → confirmation Flutter | 2 615 ms |
+
+Une vieille notification du lecteur pouvait être attribuée à la nouvelle chaîne lors de changements rapides. Le correctif associe chaque source à sa génération et utilise l’instant consigné par le moteur de rendu. Les quatre zaps alternés ont produit des confirmations de la bonne source sur les générations 1 à 4, en 2,150 s, 2,585 s, 2,223 s et 2,724 s.
+
+Cette série vérifie l’attribution du rendu et explique comment un rappel peut arriver tard. La cible de 3 secondes concerne l’image visible sur chacun des deux appareils physiques.
+
+- [Tests horodatés de changement de source sur Android](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46013659090)
+- [Correctif du suivi des générations](https://github.com/manzilionellm-dotcom/tvking/commit/e322ccebbb6f672deffa8b5719cd543d38ecdf3a)
+
+## Plein écran après lancement à froid
+
+Après un lancement Android à froid, le banc ouvre un aperçu, puis demande le plein écran. Lancements à froid acceptés sur les 30 prévus : 30 côté témoin et 30 côté candidat.
+
+| Étape · médiane / P95 (effectif) | Témoin fffc1378 | Candidat 8bb86add |
+| --- | --- | --- |
+| Commande → rappel natif (s) | 2,920 / 4,041 (30) | 3,581 / 4,284 (30) |
+| Commande → signal Flutter (s) | 2,920 / 3,908 (30) | 3,583 / 4,285 (30) |
+| Libération aperçu (ms) | 19,088 / 56,674 (30) | 19,999 / 73,954 (30) |
+| Initialisation décodeur (ms) | 150,500 / 211,000 (30) | 174,500 / 331,000 (30) |
+| Ouverture native → signal Media3 (ms) | 288,000 / 621,000 (30) | 329,500 / 951,000 (30) |
+
+Sur les ouvertures corrélées, le rappel natif intervient sous 3 secondes dans 0 cas sur 30 pour le témoin et 0 cas sur 30 pour le candidat. Le rappel inclut le délai du fil principal. La date d’apparition du premier pixel sur une dalle physique reste INCERTAINE.
+
+Les deux séries utilisent une mire locale identique sur deux hôtes émulés. Les fichiers sont indexés par lancement. Une première campagne qui avait écrasé des traces individuelles a été écartée. Les délais publiés portent sur les essais effectivement corrélés.
+
+- [Témoin · traces des lancements](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46014962700/job/140559636076)
+- [Candidat · traces des lancements](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46014962700/job/140559635448)
+
 ## Essai du plein écran sans fondu
 
 Seule l’animation d’entrée changeait. Deux hôtes ont chacun essayé les deux APK dans des ordres opposés, six fois par condition.
@@ -256,7 +296,7 @@ Les 12 combinaisons de région, d’appareil et de lecteur restent à qualifier 
 
 | Application | Europe | États-Unis · observations en laboratoire |
 | --- | --- | --- |
-| NovaTube Max TV | INCERTAIN | 100 zaps visibles sur 100. P95 de confirmation du mouvement de 3,887 s sur émulateur. |
+| NovaTube Max TV | INCERTAIN | Version finale e322cceb, mouvement confirmé pour 100 zaps sur 100. P95 de 3,693 s. |
 | Televizo 1.9.9.44-d | INCERTAIN | 100 zaps confirmés sur 100. P95 de 1,964 s, premier des deux lecteurs mesurés sur cette métrique en émulation. |
 | TiviMate 5.3.3 | INCERTAIN | Installé sur Android TV émulé. Le premier lancement a présenté des conditions comportant un engagement personnel d’indemnisation. La lecture n’a pas été lancée. |
 
@@ -271,7 +311,27 @@ Le classement des trois applications sur les deux appareils est INCERTAIN en Eur
 - [Sites des éditeurs · TiviMate](https://tivimate.com)
 - [Sites des éditeurs · Televizo](https://televizo.net)
 
-## États-Unis · zapping comparé
+## États-Unis · candidat final
+
+Les 100 commandes de la campagne finale visent la même mire et utilisent la même détection externe que la série Televizo.
+
+| Observation à l’écran | NovaTube e322cceb | Televizo 1.9.9.44-d |
+| --- | --- | --- |
+| Bonne chaîne dans une première capture, médiane | 3,147 s | 1,552 s |
+| Bonne chaîne dans une première capture, P95 | 3,323 s | 1,652 s |
+| Mouvement confirmé, médiane | 3,484 s | 1,865 s |
+| Mouvement confirmé, P95 | 3,693 s | 1,964 s |
+| Mouvement confirmé en moins de 3 s | 0 sur 100 | 100 sur 100 |
+| Succès / commandes | 100 / 100 | 100 / 100 |
+
+Televizo occupe le premier rang des deux lecteurs mesurés sur le P95 de confirmation du mouvement, avec 1,729 s d’avance. Le classement porte sur Android TV 36 émulé, avec des flux HLS locaux à deux chaînes. Les temps incluent la capture du repère à l’écran. La dernière instance NovaTube a utilisé une sortie réseau américaine IAD, celle de Televizo une sortie PDX. La région du centre d’hébergement du candidat n’a pas été renseignée par le banc. La paire antérieure utilisait PDX pour les deux lecteurs.
+
+La première détection atteste que le contenu demandé est visible. La deuxième exige deux numéros de trame distincts et atteste que la nouvelle chaîne est en mouvement. Les deux versions de NovaTube ont chacune leur série indépendante.
+
+- [Candidat e322cceb, preuve télécommande et capture](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46018013177/job/140570041755)
+- [Client Televizo et captures](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46007134467/job/140533021307)
+
+## États-Unis · version 44be9e25
 
 Televizo précède NovaTube sur les deux mesures visuelles du zapping. Chaque application a affiché la bonne chaîne sur 100 commandes sur 100.
 
@@ -310,6 +370,78 @@ Pour chaque lecteur, le transfert d’un enregistrement d’écran a échoué, p
 - [Journal des 21 fenêtres Televizo](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46007134467/job/140533021307)
 - [Journal des 12 fenêtres NovaTube](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46004506404/job/140524164768)
 
+## Android 11 · 100 zaps suivis par Media3
+
+100 commandes sur deux chaînes HLS locales 1080p25. 100 commandes d’injection ont abouti. 100 premiers rendus sont attribués à une commande grâce à l’horodatage, à la vue et à la révision du flux.
+
+| Étape mesurée | Médiane | P95 |
+| --- | --- | --- |
+| Traitement de la touche par NovaTube → notification Dart du premier rendu | 2,476 s | 2,726 s |
+| Marqueur avant injection Android → notification native | 2,631 s | 2,887 s |
+| Ouverture native → signal de rendu Media3 | 0,812 s | 0,950 s |
+| Initialisation du décodeur | 0,072 s | 0,100 s |
+| Décodeur prêt → signal de rendu Media3 | 0,068 s | 0,090 s |
+
+Sur les 100 commandes, 100 ont reçu le signal dans l’application en moins de 3 secondes. Le maximum confirmé est de 2,929 s. Les commandes sans preuve univoque sont au nombre de 0. Les percentiles portent sur les observations confirmées.
+
+Émulateur Android 11, application 8bb86add, variante ec95c239. La mesure native s’arrête à l’émission du signal Media3. La notification peut parvenir plus tard à l’application. La sortie du téléviseur requiert une mesure optique distincte.
+
+- [Journal des entrées, événements Media3 et captures Android](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46007804631/job/140535298923)
+
+## Android 11 · une heure de lecture
+
+Une fenêtre de 3599,983 s a été mesurée après les zaps, sur les mêmes flux de test. 61 relevés du processus ont retrouvé le même PID et le même instant de création.
+
+| Compteurs Media3 sur les fenêtres mesurées | Résultat |
+| --- | --- |
+| Fenêtres de cadence complètes | 1 786 |
+| Images rendues par le décodeur | 89 961 |
+| Images perdues par le décodeur | 0 |
+| Part perdue parmi les images rendues et perdues | 0,00 % |
+
+Les fenêtres totalisent 3598,51 s. Sur l’axe de réception du journal, la couverture estimée est de 3598,34 s, avec 1 intervalles découverts de plus d’une seconde et un maximum de 1,422 s. Ces intervalles quantifient des lacunes de télémétrie.
+
+Le décodeur de mire exécuté chaque minute a identifié 0 des 61 observations. Le recadrage des PNG conservés a permis de relire 5/5 compteurs de trame (0 min → A 688, 15 min → A 2188, 30 min → A 687, 45 min → A 2187, 60 min → A 686).
+
+Les compteurs décrivent la sortie du décodeur. Les pertes du compositeur, de la sortie HDMI ou de la dalle restent INCERTAINES.
+
+- [Journaux de cadence, identité du processus et captures PNG de la mire](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46007804631/job/140535298923)
+
+## États-Unis · lecture longue et coupures NovaTube
+
+Android TV 36 émulé, mire HLS locale 1080p25. Révision applicative 44be9e25, compilation de mesure 2e018b0f. Sortie réseau américaine via PDX, région physique de l’hôte INCERTAINE.
+
+L’observation a duré 3 600,058 s. Le dernier changement de numéro apparaît à 57 min 52,926 s. Le numéro 999 reste visible jusqu’à 58 min 02,052 s, puis les 52 dernières captures perdent le repère. L’écran final signale que la chaîne ne répond plus et propose une relance manuelle. La lecture continue sur 60 min échoue sur cet essai.
+
+1 479 des 1 531 captures ont identifié la chaîne A. Le même PID est présent sur les 172 contrôles, sans exception fatale relevée. Durant la fenêtre analysée, le serveur a renvoyé 3 464 réponses HTTP 200. Le dernier segment TS, n° 1 879, a reçu HTTP 200 à 14 h 55 min 28 s UTC. La source répétait sa mire de 120 s et devait rester disponible 110 min. Faute de sonde de la source après la dernière requête, la cause de l’arrêt est INCERTAINE.
+
+Media3 a dénombré 86 759 images rendues et 0 perdues (0,000 %) dans 1 733 fenêtres totalisant 3 470,4 s. Ces compteurs portent sur la sortie du décodeur.
+
+### Coupures du serveur de mire
+
+| Demandé (observé) | Paquets rejetés | État avant rétablissement | Mouvement après rétablissement |
+| --- | --- | --- | --- |
+| 5 s (6,07 s) | 6 | Mouvement dans les 2 dernières secondes | ≤ 2,546 s |
+| 15 s (15,13 s) | 10 | Même numéro relevé sur 6,8 s | ≤ 3,187 s |
+| 60 s (60,07 s) | 42 | Image figée puis repère illisible en fin de coupure | ≤ 4,106 s |
+
+La dernière colonne chronomètre la confirmation par deux numéros à l’écran après le rétablissement. Si la lecture s’est poursuivie, ce délai mesure la détection du mouvement. Les sondages espacés ne comptent pas chaque image sur la dalle.
+
+- [Exécution et archive des mesures](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46010491329/artifacts/15207672921)
+- [Job Android TV et identité de l’exécutable](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46010491329/job/140544444051)
+
+## Fin de la lecture sur le banc américain
+
+À la fin de l’heure, NovaTube 44be9e25 affiche le nom de la chaîne de test et propose de réessayer.
+
+![Capture finale du lecteur. La chaîne Mire A ne répond plus et un bouton propose de relancer la lecture.](lecture-60-min.png)
+
+La dernière progression du numéro de trame a été observée à 57 min 52,926 s. Le serveur a répondu HTTP 200 à sa dernière requête de segment. Le dernier numéro visible, 999, correspond à la dernière trame attendue du segment 1 879. L’épuisement du tampon est compatible avec cette observation. Aucune sonde indépendante n’a vérifié ensuite que le segment suivant restait disponible, et le journal intégral des erreurs Media3 manque.
+
+Pour reproduire cet arrêt sur le binaire final, enregistrer en parallèle la progression du manifeste depuis un second client, les requêtes du lecteur, les erreurs Media3 et la vidéo de sortie. Ces quatre traces permettront d’attribuer l’interruption au serveur, au chemin réseau ou au lecteur.
+
+- [Capture finale et journal HTTP originaux](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46010491329/artifacts/15207672921)
+
 ## Coupures du chemin média
 
 Un essai par durée et par APK. Un compteur incrusté dans la vidéo permet d’observer si le contenu avance.
@@ -338,7 +470,7 @@ Construire depuis la révision retenue un AAB avec le paquet com.sevenmotion.nov
 
 ### Qualification sur le matériel demandé
 
-Sur une NVIDIA SHIELD et une box de 1 à 2 Go, relever le modèle, la RAM, Android, le codec et les empreintes. Alterner l’ancien et le nouveau binaire sur chaque appareil. Mesurer 30 lancements à froid, 30 à chaud et 100 zaps par version. Pour le plein écran, conserver le délai télécommande → première image animée, le P95 et tous les échecs. Déclencher le test fermé une fois le P95 inférieur à 3 secondes sur chaque modèle pour le parcours visé, Atlas persistant et mémoire stable après les cycles.
+Reproduire en priorité l’arrêt observé en fin d’heure avec une sonde indépendante du flux sur le candidat final. Sur une NVIDIA SHIELD et une box de 1 à 2 Go, relever le modèle, la RAM, Android, le codec et les empreintes. Alterner l’ancien et le nouveau binaire sur chaque appareil. Mesurer 30 lancements à froid, 30 à chaud et 100 zaps par version. Pour le plein écran, conserver le délai télécommande → première image animée, le P95 et tous les échecs. Déclencher le test fermé une fois le P95 inférieur à 3 secondes sur chaque modèle pour le parcours visé, Atlas persistant et mémoire stable après les cycles.
 
 ### Classement et production
 
