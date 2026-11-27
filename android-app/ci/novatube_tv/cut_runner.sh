@@ -7,9 +7,11 @@ export ANDROID_SERIAL=emulator-5554
 sudo apt-get update -qq
 sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
 cp qa-apks/NovaTube-TV-emulateur.apk "$RUNNER_TEMP/pilot.apk"
-expected=aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34
 ram=1536
-test "$(cat qa-apks/app-commit)" = fe134dd4c580c4f7c007ca2b9026fb6a17c2e081
+test "$(cat qa-apks/app-commit)" = "$EXPECTED_COMMIT"
+(cd qa-apks && sha256sum -c SHA256SUMS)
+expected=$(cut -d' ' -f1 qa-apks/SHA256SUMS)
+if [[ "$VARIANT" == 'reference' ]]; then test "$expected" = aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34; fi
 cp qa-apks/{build-flags.txt,app-commit} "$out/"
 export FREEZE_ROUTE=10.0.2.2
 export CUT_OUTPUT="$out"
@@ -60,20 +62,22 @@ adb shell pm list features | grep -E 'leanback|television' > "$out/leanback.txt"
 adb shell wm size 1920x1080
 adb shell svc power stayon true
 adb shell input keyevent 82
-# Bootstrap only. Once observation starts the reverse mapping is never repaired.
-installed=0
-for attempt in 1 2 3; do
- timeout 50 adb wait-for-device || true
- for ready in $(seq 1 30); do
-   if timeout 4 adb shell cmd package path android 2>/dev/null | grep -q '^package:'; then break; fi
-   sleep 1
- done
- if timeout 65 adb install --no-streaming -r "$RUNNER_TEMP/pilot.apk" >> "$out/install-attempts.txt" 2>&1 || timeout 6 adb shell pm path "$pkg" 2>/dev/null | grep -q '^package:'; then installed=1; break; fi
- adb reconnect offline >> "$out/install-attempts.txt" 2>&1 || true
- sleep 3
-done
-test "$installed" = 1
-timeout 35 adb wait-for-device
+# Hash a shell-readable staging file on this guest before installing those same bytes.
+stage=/data/local/tmp/novatube-framing.apk
+adb push "$RUNNER_TEMP/pilot.apk" "$stage" > "$out/install.txt" 2>&1
+adb shell toybox sha256sum "$stage" | tr -d '\r' | tee "$out/guest-staged-sha256.txt"
+test "$(cut -d' ' -f1 "$out/guest-staged-sha256.txt")" = "$expected"
+timeout 100 adb shell pm install -r "$stage" | tr -d '\r' | tee -a "$out/install.txt"
+grep -qx 'Success' "$out/install.txt"
+installed_path=$(adb shell pm path "$pkg" | tr -d '\r' | sed -n 's/^package://p' | head -1)
+test -n "$installed_path"
+printf '%s\n' "$installed_path" > "$out/installed-path.txt"
+adb shell toybox sha256sum "$installed_path" > "$out/installed-hash-check.txt" 2>&1 || true
+# A retail system image can deny reads from /data/app. The verified staged installation
+# and the package manager success are retained even when the post-install read is denied.
+if grep -qE '^[0-9a-f]{64} ' "$out/installed-hash-check.txt"; then
+  test "$(cut -d' ' -f1 "$out/installed-hash-check.txt")" = "$expected"
+fi
 adb reverse tcp:8788 tcp:8788
 adb reverse --list > "$out/ports-before-playback.txt"
 adb shell am start -W -n "$pkg/$pkgactivity" | tee "$out/launch.txt"
@@ -83,4 +87,4 @@ python3 "$work/cut_witness.py" "$out" > "$out/witness.log" 2>&1 &
 workers+=("$!")
 python3 "$work/cut_onboard.py" "$out"
 python3 "$work/cut_observe.py" "$out" "$CUT_SECONDS"
-adb logcat -d -t 12000 -s flutter:I NovaTubeQA:I AndroidRuntime:E > "$out/player.log" || true
+adb logcat -d --pid="$(adb shell pidof "$pkg" | tr -d '\r')" -v monotonic > "$out/player.log" || true

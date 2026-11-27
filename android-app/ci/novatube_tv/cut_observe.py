@@ -7,6 +7,7 @@ import time
 
 from pilot_observer import frame
 from read_display_capture import decode
+from cut_geometry import digest_and_geometry
 
 out = Path(sys.argv[1])
 seconds = int(sys.argv[2])
@@ -27,7 +28,9 @@ def grab():
     t = time.monotonic()
     im, data = frame(adb, out, t)
     ch, n = None, None
+    geometry = {'framing':'unknown'}
     if im is not None:
+        geometry = digest_and_geometry(im)
         im = im.convert('L')
         w,h = im.size
         for top,bottom in ((0,0),(0,24),(0,48),(24,0),(24,24),(48,0),(48,48)):
@@ -38,7 +41,7 @@ def grab():
             ch,n = decode(cells)
             if ch:
                 break
-    return {'start':t,'end':time.monotonic(),'channel':ch or None,'frame':n if ch else None}, data
+    return {'start':t,'end':time.monotonic(),'channel':ch or None,'frame':n if ch else None, **geometry}, data
 
 
 def run_gate():
@@ -70,11 +73,24 @@ with (out/'screen.jsonl').open('w', buffering=1) as stream:
     controller = threading.Thread(target=run_gate)
     controller.start()
     saved = set()
+    last_state = None
+    state_change_count = 0
     first_return = None
     while 'restored' not in states or time.monotonic() < states['restored'] + 120:
         row, data = sample()
         if not data:
             continue
+        new_state = (row['framing'], row['channel'])
+        if new_state != last_state and state_change_count < 24:
+            (out / f'geometry-change-{state_change_count:02d}.png').write_bytes(data)
+            state_change_count += 1
+        last_state = new_state
+        if 'closed' in states and 'restored' not in states:
+            slot = int((row['end']-states['closed'])//8)
+            label = f'cut-at-{slot*8:02d}s'
+            if label not in saved:
+                (out / (label+'.png')).write_bytes(data)
+                saved.add(label)
         if 'closed' in states and 'restored' not in states and row['end'] > states['closed'] + seconds*.72 and 'cut' not in saved:
             (out/'during.png').write_bytes(data)
             saved.add('cut')
