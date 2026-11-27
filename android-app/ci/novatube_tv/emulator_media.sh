@@ -147,7 +147,7 @@ snapshot() {
   # Le système de test reste en mode enforcing; on écrit uniquement les
   # classes de FD. Les noms individuels des fichiers ne sont pas publiés.
   adb -s "$serial" shell "wc -l < /proc/$fixed_pid/maps; ls /proc/$fixed_pid/fd | wc -l; ls /proc/$fixed_pid/task | wc -l" > "$out/resources-$label.txt"
-  adb -s "$serial" shell "for t in /proc/$fixed_pid/task/*; do cat \$t/comm; done" | tr -d '\r' | sort | uniq -c > "$out/threads-$label.txt"
+  adb -s "$serial" shell "for t in /proc/$fixed_pid/task/*; do cat \$t/comm 2>/dev/null || :; done" | tr -d '\r' | sort | uniq -c > "$out/threads-$label.txt"
   adb -s "$serial" shell "ls -l /proc/$fixed_pid/fd" | python3 -c 'import collections,sys; v=collections.Counter()
 for l in sys.stdin:
  if " -> " in l:
@@ -155,7 +155,7 @@ for l in sys.stdin:
   k=next((x for x in ("socket:","pipe:","anon_inode:","/dev/ashmem","/memfd:","/dev/","/data/","/system/","/apex/") if p.startswith(x)),"other")
   v[k]+=1
 for k in sorted(v):print(k,v[k])' > "$out/fd-classes-$label.txt"
-  adb -s "$serial" shell dumpsys media.codec > "$out/codecs-$label.txt"
+  adb -s "$serial" shell dumpsys media.codec > "$out/codecs-$label.txt" 2>&1 || true
 }
 finish_profile() {
   if [[ "$trace_pid" =~ ^[0-9]+$ ]]; then adb -s "$serial" shell kill -INT "$trace_pid" 2>/dev/null || true; fi
