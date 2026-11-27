@@ -1,7 +1,7 @@
 name: NovaTube — gel après 57 minutes sur Android TV
 on:
   push:
-    branches: ['qa/novatube-freeze-inspect-*']
+    branches: ['qa/novatube-freeze-passif-*']
 permissions:
   contents: read
   actions: read
@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [diagnostic-naturel, tunnel-reverse, temoin-passif]
+        scenario: [temoin-passif]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

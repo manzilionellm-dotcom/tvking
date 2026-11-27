@@ -82,15 +82,6 @@ timeout 35 adb wait-for-device
 adb reverse tcp:18471 tcp:18471
 adb reverse tcp:8788 tcp:8788
 adb reverse --list > "$out/ports-before-playback.txt"
-python3 "$work/freeze_ring.py" "$out" > "$out/perfetto-observer.log" 2>&1 &
-workers+=("$!")
-adb shell run-as "$pkg" id > "$out/run-as-diagnostic.txt" 2>&1 || true
-python3 "$work/freeze_android.py" "$out" "$pkg" --duration 6500 --arm-file "$out/observation-start.json" > "$out/android-observer.log" 2>&1 &
-workers+=("$!")
-tunnel_args=()
-if [[ "$FREEZE_SCENARIO" == temoin-passif ]]; then tunnel_args+=(--passive-reverse); fi
-python3 "$work/freeze_tunnel.py" "$out" "${tunnel_args[@]}" --seconds 6300 --interval 6 > "$out/tunnel-witness.log" 2>&1 &
-workers+=("$!")
 adb shell am start -W -n "$pkg/$pkgactivity" | tee "$out/launch.txt"
 sleep 20
 adb shell cat /proc/meminfo | head -1 > "$out/client-memory.txt"
@@ -104,6 +95,18 @@ if [[ "$APP" == novatube ]]; then
   export BENCH_SKIP_VERIFIED_ZAPS=1 BENCH_PRIOR_ZAPS_RUN=46004506404
 fi
 python3 "$work/freeze_onboard.py" "$out"
+python3 "$work/freeze_android.py" "$out" "$pkg" --duration 6500 --arm-file "$out/observation-start.json" > "$out/android-observer.log" 2>&1 &
+workers+=("$!")
+tunnel_args=()
+if [[ "$FREEZE_SCENARIO" == temoin-passif ]]; then tunnel_args+=(--passive-reverse); fi
+python3 "$work/freeze_tunnel.py" "$out" "${tunnel_args[@]}" --seconds 6300 --interval 6 > "$out/tunnel-witness.log" 2>&1 &
+workers+=("$!")
+
+for i in $(seq 1 40); do
+ if [[ -s "$out/guest-tunnel-ready.json" ]]; then break; fi
+ sleep 1
+done
+if [[ ! -s "$out/guest-tunnel-ready.json" ]]; then echo "Témoin Android direct non confirmé à l’ouverture" > "$out/temoin-initial.txt"; fi
 python3 "$work/freeze_benchmark.py" "$out"
 
 python3 "$work/freeze_android.py" capture --out "$out/inspection-finale" --package "$pkg" --reason session_end
