@@ -27,7 +27,7 @@ printf 'no\n' | avdmanager create avd -f -n witness -k "$image" >/dev/null
 sudo chmod a+rw /dev/kvm
 adb start-server
 export ANDROID_SERIAL=emulator-5554
-"$ANDROID_HOME/emulator/emulator" -avd witness -port 5554 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 1536 -cores 2 > "$RUNNER_TEMP/emulator.log" 2>&1 &
+"$ANDROID_HOME/emulator/emulator" -avd witness -port 5554 -http-proxy http://127.0.0.1:9 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 1536 -cores 2 > "$RUNNER_TEMP/emulator.log" 2>&1 &
 trap 'adb emu kill >/dev/null 2>&1 || true' EXIT
 for i in $(seq 1 210); do
     if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then break; fi
@@ -46,5 +46,9 @@ adb shell input keyevent 82
 # Appareil de test isolé avant toute ouverture ; aucune livraison sur le panel.
 adb shell cmd connectivity airplane-mode enable
 adb shell svc wifi disable
-adb shell svc data disable
+# Les téléviseurs purs n’ont pas de service de téléphonie. Le proxy de
+# l’émulateur refuse déjà les connexions TCP externes ; adb reverse reste local.
+if adb shell service list | grep -F 'phone:' >/dev/null; then
+    adb shell svc data disable
+fi
 python3 android-app/ci/zuno_lab/device_smoke.py --apk "$RUNNER_TEMP/witness.apk" --package com.sevenmotion.tv.seven_tv --out "$out" --count 30
