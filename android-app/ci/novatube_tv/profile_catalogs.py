@@ -280,7 +280,7 @@ with contextlib.ExitStack() as stack:
         # Le changement de révision peut afficher l'avis de retrait de
         # l'ancienne liste, y compris après la première pression sur Direct.
         # Le bouton Live derrière cet avis reste reconnaissable par OCR.
-        live_pressed = False
+        prochain_essai = 0.0
         dialogue_ferme = False
         for _ in range(16):
             ecran(direct)
@@ -289,14 +289,18 @@ with contextlib.ExitStack() as stack:
             if continuer and chercher(image, 'removed|retiree|supprimee', 0, 1):
                 adb('shell', 'input', 'tap', *map(str, continuer))
                 dialogue_ferme = True
-                live_pressed = False
+                prochain_essai = time.monotonic() + .75
             elif chercher(image, 'canal|groupe', 0, 1):
                 break
-            elif not live_pressed:
-                bouton = chercher(image, 'live|direct', 0, 1)
+            elif time.monotonic() >= prochain_essai:
+                # Le libellé peut être peint pendant la transition depuis
+                # Bienvenue avant que la tuile accepte la pression. Réessayer
+                # uniquement si les commandes de l'accueil sont encore visibles.
+                sur_accueil = chercher(image, 'settings|reglages|favorites|favoris', 0, 1)
+                bouton = chercher(image, 'live|direct', 0, 1) if sur_accueil else None
                 if bouton:
                     adb('shell', 'input', 'tap', *map(str, bouton))
-                    live_pressed = True
+                    prochain_essai = time.monotonic() + 3
             time.sleep(.5)
         else:
             raise RuntimeError(f'Catalogue {label} enregistré mais Direct inaccessible')

@@ -24,9 +24,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - variante: avant
-            sha: b475f0b35f45448bab70d5ec6f22f07f63b19007
-            run: '45998784741'
           - variante: apres
             sha: b53eb8f56de3515987aae7d99f3e50735167c121
             run: '45998775045'
