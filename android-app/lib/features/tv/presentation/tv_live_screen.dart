@@ -609,7 +609,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
       }
       if (!mounted) return;
       await Navigator.of(context).push(
-        MaterialPageRoute<void>(
+        _InstantPlayerRoute(
           builder: (_) => TvPlayerScreen(channels: list, startIndex: index, transitionClock: transition),
         ),
       );
@@ -2588,4 +2588,12 @@ class _SearchButton extends StatelessWidget {
       ),
     );
   }
+}
+
+// Variante exclusivement expérimentale : conserver la transition de retour.
+class _InstantPlayerRoute extends MaterialPageRoute<void> {
+  _InstantPlayerRoute({required super.builder});
+
+  @override
+  Duration get transitionDuration => Duration.zero;
 }
