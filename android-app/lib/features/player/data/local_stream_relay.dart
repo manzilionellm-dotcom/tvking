@@ -53,6 +53,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
 import 'player_settings.dart';
+import 'hls_segment_reader.dart';
 
 /// Nombre d'échecs de reconnexion CONSÉCUTIFS tolérés avant d'abandonner
 /// l'upstream. Tant qu'une reconnexion réussit, le compteur repart à 0,
@@ -80,11 +81,13 @@ class LocalStreamRelay {
       _sessions[realUrl]?.recordSink != null;
 
   /// Se termine après fermeture du fichier, y compris lors d'un arrêt amont.
-  Future<void> recordingFinished(String realUrl) async {
+  Future<bool> recordingFinished(String realUrl) async {
+    final session = _sessions[realUrl];
     try {
-      await _sessions[realUrl]?.recordSink?.done;
+      await session?.recordSink?.done;
+      return session?.finishedHls ?? false;
     } on IOException {
-      // Le fichier a aussi cessé de recevoir des octets en cas d'erreur disque.
+      return false;
     }
   }
 
@@ -99,7 +102,7 @@ class LocalStreamRelay {
   }
 
   /// Le relais du direct enregistre des octets média continus. Un manifeste
-  /// doit être lu directement par le lecteur afin de résoudre ses segments.
+  /// demande une résolution de ses segments avant écriture.
   static bool isHlsPlaylist(String url) {
     final path = Uri.tryParse(url)?.path.toLowerCase() ?? '';
     return path.endsWith('.m3u8') || path.endsWith('.m3u');
@@ -113,9 +116,7 @@ class LocalStreamRelay {
     required String realUrl,
     required String filePath,
   }) {
-    if (isHlsPlaylist(realUrl)) return Future.value(false);
     final session = _ensureSession(realUrl);
-    if (session.manifestResponse) return Future.value(false);
     if (session.recordSink != null) return Future.value(true);
     return session.openingRecording ??= _openRecording(session, filePath)
         .whenComplete(() {
@@ -140,7 +141,7 @@ class LocalStreamRelay {
         }
       }));
       await sink.addStream(const Stream<List<int>>.empty());
-      if (session.manifestResponse || session.closed) {
+      if (session.closed) {
         await sink.close();
         return false;
       }
@@ -237,6 +238,8 @@ class LocalStreamRelay {
 
     final _PlayerConsumer consumer = _PlayerConsumer(res);
     session.players.add(consumer);
+    final segment = session.lastHlsSegment;
+    if (segment != null) res.add(segment);
 
     // Quand mpv ferme la connexion (pause prolongée, zap, dispose), la
     // future `res.done` se résout (ou casse) → on détache le consommateur.
@@ -344,18 +347,44 @@ class LocalStreamRelay {
     _RelaySession session,
     HttpClientResponse resp,
   ) {
-    // Les URL sans extension peuvent répondre avec un manifeste HLS.
-    // Empêcher sa copie en tant que vidéo même si le fichier est déjà ouvert.
-    session.manifestResponse =
+    final hls = isHlsPlaylist(session.realUrl) ||
         resp.headers[HttpHeaders.contentTypeHeader]?.any(
-          (value) => value.toLowerCase().split(';').first.trim().endsWith('mpegurl'),
-        ) ?? false;
-    if (session.manifestResponse && session.recordSink != null) {
-      final sink = session.recordSink!;
-      session.recordSink = null;
-      unawaited(sink.close().then<void>((_) {}, onError: (Object _, StackTrace __) {}));
-      _maybeCloseSession(session);
-      if (session.closed) return;
+          (v) => v.split(';').first.trim().toLowerCase().endsWith('mpegurl'),
+        ) == true;
+    if (hls) {
+      final reader = session.hls ??= HlsSegmentReader();
+      session.sub = reader.read(session.client!, Uri.parse(session.realUrl), resp)
+          .asyncMap<List<int>>((segment) async {
+          // Une ouverture native tardive peut encore lire le segment courant.
+          session.lastHlsSegment = segment;
+          _fanout(session, segment);
+          final sink = session.recordSink;
+          if (sink != null) {
+            try {
+              await sink.flush();
+            } on IOException {
+              if (identical(session.recordSink, sink)) session.recordSink = null;
+              _maybeCloseSession(session);
+            }
+          }
+          return segment;
+        }).listen(
+        null,
+        onError: (Object error, StackTrace stack) {
+          session.sub = null;
+          if (error is FormatException) {
+            _closeSession(session);
+          } else {
+            unawaited(_scheduleReconnect(session));
+          }
+        },
+        onDone: () {
+          session.finishedHls = session.receivedData;
+          _closeSession(session);
+        },
+        cancelOnError: true,
+      );
+      return;
     }
     // idleTimeout de HttpClient concerne les connexions inactives du pool.
     // Borner aussi le silence du corps d'une réponse déjà ouverte.
@@ -477,6 +506,8 @@ class LocalStreamRelay {
     // d'une nouvelle session sur la même URL.
     if (session.closed) return;
     session.closed = true;
+    session.hls?.close();
+    session.lastHlsSegment = null;
     session.retryTimer?.cancel();
     session.retryTimer = null;
     try {
@@ -544,7 +575,9 @@ class _RelaySession {
   int reconnectFailures = 0;
   int emptyStarts = 0;
   bool receivedData = false;
-  bool manifestResponse = false;
+  HlsSegmentReader? hls;
+  List<int>? lastHlsSegment;
+  bool finishedHls = false;
 
   /// Lecteurs branchés (mpv). En pratique 0 ou 1, mais on supporte
   /// plusieurs (mpv ouvre parfois une connexion de sonde + une de

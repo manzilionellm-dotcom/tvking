@@ -26,6 +26,7 @@ import '../../cast/data/cast_platform.dart';
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
+import 'dart:io';
 
 import '../desktop/desktop_cast_controls.dart';
 import '../data/zuno_pip_service.dart';
@@ -93,11 +94,13 @@ class TvPlayerScreen extends StatefulWidget {
     required this.channels,
     required this.startIndex,
     this.startAtUrl,
+    this.transitionClock,
   });
 
   /// Liste pour le zap (Haut/Bas) — généralement la catégorie courante.
   final List<Channel> channels;
   final int startIndex;
+  final Stopwatch? transitionClock;
 
   /// Adresse de rattrapage, seulement quand la personne a choisi
   /// « Reprendre depuis le début ». Vide : on ouvre le direct,
@@ -225,6 +228,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (clock == null) return;
     _startClock = null;
     clock.stop();
+    if (_startAction == 'open_screen') {
+      final transition = widget.transitionClock;
+      if (transition != null && transition.isRunning) {
+        transition.stop();
+        debugPrint('[NovaTubeQA] action=preview_to_full outcome=$outcome elapsed_ms=${transition.elapsedMilliseconds}');
+      }
+    }
     debugPrint('[NovaTubeQA] action=$_startAction outcome=$outcome elapsed_ms=${clock.elapsedMilliseconds}');
   }
   Duration _lastPos = Duration.zero;
@@ -872,10 +882,6 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   Future<void> _startRecording() async {
     if (_isRecording || _startingRecording) return;
-    if (LocalStreamRelay.isHlsPlaylist(_playingUrl)) {
-      _flash(context.l10n.tvRecordingError);
-      return;
-    }
     _startingRecording = true;
     final channel = _current;
     final realUrl = _playingUrl;
@@ -916,7 +922,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       _flash(context.l10n.tvRecordingStarted);
       // Un arrêt automatique de la source ou du disque clôt aussi la fiche.
       // Un stop manuel a déjà détaché la fiche avant de fermer le fichier.
-      unawaited(closed.then((_) async {
+      unawaited(closed.then((completed) async {
         if (!mounted || !identical(_activeRecording, rec)) return;
         setState(() => _activeRecording = null);
         if (_relayPlayUrl == localUrl) {
@@ -926,8 +932,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             _controller.setUrl(realUrl);
           }
         }
-        _flash(context.l10n.tvRecordingError);
         await repo.finishRecording(rec);
+        if (mounted && current()) {
+          if (completed) {
+            final size = await File(rec.filePath).length();
+            if (mounted && current()) _flash(context.l10n.tvRecordingSaved(_humanSize(size)));
+          } else {
+            _flash(context.l10n.tvRecordingError);
+          }
+        }
       }).catchError((Object error) {
         BlackBox.instance.warn('REC', 'clôture interrompue (${error.runtimeType})');
       }));

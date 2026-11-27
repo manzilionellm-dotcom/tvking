@@ -52,6 +52,22 @@ def preparer_demarrage(launcher_package):
         time.sleep(.25)
 
 
+def attendre_demarrage_stable():
+    # Un force-stop avant le signal de stabilité compte comme un crash. Trois
+    # de suite désactivent volontairement l'import Atlas pour ce processus.
+    limit = time.monotonic() + 45
+    while time.monotonic() < limit:
+        pid = adb('shell', 'pidof', PKG).strip()
+        if pid.isdigit():
+            log = adb('logcat', '-d', '--pid', pid, '-s', 'flutter:I')
+            if '[BootGuard] app stable' in log:
+                if 'MODE SANS ÉCHEC' in log:
+                    raise RuntimeError('Démarrage en mode sans échec avant le banc Atlas')
+                return
+        time.sleep(.5)
+    raise RuntimeError('NovaTube ne signale pas un démarrage stable en 45 secondes')
+
+
 def requete(method, path, body=None, token=None):
     headers = {'Content-Type': 'application/json'}
     if token:
@@ -195,15 +211,23 @@ with contextlib.ExitStack() as stack:
     launcher = home.strip().splitlines()[-1].split('/')[0]
     if not re.fullmatch(r'[a-zA-Z][\w.]+', launcher) or launcher == PKG or '/' not in home:
         raise RuntimeError('Le paquet du lanceur Android est introuvable.')
-    for essai in range(1, 6):
+    rejected = []
+    for essai in range(1, 11):
+        if len(cold) == 5:
+            break
         preparer_demarrage(launcher)
         result = adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
         (out / f'demarrage-profil-{essai}.txt').write_text(result)
         tags = dict(line.split(': ', 1) for line in result.splitlines() if ': ' in line)
         if tags.get('Status') != 'ok' or tags.get('LaunchState') != 'COLD' or tags.get('Activity') != COMPONENT:
-            raise RuntimeError(f'Essai {essai} : Android ne confirme pas le démarrage à froid de NovaTube.')
+            rejected.append({'essai': essai, 'status': tags.get('Status'), 'activity': tags.get('Activity')})
+            (out / 'lancements-ecartes.json').write_text(json.dumps(rejected))
+            time.sleep(21)  # Une activité différente a reçu le focus.
+            continue
         cold.append(int(tags['TotalTime']))
-        time.sleep(3)
+        attendre_demarrage_stable()
+    if len(cold) != 5:
+        raise RuntimeError('Cinq mesures Android à froid valides sont nécessaires')
     print('Démarrage profil médian (ms)', statistics.median(cold), flush=True)
     token = requete('POST', '/api/v1/auth/login', {'email': 'admin', 'password': cfg['adminSecret']})['token']
     for _ in range(30):
@@ -215,23 +239,34 @@ with contextlib.ExitStack() as stack:
         raise RuntimeError('Aucune box de test enregistrée.')
     endpoint = '/api/v1/sources/' + mac
     measures = {'demarrage_ms': cold, 'mediane_ms': statistics.median(cold), 'catalogues': {}}
-    for rev, (tls, n) in enumerate(catalogues, 1):
+    for tls, n in catalogues:
         protocol = 'https' if tls else 'http'
         label = f'{protocol}-{n}'
         url = f'{protocol}://127.0.0.1:{9443 if tls else 9080}/{n}.m3u'
         adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset')
         start = time.monotonic()
-        requete('PUT', endpoint, {'sources': [{'type': 'm3u', 'label': label,
+        published = requete('PUT', endpoint, {'sources': [{'type': 'm3u', 'label': label,
                                                'm3u_url': url}]}, token)
+        rev = published['rev']
+        if type(rev) is not int or rev <= 0:
+            raise RuntimeError('Révision Atlas absente de la publication')
+        trace = {'rev': rev, 'order_id': published.get('order_id'), 'catalogue': label}
+        journal = out / (label + '-revision.json')
+        journal.write_text(json.dumps(trace))
         while not confirme(endpoint, token, rev):
             if time.monotonic() - start > 100:
-                raise RuntimeError('Pas de confirmation pour ' + label)
+                trace['gets'] = requests.get((tls,n), 0)
+                journal.write_text(json.dumps(trace))
+                raise RuntimeError(f'Révision {rev} sans confirmation pour {label}')
             time.sleep(.12)
         if requests.get((tls, n), 0) < 1:
             raise RuntimeError('Aucune requête du profil Android pour ' + label)
         mesure = {'panel_confirmation_ms': round((time.monotonic()-start)*1000),
                   'requetes': requests[tls, n], 'import': frames(label + '-import'),
                   'catalogue_verifie': catalogue_enregistre(url, n)}
+        trace.update({'etat_atlas': 'acknowledged', 'gets': mesure['requetes'],
+                      'delai_ms': mesure['panel_confirmation_ms'], 'sqlite': mesure['catalogue_verifie']})
+        journal.write_text(json.dumps(trace, indent=2))
         # La première tuile peut être une recommandation. Ouvrir le Direct
         # sur le libellé visible, puis confirmer le contenu de la liste.
         def ecran(fichier):

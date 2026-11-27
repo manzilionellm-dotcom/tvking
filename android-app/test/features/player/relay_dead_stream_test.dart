@@ -12,35 +12,33 @@ void main() {
     expect(urls.toSet(), hasLength(1));
   });
 
-  test('un manifeste HLS ne devient pas un faux enregistrement TS', () async {
+  test(
+      'un contenu non vidéo annoncé dans un manifeste ne devient pas une capture TS',
+      () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final dir = await Directory.systemTemp.createTemp('relay-hls-');
-    const playlist = '#EXTM3U\n#EXT-X-TARGETDURATION:3\n#EXTINF:3,\npart.ts\n';
-    var requests = 0;
-    server.listen((req) {
-      requests++;
+    server.listen((req) async {
       req.response.headers.contentType =
           ContentType('application', 'vnd.apple.mpegurl');
-      req.response.write(playlist);
-      req.response.close();
+      req.response
+          .write('#EXTM3U\n#EXT-X-TARGETDURATION:3\n#EXTINF:3,\npart.ts\n');
+      await req.response.close();
     });
     final relay = LocalStreamRelay.instance;
-    final origin = 'http://127.0.0.1:${server.port}';
-    final file = File('${dir.path}/capture.ts');
     try {
-      expect(
-          await relay.startRecording(
-              realUrl: '$origin/live.M3U8?type=ts', filePath: file.path),
-          isFalse);
-      expect(requests, 0);
-      expect(await file.exists(), isFalse);
-      final url = '$origin/direct';
-      expect(await relay.startRecording(realUrl: url, filePath: file.path),
-          isTrue);
-      await relay.recordingFinished(url).timeout(const Duration(seconds: 3));
-      expect(relay.isRecording(url), isFalse);
-      expect(requests, 1);
-      expect(await file.length(), 0);
+      for (final path in ['direct', 'live.M3U8?type=ts']) {
+        final url = 'http://127.0.0.1:${server.port}/$path';
+        final file = File('${dir.path}/capture.ts');
+        expect(await relay.startRecording(realUrl: url, filePath: file.path),
+            isTrue);
+        expect(
+            await relay
+                .recordingFinished(url)
+                .timeout(const Duration(seconds: 3)),
+            isFalse);
+        expect(relay.isRecording(url), isFalse);
+        expect(await file.length(), 0);
+      }
     } finally {
       await server.close(force: true);
       await dir.delete(recursive: true);
