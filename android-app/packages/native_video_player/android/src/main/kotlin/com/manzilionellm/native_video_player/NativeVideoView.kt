@@ -2008,13 +2008,20 @@ class NativeVideoView(
         // L'heure de l'événement, pas « maintenant » : une trame déjà
         // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
         if (!fresh(eventTime)) return
-        reconnect.onRecovered()
-        behindLiveCount = 0
         if (qaPhases && !qaFirstFrameSeen) {
+            // Media3 date l’émission avant de poster l’événement. Les deux
+            // instants utilisent elapsedRealtime, y compris après une veille.
+            val dispatchMs = SystemClock.elapsedRealtime() - renderTimeMs
             qaFirstFrameSeen = true
             val sinceCodec = if (qaDecoderReadyAt > 0) renderTimeMs - qaDecoderReadyAt else null
-            android.util.Log.i("NovaTubeQA", "view=$qaViewId epoch=$dartEpoch phase=first_render open_ms=${renderTimeMs - sessionOpenedAt} codec_to_render_ms=$sinceCodec")
+            android.util.Log.i(
+                "NovaTubeQA",
+                "view=$qaViewId epoch=$dartEpoch phase=first_render open_ms=${renderTimeMs - sessionOpenedAt}" +
+                    " codec_to_render_ms=$sinceCodec dispatch_ms=$dispatchMs",
+            )
         }
+        reconnect.onRecovered()
+        behindLiveCount = 0
         sawFrame = true
         // La nouvelle trame est à l'écran : on retire la copie.
         hideHeldFrame()
