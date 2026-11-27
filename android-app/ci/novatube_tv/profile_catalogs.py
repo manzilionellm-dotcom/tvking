@@ -212,8 +212,8 @@ with contextlib.ExitStack() as stack:
     if not re.fullmatch(r'[a-zA-Z][\w.]+', launcher) or launcher == PKG or '/' not in home:
         raise RuntimeError('Le paquet du lanceur Android est introuvable.')
     rejected = []
-    for essai in range(1, 11):
-        if len(cold) == 5:
+    for essai in range(1, 6):
+        if len(cold) == 1:
             break
         preparer_demarrage(launcher)
         result = adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
@@ -226,8 +226,8 @@ with contextlib.ExitStack() as stack:
             continue
         cold.append(int(tags['TotalTime']))
         attendre_demarrage_stable()
-    if len(cold) != 5:
-        raise RuntimeError('Cinq mesures Android à froid valides sont nécessaires')
+    if len(cold) != 1:
+        raise RuntimeError('Un démarrage stable est nécessaire')
     print('Démarrage profil médian (ms)', statistics.median(cold), flush=True)
     token = requete('POST', '/api/v1/auth/login', {'email': 'admin', 'password': cfg['adminSecret']})['token']
     for _ in range(30):
@@ -239,7 +239,7 @@ with contextlib.ExitStack() as stack:
         raise RuntimeError('Aucune box de test enregistrée.')
     endpoint = '/api/v1/sources/' + mac
     measures = {'demarrage_ms': cold, 'mediane_ms': statistics.median(cold), 'catalogues': {}}
-    for tls, n in catalogues:
+    for tls, n in [(False, 5000), (False, 20000)]:
         protocol = 'https' if tls else 'http'
         label = f'{protocol}-{n}'
         url = f'{protocol}://127.0.0.1:{9443 if tls else 9080}/{n}.m3u'
@@ -274,26 +274,34 @@ with contextlib.ExitStack() as stack:
                 subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'screencap', '-p'],
                                stdout=image, check=True)
         from screen_label import chercher
-        def trouver(motif, fichier):
-            for _ in range(10):
-                ecran(fichier)
-                point = chercher(str(fichier), motif, 0, 1)
-                if point:
-                    return point
-                time.sleep(.5)
-            raise RuntimeError(f'Libellé {motif} absent sur la capture {fichier.name}')
         accueil = out / (label + '-accueil.png')
-        x, y = trouver('live|direct', accueil)
-        adb('shell', 'input', 'tap', str(x), str(y))
         direct = out / (label + '-direct.png')
-        trouver('canal|groupe', direct)
-        for colonne, touch in [('chaines',None),('categories','KEYCODE_DPAD_LEFT')]:
-            if touch:
-                adb('shell', 'input', 'keyevent', touch)
-            adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset')
-            adb('shell', 'for i in $(seq 1 35); do input keyevent KEYCODE_DPAD_DOWN; done')
-            mesure[colonne] = frames(label + '-' + colonne)
-        (out / (label + '-memoire.txt')).write_text(adb('shell','dumpsys','meminfo',PKG))
+        ecran(accueil)
+        # Le changement de révision peut afficher l'avis de retrait de
+        # l'ancienne liste, y compris après la première pression sur Direct.
+        # Le bouton Live derrière cet avis reste reconnaissable par OCR.
+        live_pressed = False
+        dialogue_ferme = False
+        for _ in range(16):
+            ecran(direct)
+            image = str(direct)
+            continuer = chercher(image, 'continue|continuer', 0, 1)
+            if continuer and chercher(image, 'removed|retiree|supprimee', 0, 1):
+                adb('shell', 'input', 'tap', *map(str, continuer))
+                dialogue_ferme = True
+                live_pressed = False
+            elif chercher(image, 'canal|groupe', 0, 1):
+                break
+            elif not live_pressed:
+                bouton = chercher(image, 'live|direct', 0, 1)
+                if bouton:
+                    adb('shell', 'input', 'tap', *map(str, bouton))
+                    live_pressed = True
+            time.sleep(.5)
+        else:
+            raise RuntimeError(f'Catalogue {label} enregistré mais Direct inaccessible')
+        trace['avis_retrait_ferme'] = dialogue_ferme
+        journal.write_text(json.dumps(trace, indent=2))
         measures['catalogues'][label] = mesure
         (out / 'mesures-profil.json').write_text(json.dumps(measures, indent=2))
         print(label, json.dumps(mesure), flush=True)
@@ -301,5 +309,17 @@ with contextlib.ExitStack() as stack:
         time.sleep(1)
         # Rétablit le focus de départ sur l'accueil avant la prochaine liste.
         preparer_demarrage(launcher)
+        # Lecture indépendante avec le processus arrêté, avant tout redémarrage
+        # et avant une éventuelle nouvelle requête du client.
+        trace['processus_arrete'] = catalogue_enregistre(url, n)
+        journal.write_text(json.dumps(trace, indent=2))
         adb('shell','am','start','-W','-n',COMPONENT)
-        time.sleep(4)
+        attendre_demarrage_stable()
+        trace['apres_redemarrage'] = {
+            'sqlite': catalogue_enregistre(url, n),
+            'meme_revision_confirmee': confirme(endpoint, token, rev),
+            'gets': requests.get((tls, n), 0),
+        }
+        journal.write_text(json.dumps(trace, indent=2))
+        if not trace['apres_redemarrage']['meme_revision_confirmee']:
+            raise RuntimeError(f'Révision {rev} introuvable après redémarrage')

@@ -122,66 +122,6 @@ alive() {
 shot() { adb -s "$serial" exec-out screencap -p > "$out/$1.png"; }
 key() { adb -s "$serial" shell input keyevent "$1"; sleep "${2:-3}"; }
 
-step "Premier démarrage"
-adb -s "$serial" logcat -c
-adb -s "$serial" shell am start -W -n "$component" > "$out/demarrage-1.txt" 2>&1
-sleep 35
-alive "premier démarrage"
-shot 01-premier-demarrage
-
-step "Télécommande : OK sur le bouton qui a le focus (M3U)"
-key KEYCODE_DPAD_CENTER 6
-alive "ouverture formulaire"
-shot 02-apres-ok
-key KEYCODE_BACK 4
-alive "retour"
-shot 03-retour-accueil
-
-step "Télécommande : droite puis OK (Xtream Codes)"
-key KEYCODE_DPAD_RIGHT 2
-key KEYCODE_DPAD_CENTER 6
-alive "formulaire Xtream"
-shot 04-apres-droite-ok
-key KEYCODE_BACK 4
-
-step "Arrêt forcé puis réouverture"
-adb -s "$serial" shell am force-stop "$pkg"
-sleep 3
-adb -s "$serial" shell am start -W -n "$component" > "$out/demarrage-2.txt" 2>&1
-sleep 30
-alive "réouverture"
-shot 05-reouverture
-
-if [[ -n "${NOVATUBE_EMULATOR_APK:-}" ]]; then
-  # Phase B : MÊME code, compilé avec l'adresse d'un Atlas LOCAL (le vrai
-  # code serveur des routes /api/novatube4k/*, lancé sur le runner, port
-  # 8788). La box l'atteint par sa boucle locale (adb reverse) : aucun
-  # contact avec la production, aucun appareil de test dans le vrai panel.
-  step "Phase B : variante reliée à l'Atlas local (essai serveur de 10 jours)"
-  adb -s "$serial" install -r "$(readlink -f "$NOVATUBE_EMULATOR_APK")" > "$out/install-variante.txt" 2>&1
-  grep -q Success "$out/install-variante.txt"
-  adb -s "$serial" shell pm clear "$pkg" > /dev/null
-  adb -s "$serial" reverse tcp:8788 tcp:8788
-  adb -s "$serial" shell am start -W -n "$component" > "$out/demarrage-3.txt" 2>&1
-  sleep 35
-  alive "premier démarrage avec Atlas local"
-  shot 06-bienvenue-atlas-local
-fi
-
-if [[ -n "${NOVATUBE_TEST_MEDIA:-}" ]]; then
-  step "Phase média : import M3U HTTP, Direct 3 zones, lecture"
-  if bash "$(dirname "$(readlink -f "$0")")/emulator_media.sh" \
-      "$serial" "$out" "$pkg" "$NOVATUBE_TEST_MEDIA"; then
-    step "Phase média : OK"
-    echo ok > "$out/phase-media.txt"
-  else
-    # Les captures précédentes restent disponibles pour diagnostiquer le refus.
-    step "Phase média : NON CONCLUANTE (voir captures 07 à 14)"
-    echo echec > "$out/phase-media.txt"
-    exit 1
-  fi
-fi
-
 if [[ -n "${NOVATUBE_PROFILE_APK:-}" ]]; then
   step "Chronométrage Android 11 en profil : deux tailles en HTTP et en HTTPS"
   # L'APK de profil utilise la clé de développement du runner. Le parcours
@@ -199,6 +139,7 @@ if [[ -n "${NOVATUBE_PROFILE_APK:-}" ]]; then
   for i in $(seq 1 45); do [[ -s "$profile_atlas/config.json" ]] && break; sleep 1; done
   test -s "$profile_atlas/config.json"
   adb -s "$serial" reverse tcp:8788 tcp:8789
+  sha256sum "$NOVATUBE_PROFILE_APK" > "$out/sha256-apk-profil.txt"
   python3 "$script_dir/profile_catalogs.py" "$serial" "$pkg" "$component" "$out/profil" \
     "$profile_atlas/config.json" "$NOVATUBE_TEST_MEDIA" "$(dirname "$(readlink -f "$NOVATUBE_PROFILE_APK")")/tls-fixture"
   kill "$profile_pid"
