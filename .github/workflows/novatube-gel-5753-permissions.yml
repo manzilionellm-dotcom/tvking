@@ -59,6 +59,7 @@ jobs:
           touch "$out/observation-start.json"
           sleep 18
           touch "$out/freeze-trigger"
+          for attempt in $(seq 1 28); do test ! -s "$out/perfetto/capture-0.pftrace" || break; sleep 1; done
           python3 "$work/freeze_android.py" capture --out "$out/inspection" --package "$pkg" --reason qa_manual_measurement
           touch "$out/long-result.json"
           wait "$ringpid"

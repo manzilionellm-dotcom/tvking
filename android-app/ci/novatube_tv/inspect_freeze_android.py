@@ -160,9 +160,8 @@ def snapshot(bridge, out, reason, pid=None):
         rc, data, err = bridge.shell(cmd,timeout=16)
         (base/(key+".txt")).write_bytes(data + (b"\nSTDERR\n"+err if err else b""))
         return key,{"rc":rc,"bytes":len(data),"start":start,"end":timestamp()}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)+3) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         private=pool.submit(request_private_threads,bridge,base,str(start["utc_ns"])) if can_run_as else None
-        fut={pool.submit(capture_task,item) for item in tasks.items()}
         db=pool.submit(dump_database,bridge,base)
         # Snapshot first on every independent channel. Querying a busy system
         # service can take several seconds; it must never delay the ART dump.
@@ -184,6 +183,7 @@ def snapshot(bridge, out, reason, pid=None):
                     native=(f"debuggerd -b {pid} || run-as {bridge.pkg} debuggerd -b {pid}")
                 return dict([capture_task(("art",art)),capture_task(("native",native))])
             heavy=pool.submit(stacks)
+        fut={pool.submit(capture_task,item) for item in tasks.items()}
         img=bridge.call("exec-out","screencap","-p",timeout=12)
         if img[0]==0 and img[1].startswith(b"\x89PNG"):
             (base/"screen.png").write_bytes(img[1])

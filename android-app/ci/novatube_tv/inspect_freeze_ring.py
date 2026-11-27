@@ -34,33 +34,56 @@ signal.signal(signal.SIGTERM,terminate)
 while not (root/'observation-start.json').exists() and not stop:time.sleep(.25)
 flag=root/'freeze-trigger'
 seen = flag.stat().st_mtime_ns if flag.exists() else 0
+def call(args, limit=8):
+    try: return subprocess.run(adb+args,capture_output=True,timeout=limit)
+    except subprocess.TimeoutExpired as e: return subprocess.CompletedProcess(args,124,e.stdout or b"",e.stderr or b"timeout")
+
+cfg=dst/"freeze-perfetto.pbtxt";cfg.write_bytes(config)
+remote_cfg='/data/local/tmp/nt_freeze_qa.pbtxt'
+push=call(['push',str(cfg),remote_cfg])
+record(phase='push',rc=push.returncode,err=push.stderr.decode(errors='replace')[-400:])
+if push.returncode:sys.exit(1)
 for trial in range(4):
     if stop:break
     remote=f'/data/misc/perfetto-traces/nt_freeze_{trial}.pftrace'
     out=dst/f'capture-{trial}.pftrace'
-    with (dst/f'command-{trial}.log').open('wb') as log:
-        proc=subprocess.Popen(adb+['shell','perfetto','--txt','-c','-','-o',remote],stdin=subprocess.PIPE,stdout=log,stderr=log)
-        proc.stdin.write(config);proc.stdin.close()
-        record(phase='armed',trial=trial)
+    with (dst/f'command-{trial}.log').open('ab') as log:
+        launch=call(['shell','perfetto','--txt','--background-wait','-c',remote_cfg,'-o',remote],16)
+        log.write(launch.stdout + launch.stderr)
+        record(phase='armed',trial=trial,rc=launch.returncode)
+        if launch.returncode:break
         reason='end_of_window'
-        while not stop and proc.poll() is None and not (root/'long-result.json').exists():
+        while not stop and not (root/'long-result.json').exists():
             stamp=flag.stat().st_mtime_ns if flag.exists() else 0
             if stamp>seen:
-                seen=stamp; reason='incident';break
-            time.sleep(.25)
-        if proc.poll() is None:
-            trig=subprocess.run(adb+['shell','/system/bin/trigger_perfetto','nt_freeze_visible'],stdout=log,stderr=log,timeout=10)
-            if trig.returncode:
-                trig=subprocess.run(adb+['shell','perfetto','--txt','-c','-'],input=b'activate_triggers: "nt_freeze_visible"\n',stdout=log,stderr=log,timeout=10)
-            record(phase='trigger_sent',trial=trial,reason=reason,rc=trig.returncode)
-            try:proc.wait(timeout=14)
-            except subprocess.TimeoutExpired:
-                record(phase='trigger_timeout',trial=trial);proc.terminate();break
-        get=subprocess.run(adb+['pull',remote,str(out)],capture_output=True,timeout=12)
-        record(phase='collected',trial=trial,source_exit=proc.returncode,pull_exit=get.returncode,bytes=out.stat().st_size if out.exists() else 0)
-        if reason=='end_of_window' or get.returncode or not out.exists() or out.stat().st_size<64:break
-        # Incident-level snapshots from multiple observers can share the same underlying stall.
-        for _ in range(30):
-            if stop:break
+                seen=stamp;reason='incident';break
+            time.sleep(.2)
+        trig=call(['shell','/system/bin/trigger_perfetto','nt_freeze_visible'])
+        log.write(trig.stdout+trig.stderr)
+        record(phase='trigger_sent',trial=trial,reason=reason,rc=trig.returncode)
+        if trig.returncode:break
+        # The trace is closed asynchronously after stop_delay_ms. A collector can
+        # briefly break the ADB channel; the detached Android writer survives.
+        limit=time.monotonic()+25
+        prev=-1; stable=0
+        while time.monotonic()<limit:
+            time.sleep(.5)
+            st=call(['shell','stat','-c','%s',remote],4)
+            try:size=int(st.stdout.strip())
+            except ValueError:size=-1
+            if size>4096 and size==prev:stable+=1
+            else:stable=0
+            prev=size
+            if stable>=3:
+                get=call(['exec-out','cat',remote],15)
+                if get.returncode==0 and len(get.stdout)==size:
+                    out.write_bytes(get.stdout);break
+                log.write(get.stderr)
+            if st.returncode:log.write(st.stderr)
+        record(phase='collected',trial=trial,bytes=out.stat().st_size if out.exists() else 0,last_stat=prev)
+        if not out.exists() or reason=='end_of_window':break
+        for _ in range(24):
+            if stop or (root/'long-result.json').exists():break
             time.sleep(.25)
         if flag.exists():seen=flag.stat().st_mtime_ns
+        if (root/'long-result.json').exists():break
