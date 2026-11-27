@@ -330,6 +330,34 @@ La première détection atteste que le contenu demandé est visible. La deuxièm
 - [Candidat e322cceb, preuve télécommande et capture](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46018013177/job/140570041755)
 - [Client Televizo et captures](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46007134467/job/140533021307)
 
+## Comparaisons croisées du guide et de l’animation de chargement
+
+Chaque comparaison utilise deux émulateurs Android TV 36, avec 1 536 Mio de RAM configurée et la même mire HLS locale 1080p25. Sur chaque hôte, le banc installe successivement les deux APK et alterne 50 fois les chaînes A et B pour chacun. Le second hôte inverse l’ordre. Les numéros de trame à l’écran identifient la chaîne demandée et confirment que l’image avance. Les quatre séries de 100 zaps ont confirmé la bonne chaîne en mouvement à chaque essai. Les durées incluent l’acquisition des captures Android.
+
+| Comparaison et version | Première bonne mire, P95 | Mouvement confirmé, médiane | Mouvement confirmé, P95 | Mouvement en moins de 3 s |
+| --- | ---: | ---: | ---: | ---: |
+| 1 · Témoin e79928e4 | 3,416 s | 3,575 s | 3,835 s | 0/100 |
+| 1 · Lecture unique du guide, 1fb89439 | 3,418 s | 3,560 s | 3,762 s | 0/100 |
+| 2 · Lecture unique du guide, 1fb89439 | 4,398 s | 4,061 s | 4,936 s | 0/100 |
+| 2 · Même guide et animation isolée, a6a5ba5a | 4,335 s | 3,888 s | 4,845 s | 3/100 |
+
+L’APK du guide est identique dans les deux comparaisons (SHA-256 `f1a6d4c814efe001808fa84d3f692799932279c659b6257ba8b11cc2b8a3100d`). Son P95 de mouvement passe de 3,762 à 4,936 s entre les deux paires d’hôtes. Les écarts de 73 ms et de 91 ms se lisent à l’intérieur de leurs campagnes respectives. L’avantage sur une box physique demeure **INCERTAIN**.
+
+| Comparaison · ordre d’installation et sortie réseau | P95 mouvement du témoin | P95 mouvement du candidat |
+| --- | ---: | ---: |
+| 1 · Témoin puis guide, PDX | 4,026 s | 3,930 s |
+| 1 · Guide puis témoin, PDX | 3,828 s | 3,741 s |
+| 2 · Guide puis animation isolée, IAD | 4,971 s | 4,906 s |
+| 2 · Animation isolée puis guide, DFW | 3,922 s | 3,564 s |
+
+Sur les 400 zaps, le repère central était illisible dans au moins une capture avant l’apparition de la chaîne attendue. L’ancienne mire a été identifiée sur zéro de ces captures. Les deux états optiques décrivent ce que la sonde a pu lire. Pour la comparaison 1, le P95 entre l’ouverture native de la source et l’émission Media3 atteint 916 ms sur le témoin et 931 ms sur le guide. Le délai d’acheminement de ce signal au rappel natif atteint respectivement 1 592 et 1 624 ms au P95. La comparaison 2 donne 1 064 et 1 034 ms pour l’ouverture jusqu’à l’émission, puis 2 231 et 2 030 ms pour l’acheminement. Les rappels sont appariés sur la vue et la génération de la source. Les deux zaps de calibration par installation sont exclus.
+
+Dans la seconde comparaison, une installation a atteint l’écran de bienvenue sans focus sur le bouton M3U. Le pilote a expiré avant le premier zap. La reprise a sélectionné le bouton par son libellé à l’écran et a exécuté les deux versions dans l’ordre prévu avec les mêmes APK. Le premier hôte a conservé sa série complète. Le calcul repose sur les deux séries de 50 effectivement observées par version.
+
+- [Captures horodatées par essai, empreintes et résumés des deux comparaisons dans `crossed_optical_qa_20261127`](mesures.json)
+- [Comparaison 1, témoin puis guide](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46045175781/artifacts/15222888586) · [Guide puis témoin](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46045175781/artifacts/15223535612)
+- [Comparaison 2, guide puis animation](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46045807927/artifacts/15223103699) · [Animation puis guide après reprise du parcours initial](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46047921372/artifacts/15223492396)
+
 ## États-Unis · lecture et reprise comparées
 
 Deux lecteurs sur Android TV 36 émulé. Les deux sessions utilisaient les mêmes mires HLS locales à 25 images par seconde.
