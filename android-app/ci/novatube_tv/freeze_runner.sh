@@ -7,8 +7,9 @@ export ANDROID_SERIAL=emulator-5554
 sudo apt-get update -qq
 sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
 cp qa-apks/NovaTube-TV-emulateur.apk "$RUNNER_TEMP/pilot.apk"
-expected=d8d4a1b316f4b407342181c17e8cfc1cb73130d13b6a92ec95cd48be117cb145
+expected=9239c20e5bbb77b7d9636eccef7511c41f5319dbb7a8e72aceb4633d1fc650af
 ram=1536
+if [[ "$FREEZE_SCENARIO" == temoin-passif ]]; then expected=d8d4a1b316f4b407342181c17e8cfc1cb73130d13b6a92ec95cd48be117cb145; fi
 if [[ "$FREEZE_SCENARIO" == candidat ]]; then expected=3dc5440dd3edd2ab057dc355ac0d35ea5ac8fbd6435546f9991233c201493dd5; fi
 if [[ "$FREEZE_SCENARIO" == memoire ]]; then ram=1024; fi
 export FREEZE_ROUTE=127.0.0.1
@@ -40,6 +41,8 @@ if [[ ! -f "$HOME/.android/adbkey" ]]; then adb keygen "$HOME/.android/adbkey"; 
 adb start-server
 "$ANDROID_HOME/emulator/emulator" -avd tvpilot -port 5554 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory "$ram" -cores 2 > "$out/emulator.txt" 2>&1 &
 emupid=$!
+export FREEZE_TUNNEL_GATE="$out/tunnel-arm-gate.txt"
+printf "HOLD\n" > "$FREEZE_TUNNEL_GATE"
 python3 "$work/freeze_live_source.py" serve "$RUNNER_TEMP/encoded-fixture" --duration 6600 > "$out/source.log" 2>&1 &
 srcpid=$!
 workers=()
@@ -55,20 +58,39 @@ for n in $(seq 1 180); do
  sleep 2
 done
 test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
-adb root > "$out/adb-root.txt" 2>&1 || true
+adb shell id > "$out/adb-root.txt" 2>&1 || true
 timeout 30 adb wait-for-device
 adb shell 'id; getprop ro.build.fingerprint; getprop ro.debuggable; getprop ro.build.version.sdk' > "$out/android-runtime.txt"
 adb shell pm list features | grep -E 'leanback|television' > "$out/leanback.txt"
 adb shell wm size 1920x1080
 adb shell svc power stayon true
 adb shell input keyevent 82
+# Bootstrap only. Once observation starts the reverse mapping is never repaired.
+installed=0
+for attempt in 1 2 3; do
+ timeout 50 adb wait-for-device || true
+ for ready in $(seq 1 30); do
+   if timeout 4 adb shell cmd package path android 2>/dev/null | grep -q '^package:'; then break; fi
+   sleep 1
+ done
+ if timeout 65 adb install --no-streaming -r "$RUNNER_TEMP/pilot.apk" >> "$out/install-attempts.txt" 2>&1 || timeout 6 adb shell pm path "$pkg" 2>/dev/null | grep -q '^package:'; then installed=1; break; fi
+ adb reconnect offline >> "$out/install-attempts.txt" 2>&1 || true
+ sleep 3
+done
+test "$installed" = 1
+timeout 35 adb wait-for-device
 adb reverse tcp:18471 tcp:18471
-if [[ "$APP" == novatube ]]; then adb reverse tcp:8788 tcp:8788; fi
+adb reverse tcp:8788 tcp:8788
+adb reverse --list > "$out/ports-before-playback.txt"
+python3 "$work/freeze_ring.py" "$out" > "$out/perfetto-observer.log" 2>&1 &
+workers+=("$!")
+adb shell run-as "$pkg" id > "$out/run-as-diagnostic.txt" 2>&1 || true
 python3 "$work/freeze_android.py" "$out" "$pkg" --duration 6500 --arm-file "$out/observation-start.json" > "$out/android-observer.log" 2>&1 &
 workers+=("$!")
-python3 "$work/freeze_tunnel.py" "$out" --seconds 6300 --interval 6 > "$out/tunnel-witness.log" 2>&1 &
+tunnel_args=()
+if [[ "$FREEZE_SCENARIO" == temoin-passif ]]; then tunnel_args+=(--passive-reverse); fi
+python3 "$work/freeze_tunnel.py" "$out" "${tunnel_args[@]}" --seconds 6300 --interval 6 > "$out/tunnel-witness.log" 2>&1 &
 workers+=("$!")
-adb install -r "$RUNNER_TEMP/pilot.apk"
 adb shell am start -W -n "$pkg/$pkgactivity" | tee "$out/launch.txt"
 sleep 20
 adb shell cat /proc/meminfo | head -1 > "$out/client-memory.txt"
@@ -83,3 +105,5 @@ if [[ "$APP" == novatube ]]; then
 fi
 python3 "$work/freeze_onboard.py" "$out"
 python3 "$work/freeze_benchmark.py" "$out"
+
+python3 "$work/freeze_android.py" capture --out "$out/inspection-finale" --package "$pkg" --reason session_end

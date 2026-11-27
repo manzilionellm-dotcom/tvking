@@ -6,6 +6,7 @@ import json
 import os
 import re
 import signal
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -104,6 +105,21 @@ def dump_database(bridge, base):
     return {"rc":rc,"archive_bytes":len(data),"copied_without_stopping_app":True,"validation":inspection}
 
 
+def request_private_threads(bridge, base, tag):
+    # run-as switches UID only for the debuggable fixture; no adb root is required.
+    pkg=bridge.pkg
+    relative="files/freeze-diag-"+tag+".txt"
+    script=(
+        f"printf '%s' {tag} > files/freeze-diag.request.tmp && mv files/freeze-diag.request.tmp files/freeze-diag.request || exit 2; "
+        + f"for i in $(seq 1 30); do if test -r {relative}; then cat {relative} && rm {relative}; exit 0; fi; sleep 0.2; done; exit 6"
+    )
+    rc, data, err=bridge.call("exec-out","run-as "+pkg+" sh -c "+shlex.quote(script),timeout=12)
+    ok=rc==0 and data.startswith(b"pid=") and b"thread id=" in data
+    (base/"java-stacks-private.txt").write_bytes(data)
+    (base/"java-stacks-private.stderr.txt").write_bytes(err)
+    return {"rc":rc,"valid_java_stacks":ok,"bytes":len(data),**timestamp()}
+
+
 def snapshot(bridge, out, reason, pid=None):
     start = timestamp()
     base = out/("snapshot-"+str(start["utc_ns"]))
@@ -111,7 +127,13 @@ def snapshot(bridge, out, reason, pid=None):
     pid = pid or next(iter(bridge.processes()), None)
     meta = {"reason": reason, "pid":pid, "started":start}
     (base/"trigger.json").write_text(json.dumps(meta,indent=2))
+    root_path=f"/data/user/0/{bridge.pkg}"
+    who=bridge.shell("id -u")[1].strip()
+    files=f"cat {root_path}/files/blackbox.log; cat {root_path}/files/blackbox.1.log"
+    if who != b"0":
+        files=f"run-as {bridge.pkg} sh -c 'cat files/blackbox.log; cat files/blackbox.1.log'"
     tasks = {
+        "flutter-blackbox":files,
         "android-clock": "date -u; cat /proc/uptime; getprop ro.build.fingerprint; id",
         "codec": "dumpsys media.codec",
         "metrics": "dumpsys media.metrics",
@@ -127,27 +149,48 @@ def snapshot(bridge, out, reason, pid=None):
           "meminfo":f"dumpsys meminfo {pid}",
           "thread-wait":f'for t in /proc/{pid}/task/*; do echo "$t"; cat "$t/comm" "$t/wchan" "$t/stack" 2>&1; done',
         })
+    can_run_as=bridge.shell(f"run-as {bridge.pkg} id -u")[0]==0
+    meta["adbd_root"]=who==b"0"; meta["run_as"]=can_run_as
+    if who!=b"0" and can_run_as:
+        for key in ("process","thread-wait"):
+            if key in tasks:tasks[key]=f"run-as {bridge.pkg} sh -c "+shlex.quote(tasks[key])
     def capture_task(item):
         key,cmd=item
+        start = timestamp()
         rc, data, err = bridge.shell(cmd,timeout=16)
         (base/(key+".txt")).write_bytes(data + (b"\nSTDERR\n"+err if err else b""))
-        return key,{"rc":rc,"bytes":len(data),**timestamp()}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        return key,{"rc":rc,"bytes":len(data),"start":start,"end":timestamp()}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)+3) as pool:
+        private=pool.submit(request_private_threads,bridge,base,str(start["utc_ns"])) if can_run_as else None
         fut={pool.submit(capture_task,item) for item in tasks.items()}
         db=pool.submit(dump_database,bridge,base)
+        # Snapshot first on every independent channel. Querying a busy system
+        # service can take several seconds; it must never delay the ART dump.
+        heavy={}
+        if pid and pid in bridge.processes():
+            def stacks():
+                b = f"test -r /proc/{pid}/status || exit 3; "
+                art = b + "old=$(ls -t /data/anr/anr* 2>/dev/null | head -1); " + f"kill -3 {pid} || exit 4; "
+                art += ('for i in 1 2 3 4 5 6 7 8; do '
+                        'f=$(ls -t /data/anr/anr* 2>/dev/null | head -1); '
+                        f'if test -n "$f" && test "$f" != "$old" && head -c 1500 "$f" | grep -q "pid {pid} at"; '
+                        'then cat "$f"; exit 0; fi; sleep .25; done; '
+                        'ls -lt /data/anr; exit 5')
+                native=b+f"debuggerd -b {pid}"
+                if who!=b"0" and can_run_as:
+                    art=f"run-as {bridge.pkg} kill -3 {pid}; rc=$?; echo ART_SIGQUIT_delivery=$rc; exit $rc"
+                    # The independently running Java worker above owns the guaranteed
+                    # stack path. Some user images permit debuggerd only to shell.
+                    native=(f"debuggerd -b {pid} || run-as {bridge.pkg} debuggerd -b {pid}")
+                return dict([capture_task(("art",art)),capture_task(("native",native))])
+            heavy=pool.submit(stacks)
         img=bridge.call("exec-out","screencap","-p",timeout=12)
         if img[0]==0 and img[1].startswith(b"\x89PNG"):
             (base/"screen.png").write_bytes(img[1])
         meta["task_results"]=dict(f.result() for f in fut)
+        if heavy:meta["task_results"].update(heavy.result())
         meta["sqlite"]=db.result()
-    # Stop-the-world diagnostics follow the lightweight timestamped snapshots.
-    # Android's SIGQUIT requests ART's thread dump. Never force-stop / restart.
-    if pid and pid in bridge.processes():
-        for key,cmd in [
-            ("art","kill -3 "+str(pid)+"; sleep 1; ls -lt /data/anr; f=$(ls -t /data/anr/anr* 2>/dev/null | head -1); if test -n \"$f\"; then cat \"$f\"; fi"),
-            ("native","debuggerd -b "+str(pid)),
-        ]:
-            k,stats=capture_task((key,cmd)); meta["task_results"][k]=stats
+        meta["java_private"]=private.result() if private else {"valid_java_stacks":False,"reason":"run_as_unavailable"}
     meta["finished"]=timestamp()
     (base/"snapshot.json").write_text(json.dumps(meta,indent=2))
 

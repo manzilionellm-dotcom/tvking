@@ -100,7 +100,7 @@ from freeze_outages import recover
 from freeze_long import observe
 result['hour_channel']=current;persist()
 result['cuts']=[]
-precondition = os.environ["FREEZE_SCENARIO"] in ("historique-a","historique-b","candidat","direct")
+precondition = os.environ["FREEZE_SCENARIO"] in ("diagnostic-naturel","temoin-passif")
 for seconds in ((5,15,60) if precondition else ()):
     channel,_,_=motion(6)
     if not channel:

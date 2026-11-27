@@ -23,6 +23,8 @@ with tempfile.TemporaryDirectory() as directory:
     public=Path(directory);jobs=[]
     server=http.server.ThreadingHTTPServer(('127.0.0.1',18471),functools.partial(http.server.SimpleHTTPRequestHandler,directory=directory))
     server.timeout=.5
+    if os.environ.get('FREEZE_TUNNEL_GATE'):
+        (public/'qa-reverse-gate.txt').symlink_to(Path(os.environ['FREEZE_TUNNEL_GATE']).resolve())
     try:
         lines=['#EXTM3U']
         for ch in ('A','B'):
