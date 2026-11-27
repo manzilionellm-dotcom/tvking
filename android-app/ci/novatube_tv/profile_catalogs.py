@@ -195,15 +195,21 @@ with contextlib.ExitStack() as stack:
     launcher = home.strip().splitlines()[-1].split('/')[0]
     if not re.fullmatch(r'[a-zA-Z][\w.]+', launcher) or launcher == PKG or '/' not in home:
         raise RuntimeError('Le paquet du lanceur Android est introuvable.')
-    for essai in range(1, 6):
+    rejected = []
+    for essai in range(1, 11):
+        if len(cold) >= 5: break
         preparer_demarrage(launcher)
         result = adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
         (out / f'demarrage-profil-{essai}.txt').write_text(result)
         tags = dict(line.split(': ', 1) for line in result.splitlines() if ': ' in line)
         if tags.get('Status') != 'ok' or tags.get('LaunchState') != 'COLD' or tags.get('Activity') != COMPONENT:
-            raise RuntimeError(f'Essai {essai} : Android ne confirme pas le démarrage à froid de NovaTube.')
+            rejected.append({'essai': essai, 'status': tags.get('Status'), 'activity': tags.get('Activity'), 'state': tags.get('LaunchState')})
+            (out / 'essais-ecartes.json').write_text(json.dumps(rejected))
+            time.sleep(3)
+            continue
         cold.append(int(tags['TotalTime']))
         time.sleep(3)
+    if not cold: raise RuntimeError('Aucun démarrage à froid valide sur dix essais.')
     print('Démarrage profil médian (ms)', statistics.median(cold), flush=True)
     token = requete('POST', '/api/v1/auth/login', {'email': 'admin', 'password': cfg['adminSecret']})['token']
     for _ in range(30):

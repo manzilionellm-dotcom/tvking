@@ -97,6 +97,20 @@ alive "lecture plein écran"
 shot 12-lecture-plein-ecran
 sleep 8
 shot 13-lecture-10s-plus-tard
+# Relever le CPU de l'application, la mémoire du processus et les événements QA.
+meter() {
+  local pid
+  pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r' | cut -d' ' -f1)"
+  test -n "$pid"
+  adb -s "$serial" shell "cat /proc/uptime; cat /proc/$pid/stat; getconf CLK_TCK 2>/dev/null || echo unknown" > "$out/proc-$1.txt"
+  adb -s "$serial" shell dumpsys meminfo "$pkg" > "$out/memoire-$1.txt"
+}
+meter direct-avant
+sleep 20
+meter direct-apres
+for iteration in $(seq 1 10); do key KEYCODE_CHANNEL_DOWN 6; done
+meter zaps-apres
+adb -s "$serial" logcat -d -s flutter:I | grep -F '[NovaTubeQA]' > "$out/qa-lecteur.txt" || true
 key KEYCODE_BACK 3
 wait_word 'mire|barres'
 shot 14-retour-direct
