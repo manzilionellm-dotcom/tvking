@@ -34,6 +34,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Timeline
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
@@ -397,6 +398,7 @@ class NativeVideoView(
 
     // Jeton de CETTE vue. Un callback n'agit que s'il porte le dernier.
     private val sessions = PlaybackSession()
+    private val rendererWindow = Timeline.Window()
 
     // Horodatage du dernier silence / zap. Un événement Analytics plus
     // vieux que ça décrit l'ancienne chaîne : on le jette.
@@ -1846,14 +1848,20 @@ class NativeVideoView(
 
     // ---- natif → Dart (AnalyticsListener) ----------------------------------
     //
-    // Chaque événement porte l'heure à laquelle il a été PRODUIT, pas
-    // l'heure à laquelle on le reçoit. Un zap ou un silence note
-    // [sessionOpenedAt] : tout ce qui est plus vieux est l'ancienne
-    // chaîne (1re image figée, position, « je joue ») et on le jette.
+    // EventTime provient du collecteur Analytics. Les rappels du renderer
+    // portent en plus leur propre instant de production et le média associé.
 
     private fun fresh(eventTime: AnalyticsListener.EventTime): Boolean {
         if (released) return false
         return eventTime.realtimeMs >= sessionOpenedAt && sessionOpenedAt > 0L
+    }
+
+    private fun freshRendererEvent(eventTime: AnalyticsListener.EventTime, producedAtMs: Long): Boolean {
+        if (!fresh(eventTime)) return false
+        val timeline = eventTime.timeline
+        if (eventTime.windowIndex !in 0 until timeline.windowCount) return false
+        val item = timeline.getWindow(eventTime.windowIndex, rendererWindow).mediaItem
+        return sessions.acceptsRendererEvent(item.localConfiguration?.tag as? Int, sessionOpenedAt, producedAtMs)
     }
 
     override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
@@ -2005,9 +2013,7 @@ class NativeVideoView(
         output: Any,
         renderTimeMs: Long,
     ) {
-        // L'heure de l'événement, pas « maintenant » : une trame déjà
-        // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
-        if (!fresh(eventTime)) return
+        if (!freshRendererEvent(eventTime, renderTimeMs)) return
         if (qaPhases && !qaFirstFrameSeen) {
             // Media3 date l’émission avant de poster l’événement. Les deux
             // instants utilisent elapsedRealtime, y compris après une veille.
@@ -2048,7 +2054,7 @@ class NativeVideoView(
         initializedTimestampMs: Long,
         initializationDurationMs: Long,
     ) {
-        if (!fresh(eventTime)) return
+        if (!freshRendererEvent(eventTime, initializedTimestampMs)) return
         resetVideoCadence()
         if (qaPhases) {
             qaDecoderReadyAt = initializedTimestampMs

@@ -17,6 +17,23 @@ class PlaybackSessionTest {
     }
 
     @Test
+    fun unRappelDeLAncienRenduNeValidePasLaNouvelleChaine() {
+        val session = PlaybackSession()
+        val oldItem = session.open()
+        val currentItem = session.open()
+        val openedAt = 10_000L
+
+        // Le collecteur peut déjà désigner le média courant lors de la livraison.
+        assertFalse(session.acceptsRendererEvent(currentItem, openedAt, openedAt - 382))
+        // Le renderer de l'ancien média peut également terminer après le zap.
+        assertFalse(session.acceptsRendererEvent(oldItem, openedAt, openedAt + 1))
+        assertFalse(session.acceptsRendererEvent(null, openedAt, openedAt + 1))
+        assertFalse(session.acceptsRendererEvent(currentItem, 0, openedAt + 1))
+        assertTrue(session.acceptsRendererEvent(currentItem, openedAt, openedAt))
+        assertTrue(session.acceptsRendererEvent(currentItem, openedAt, openedAt + 407))
+    }
+
+    @Test
     fun prendreLeSonCoupeLesAutres() {
         val audio = ExclusiveAudio()
         val silenced = mutableListOf<Int>()
