@@ -2,7 +2,7 @@ name: NovaTube · trente transitions après démarrage à froid
 
 on:
   push:
-    branches: ['qa/novatube-ouverture-froid-20261127']
+    branches: ['qa/novatube-ouverture-froid-journal-20261127']
 
 permissions:
   contents: read

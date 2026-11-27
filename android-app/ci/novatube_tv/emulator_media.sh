@@ -50,6 +50,7 @@ ui_script="$(dirname "$(readlink -f "$0")")/screen_label.py"
 grab() { adb -s "$serial" exec-out screencap -p > "$out/instant.png"; }
 word() { python3 "$ui_script" "$out/instant.png" "$1" "${2:-0}" "${3:-1}"; }
 wait_word() {
+  local attempt
   for attempt in $(seq 1 10); do
     grab
     if word "$@" >/dev/null; then return 0; fi
@@ -96,7 +97,7 @@ wait_stable() {
   [[ "$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')" == "$current" ]]
 }
 completed=0
-for attempt in $(seq 1 36); do
+for trial_index in $(seq 1 36); do
   old="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
   wait_stable "$old" || { step "BootGuard : aucune confirmation stable avant le redémarrage"; exit 2; }
   adb -s "$serial" shell input keyevent KEYCODE_HOME
@@ -108,12 +109,12 @@ for attempt in $(seq 1 36); do
   done
   if adb -s "$serial" shell pidof "$pkg" >/dev/null; then exit 3; fi
   adb -s "$serial" logcat -c
-  launch="$out/froid-$attempt-android.txt"
+  launch="$out/froid-$trial_index-android.txt"
   adb -s "$serial" shell am start -W -n "$component" | tr -d '\r' > "$launch"
   pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
   test "$pid" != "$old" && test -n "$pid"
   if ! grep -Fxq "Activity: $component" "$launch" || ! grep -Fxq 'Status: ok' "$launch" || ! grep -Fxq 'LaunchState: COLD' "$launch"; then
-    step "Essai $attempt : lancement Android écarté, voir activité observée"
+    step "Essai $trial_index : lancement Android écarté, voir activité observée"
     continue
   fi
   completed=$((completed + 1))
@@ -125,7 +126,7 @@ for attempt in $(seq 1 36); do
   tap_word 'mire|barres' .18 .62
   grab
   if word 'recent|favorites' 0 .45 >/dev/null && word 'mire|barres' .18 .72 >/dev/null; then key KEYCODE_DPAD_CENTER .3; fi
-  outfile="$out/froid-$attempt-rendu.log"
+  outfile="$out/froid-$trial_index-rendu.log"
   for n in $(seq 1 35); do
     trace_pid "$pid" | grep 'NovaTubeQA' > "$outfile" || true
     if grep -q 'action=preview_to_full outcome=first_frame' "$outfile" && grep -q 'phase=first_render' "$outfile"; then break; fi
@@ -133,8 +134,19 @@ for attempt in $(seq 1 36); do
   done
   sleep 1
   trace_pid "$pid" | grep 'NovaTubeQA' > "$outfile" || true
-  printf '%s %s %s\n' "$completed" "$attempt" "$pid" >> "$out/froids.tsv"
-  step "Lancement froid $completed sur 30 (tentative $attempt)"
+  printf '%s %s %s\n' "$completed" "$trial_index" "$pid" >> "$out/froids.tsv"
+  step "Lancement froid $completed sur 30 (tentative $trial_index)"
   if [[ "$completed" = 30 ]]; then break; fi
 done
 test "$completed" = 30
+python3 - "$out" <<'VERIFY'
+import pathlib, sys
+root=pathlib.Path(sys.argv[1])
+rows=[r.split() for r in (root/'froids.tsv').read_text().splitlines()]
+assert len(rows)==len({r[1] for r in rows})==len({r[2] for r in rows})==30
+for _,trial,pid in rows:
+    observed=(root/f'froid-{trial}-rendu.log').read_text()
+    assert 'phase=preview_release ' in observed,trial
+    if 'action=preview_to_full' not in observed:
+        print('Pas de confirmation Flutter pour',trial,flush=True)
+VERIFY
