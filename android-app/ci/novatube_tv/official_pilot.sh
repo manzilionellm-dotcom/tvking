@@ -67,8 +67,9 @@ export REGION_OBS="${REGION_OBS:-unknown}"
 printf '%s\n' "$REGION_OBS" > "$out/runner-region.txt"
 curl -fsS --max-time 6 https://www.cloudflare.com/cdn-cgi/trace | sed -nE '/^(loc|colo)=/p' > "$out/egress-country.txt" || true
 export BENCH_PACKAGE="$pkg"
-if [[ "$APP" == novatube ]]; then
-  export BENCH_SKIP_VERIFIED_ZAPS=1 BENCH_PRIOR_ZAPS_RUN=46004506404
-fi
+case "$APP" in
+  novatube) export BENCH_SKIP_VERIFIED_ZAPS=1 BENCH_PRIOR_ZAPS_RUN=46004506404 ;;
+  televizo) export BENCH_SKIP_VERIFIED_ZAPS=1 BENCH_PRIOR_ZAPS_RUN=46007134467 ;;
+esac
 python3 "$work/${APP}_pilot.py" "$out"
 python3 "$work/benchmark.py" "$out"
