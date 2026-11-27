@@ -467,7 +467,7 @@ Deux émulateurs ont exécuté le même APK historique (`d8d4a1b3…17cb145`) pe
 | Chemin vers la mire | Observations sur 80 minutes |
 | --- | --- |
 | HTTP direct | La sonde a reconnu la chaîne sur 1 944 captures sur 1 944. Les 1 943 paires successives ont montré du mouvement. Le plus long intervalle entre deux observations de mouvement a été de 3,147 s. |
-| Tunnel `adb reverse` | Les deux suppressions du tunnel ont provoqué deux arrêts de l’image. La sonde a revu le mouvement 7,355 s puis 3,181 s après le rétablissement du tunnel. Le plus long intervalle entre deux observations de mouvement a atteint 109,985 s. |
+| Tunnel `adb reverse` | Les deux suppressions du tunnel ont provoqué deux arrêts de l’image. La sonde a reconnu une nouvelle image 7,355 s puis 3,181 s après le rétablissement du tunnel. La capture suivante a confirmé deux numéros de trame croissants en 9,719 s puis 5,498 s après rétablissement. Le plus long intervalle entre deux observations de mouvement a atteint 109,985 s. |
 
 Ces interventions reproduisent un gel dû au chemin réseau du banc. La cause de l’incident spontané à 57 min 53 s reste **INCERTAINE**. La campagne initiale ne disposait pas d’une sonde indépendante qui aurait pu confirmer la disponibilité du segment suivant après la dernière requête.
 
