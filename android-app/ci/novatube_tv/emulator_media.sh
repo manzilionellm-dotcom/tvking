@@ -83,16 +83,16 @@ sha256sum "$NOVATUBE_EMULATOR_APK" > "$out/apk-teste.txt"
 adb -s "$serial" shell cat /proc/meminfo | head -1 > "$out/memoire-appareil.txt"
 pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
 trace() { adb -s "$serial" logcat -d --pid="$pid" -v monotonic -s flutter:I NovaTubeQA:I | grep -E 'NovaTubeQA|Lecteur ouvert|Lecteur fermé' > "$1" || true; }
-list_shown() { grab; word 'search|recherche' 0 .42 >/dev/null && word 'mire|barres' .18 .72 >/dev/null; }
+list_shown() { grab; word 'recent|favorites' 0 .45 >/dev/null && word 'mire|barres' .18 .72 >/dev/null; }
 tap_word 'live|direct'
 wait_word 'mire|barres'
 # Toucher puis revenir par le D-pad établit le focus sur la ligne de la mire.
 tap_word 'mire' .18 .62
 grab
-if word 'search' 0 .42 >/dev/null; then key KEYCODE_DPAD_CENTER 2; fi
+if word 'recent|favorites' 0 .45 >/dev/null; then key KEYCODE_DPAD_CENTER 2; fi
 key KEYCODE_BACK 1
-wait_word 'search|recherche' 0 .42
-for trial in $(seq 1 42); do
+wait_word 'recent|favorites' 0 .45
+for trial in $(seq 1 21); do
   case $(( (trial-1) % 7 )) in
     5) mode=double ;;
     6) mode=focus-double ;;
@@ -115,9 +115,10 @@ for trial in $(seq 1 42); do
   fi
   for poll in $(seq 1 24); do
     trace "$out/$prefix.log"
-    if grep -q 'action=preview_to_full outcome=first_frame' "$out/$prefix.log"; then break; fi
+    if grep -q 'action=preview_to_full outcome=first_frame' "$out/$prefix.log" && grep -q 'phase=first_render ' "$out/$prefix.log"; then break; fi
     sleep .35
   done
+  sleep .8
   trace "$out/$prefix.log"
   for attempt in 1 2 3 4; do
     if list_shown; then break; fi
@@ -126,7 +127,7 @@ for trial in $(seq 1 42); do
   if ! list_shown; then
     shot "$prefix-ecran"
     if word 'tonight' >/dev/null; then tap_word 'live|direct'; else exit 22; fi
-    wait_word 'search|recherche' 0 .42
+    wait_word 'recent|favorites' 0 .45
   fi
   if [[ "$mode" == focus-double ]]; then key KEYCODE_DPAD_UP .2; fi
 done
