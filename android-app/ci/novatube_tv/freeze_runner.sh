@@ -4,8 +4,13 @@ work="$PWD/android-app/ci/novatube_tv"
 out="$PWD/pilot-results"
 mkdir -p "$out"
 export ANDROID_SERIAL=emulator-5554
-sudo apt-get update -qq
-sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
+if ! { command -v ffmpeg && command -v tesseract && python3 -c 'from PIL import Image' && dpkg-query -W -f='${db:Status-Status}' libpulse0 | grep -qx installed; } >/dev/null 2>&1; then
+  ubuntu_sources=/etc/apt/sources.list.d/ubuntu.sources
+  test -s "$ubuntu_sources" || ubuntu_sources=/etc/apt/sources.list
+  apt_scope=(-o "Dir::Etc::sourcelist=$ubuntu_sources" -o 'Dir::Etc::sourceparts=-' -o 'Acquire::Retries=3')
+  sudo apt-get "${apt_scope[@]}" update -qq
+  sudo apt-get "${apt_scope[@]}" install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
+fi
 cp qa-apks/NovaTube-TV-emulateur.apk "$RUNNER_TEMP/pilot.apk"
 expected=aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34
 ram="${RAM_MIB:?}"
