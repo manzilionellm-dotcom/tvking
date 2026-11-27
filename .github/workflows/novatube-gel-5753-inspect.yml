@@ -72,14 +72,28 @@ jobs:
           python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
           grep -q 'applicationId = "com.sevenmotion.novatube.tv"' android/app/build.gradle.kts
           grep -q 'android:label="NovaTube"' android/app/src/main/AndroidManifest.xml
-          python3 - <<'PY_GRADLE'
-          from pathlib import Path
-          p = Path("android/app/build.gradle.kts")
-          text = p.read_text()
-          marker = "        release {"
-          assert text.count(marker) == 1
-          p.write_text(text.replace(marker, marker + "\n            isDebuggable = true"))
-          PY_GRADLE
+          cat >> android/app/build.gradle.kts <<'KOTLIN'
+          // Keep BuildType.isDebuggable false for Flutter's release engine and AOT compiler.
+          // Only the packaged manifest opts this test APK in to Android's run-as.
+          tasks.matching { it.name == "processReleaseManifestForPackage" }.configureEach {
+              doLast {
+                  val files = outputs.files.asFileTree.matching { include("**/AndroidManifest.xml") }.files
+                  check(files.isNotEmpty()) { "No packaged release manifest available" }
+                  files.forEach { manifest ->
+                      val xml = manifest.readText()
+                      val appTag = Regex("""<application\b[^>]*>""")
+                      val tag = appTag.find(xml) ?: error("Application element missing")
+                      val debugAttr = Regex("""android:debuggable\s*=\s*"[^"]*" """.trimEnd())
+                      val updated = if (debugAttr.containsMatchIn(tag.value)) {
+                          debugAttr.replace(tag.value, "android:debuggable=\"true\"")
+                      } else {
+                          tag.value.replaceFirst("<application", "<application android:debuggable=\"true\"")
+                      }
+                      manifest.writeText(xml.replaceRange(tag.range, updated))
+                  }
+              }
+          }
+          KOTLIN
 
       - name: Préférences compatibles box Android 5 (identique à Zuno TV)
         run: |
@@ -257,6 +271,14 @@ jobs:
           aapt=$(find "${ANDROID_HOME}/build-tools" -name aapt -type f | sort -V | tail -1)
           "$aapt" dump badging build/novatube_tv_emulateur/NovaTube-TV-emulateur.apk > build/novatube_tv_emulateur/badging-inspect.txt
           grep -Fx 'application-debuggable' build/novatube_tv_emulateur/badging-inspect.txt
+          python3 - <<'PY_AOT'
+          from pathlib import Path
+          import zipfile
+          p=Path("build/novatube_tv_emulateur/NovaTube-TV-emulateur.apk")
+          with zipfile.ZipFile(p) as apk:
+              assert "lib/x86_64/libapp.so" in apk.namelist(), "Missing release AOT snapshot"
+              assert "assets/flutter_assets/kernel_blob.bin" not in apk.namelist(), "Unexpected debug kernel"
+          PY_AOT
           cd build/novatube_tv_emulateur && sha256sum NovaTube-TV-emulateur.apk > sha256-inspect.txt
       - name: Conserver la variante d'émulateur (jamais publiée)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
