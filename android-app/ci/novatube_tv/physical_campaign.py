@@ -1,4 +1,4 @@
-"""Lancer la campagne NovaTube fe134dd4 depuis le poste ADB de la box de test."""
+"""Lancer la campagne NovaTube de zapping et de lecture depuis le poste ADB de la box de test."""
 import argparse
 from contextlib import ExitStack
 import hashlib
@@ -16,7 +16,11 @@ import tempfile
 import time
 
 HERE = Path(__file__).resolve().parent
-SHA = 'aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34'
+# Seuls les APK complets effectivement mesurés sur le banc portent ces empreintes.
+REVISIONS_BY_SHA = {
+    'aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34': 'fe134dd4c580c4f7c007ca2b9026fb6a17c2e081',
+    '7936acfa8e1064b8d2c58314c59d1ae5f4a2ebed4c5c56beefdcb0b1c6f629ad': 'caf2209bd772ad54e085e8574d1c0cd8be1783b6',
+}
 PACKAGE = 'com.sevenmotion.novatube.tv'
 ATLAS = 'tcp:8788'
 LAN = [ipaddress.ip_network(cidr) for cidr in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')]
@@ -62,7 +66,7 @@ def inventory(serial):
     return device
 
 
-def package_state(serial, reuse):
+def package_state(serial, reuse, expected_sha):
     raw = adb(serial, 'shell', 'pm', 'list', 'users')
     users = re.findall(r'UserInfo\{(\d+):', raw)
     active = adb(serial, 'shell', 'am', 'get-current-user')
@@ -78,13 +82,13 @@ def package_state(serial, reuse):
     if present:
         if not reuse or active not in present:
             raise ValueError('Paquet NovaTube connu sur la box. Installation refusée.')
-        verify_installed(serial, active)
+        verify_installed(serial, active, expected_sha)
     elif reuse:
         raise ValueError('Réutilisation demandée mais le paquet est absent.')
     return active
 
 
-def verify_installed(serial, active):
+def verify_installed(serial, active, expected_sha):
     # L'artefact QA est un APK universel monobloc. Tout split est inattendu.
     listing = adb(serial, 'shell', 'pm', 'path', '--user', active, PACKAGE)
     match = re.fullmatch(r'package:(/[^\s]+/base\.apk)', listing)
@@ -93,7 +97,7 @@ def verify_installed(serial, active):
     with tempfile.TemporaryDirectory() as tmp:
         copy = Path(tmp) / 'base.apk'
         adb(serial, 'pull', match[1], str(copy), timeout=240)
-        if sha256(copy) != SHA:
+        if sha256(copy) != expected_sha:
             raise ValueError('Le binaire déjà installé est différent du candidat QA.')
 
 
@@ -141,14 +145,17 @@ def main():
     parser.add_argument('--atlas-dir', type=Path, help='Dossier cloudflare du checkout Atlas de test')
     parser.add_argument('--output', type=Path, help='Nouveau dossier pour les mesures')
     args = parser.parse_args()
-    if sha256(args.apk) != SHA:
-        raise ValueError('SHA-256 de l’APK différent du candidat fe134dd4.')
+    apk_sha = sha256(args.apk)
+    revision = REVISIONS_BY_SHA.get(apk_sha)
+    if revision is None:
+        raise ValueError('SHA-256 absent des APK QA mesurés.')
     device = inventory(args.serial)
-    user = package_state(args.serial, args.reuse_exact)
+    user = package_state(args.serial, args.reuse_exact, apk_sha)
     if atlas_route(args.serial) is not None:
         raise ValueError('Le port Atlas 8788 est déjà redirigé sur cette box.')
     if not args.reuse_exact and '-R:' not in adb(args.serial, 'shell', 'pm', 'help'):
         raise ValueError('Android ne confirme pas la prise en charge de l’installation sans remplacement.')
+    device.update(source_revision=revision, apk_sha256=apk_sha)
     print(json.dumps(device, ensure_ascii=False, indent=2), flush=True)
     if args.check:
         return
@@ -163,8 +170,7 @@ def main():
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
     url = f'http://{args.media_ip}:18471/channels.m3u'
-    evidence = dict(device, apk_sha256=SHA, source_revision='fe134dd4c580c4f7c007ca2b9026fb6a17c2e081',
-                    playlist=url, atlas_transport='adb reverse', media_transport='LAN HTTP direct')
+    evidence = dict(device, playlist=url, atlas_transport='adb reverse', media_transport='LAN HTTP direct')
     (out / 'device.json').write_text(json.dumps(evidence, indent=2))
     with ExitStack() as stack:
         secret_dir = Path(stack.enter_context(tempfile.TemporaryDirectory()))
@@ -190,11 +196,13 @@ def main():
         if not client:
             raise ValueError('Adresse de la box sur la route du média indéterminée.')
         if not args.reuse_exact:
-            package_state(args.serial, False)
+            package_state(args.serial, False, apk_sha)
             installed = adb(args.serial, 'install', '-R', '--user', user, str(args.apk.resolve()), timeout=240)
             if 'Success' not in installed:
                 raise ValueError('Installation non confirmée : ' + installed)
-        verify_installed(args.serial, user)
+        verify_installed(args.serial, user, apk_sha)
+        evidence['installed_apk_sha256'] = apk_sha
+        (out / 'device.json').write_text(json.dumps(evidence, indent=2))
         launch = adb(args.serial, 'shell', 'am', 'start', '--user', user, '-W', '-n',
                      f'{PACKAGE}/com.example.tv_king.MainActivity')
         if 'Status: ok' not in launch:

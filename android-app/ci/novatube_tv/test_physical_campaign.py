@@ -14,6 +14,10 @@ import physical_campaign as campaign
 from regional_live_source import SIGNATURE
 
 
+BASE_SHA = 'aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34'
+FIX_SHA = '7936acfa8e1064b8d2c58314c59d1ae5f4a2ebed4c5c56beefdcb0b1c6f629ad'
+
+
 class Preflight(unittest.TestCase):
     def test_virtual_serial_stops_before_adb(self):
         with patch.object(campaign, 'adb') as adb:
@@ -35,28 +39,38 @@ class Preflight(unittest.TestCase):
                   'package:android', f'package:android\npackage:{campaign.PACKAGE}']
         with patch.object(campaign, 'adb', side_effect=states) as adb:
             with self.assertRaisesRegex(ValueError, 'refusée'):
-                campaign.package_state('usb', False)
+                campaign.package_state('usb', False, FIX_SHA)
         self.assertTrue(all('-u' in call.args for call in adb.call_args_list[-2:]))
 
     def test_unreadable_package_list_stops(self):
         states = ['Users:\nUserInfo{0:Lab:13}', '0', 'Error: access denied']
         with patch.object(campaign, 'adb', side_effect=states):
             with self.assertRaisesRegex(ValueError, 'incomplète'):
-                campaign.package_state('usb', False)
+                campaign.package_state('usb', False, FIX_SHA)
 
     def test_refuse_unexpected_reuse(self):
         with patch.object(campaign, 'adb', side_effect=['UserInfo{0:Lab:13}', '0', 'package:android']):
             with self.assertRaisesRegex(ValueError, 'absent'):
-                campaign.package_state('usb', True)
+                campaign.package_state('usb', True, FIX_SHA)
 
     def test_reuse_requires_exact_base(self):
         with patch.object(campaign, 'adb', return_value='package:/test/base.apk\npackage:/test/split.apk'):
             with self.assertRaisesRegex(ValueError, 'fractionné'):
-                campaign.verify_installed('usb', '0')
+                campaign.verify_installed('usb', '0', FIX_SHA)
         with patch.object(campaign, 'adb', side_effect=['package:/test/base.apk', 'copié']), \
                 patch.object(campaign, 'sha256', return_value='autre'):
             with self.assertRaisesRegex(ValueError, 'différent'):
-                campaign.verify_installed('usb', '0')
+                campaign.verify_installed('usb', '0', FIX_SHA)
+
+    def test_reuse_cannot_mix_the_two_measured_apks(self):
+        self.assertIn(FIX_SHA, campaign.REVISIONS_BY_SHA)
+        self.assertIn(BASE_SHA, campaign.REVISIONS_BY_SHA)
+        for expected, other in [(FIX_SHA, BASE_SHA), (BASE_SHA, FIX_SHA)]:
+            with self.subTest(expected=expected), \
+                    patch.object(campaign, 'adb', side_effect=['package:/test/base.apk', 'copié']), \
+                    patch.object(campaign, 'sha256', return_value=other):
+                with self.assertRaisesRegex(ValueError, 'différent'):
+                    campaign.verify_installed('usb', '0', expected)
 
     def test_leave_another_reverse_mapping_in_place(self):
         with patch.object(campaign, 'adb', return_value='UsbFfs tcp:8788 tcp:1333') as adb:

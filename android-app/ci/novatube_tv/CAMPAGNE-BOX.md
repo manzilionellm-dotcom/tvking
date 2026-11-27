@@ -1,12 +1,12 @@
 # NovaTube Max TV sur box physique
 
-Ce banc Linux lance 100 zaps entre deux mires HLS 1080p25, puis 80 minutes de lecture de la dernière chaîne. Il utilise l’APK QA exact du commit `fe134dd4`. Les essais de mise au point du lanceur utilisent des captures synthétiques. Une qualification matérielle exige un nouveau dossier de mesures produit sur la box.
+Ce banc Linux lance 100 zaps entre deux mires HLS 1080p25, puis 80 minutes de lecture de la dernière chaîne. Il identifie par SHA-256 l’APK de référence `fe134dd4` ou la version `caf2209b` qui corrige le cadrage pendant une coupure. Les essais de mise au point du lanceur utilisent des captures synthétiques. Une qualification matérielle exige un nouveau dossier de mesures produit sur la box.
 
 ## Préparer le poste du banc
 
 1. Brancher une TV de test par USB ou utiliser une session ADB locale déjà appairée. Relever sa série avec `adb devices -l`. Le poste sert la vidéo sur son adresse IPv4 de réseau privé, port 18471, accessible à la box. Réserver une session terminal interactive pour ouvrir la première mire avec la télécommande.
 2. Installer Android Platform Tools (ADB), Python 3 avec Pillow, FFmpeg avec libx264 et drawtext, Node.js et npm. Le banc lance deux encodeurs en temps réel. Prévoir un poste capable d’encoder deux flux H.264 1080p25 simultanément.
-3. Récupérer l’archive `apk-candidat`, en extraire `NovaTube-TV-emulateur.apk` sur le poste et conserver le fichier original. L’APK contient les variantes ARM et x86. L’empreinte attendue est `aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34`. [Archive de l’APK mesuré](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46052117945/artifacts/15225143357)
+3. Récupérer l’archive `apk-candidat`, en extraire `NovaTube-TV-emulateur.apk` sur le poste et conserver le fichier original. L’APK contient les variantes ARM et x86. Pour tester le correctif de cadrage, choisir `caf2209b` (SHA-256 `7936acfa8e1064b8d2c58314c59d1ae5f4a2ebed4c5c56beefdcb0b1c6f629ad`). Le témoin `fe134dd4` conserve son empreinte `aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34`. [APK du correctif](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46062060492/artifacts/15229840261) · [APK témoin](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46052117945/artifacts/15225143357)
 4. Dans un checkout de ce dépôt, préparer la branche du banc et le code Atlas de référence. Les chemins ci-dessous partent du checkout du banc.
 
 ```sh
@@ -32,7 +32,7 @@ python3 "$banc" --serial "$serie_box" --apk "$apk_box" \
   --output "$PWD/mesures-box-01"
 ```
 
-Le précontrôle lit les propriétés Android TV, le modèle, le SoC déclaré par Android, la RAM utilisable par le noyau, la définition, la densité, les utilisateurs et la table des redirections. Une installation ou des données conservées de `com.sevenmotion.novatube.tv` sur un utilisateur empêchent une nouvelle installation. Android reçoit aussi l’option `-R` qui interdit le remplacement. Sur une box dédiée qui porte déjà l’APK QA, ajouter `--reuse-exact` aux deux commandes. Le lanceur recopie et vérifie alors le binaire installé. L’application reste installée à la fin de l’essai.
+Le précontrôle lit les propriétés Android TV, le modèle, le SoC déclaré par Android, la RAM utilisable par le noyau, la définition, la densité, les utilisateurs et la table des redirections. Une installation ou des données conservées de `com.sevenmotion.novatube.tv` sur un utilisateur empêchent une nouvelle installation. Android reçoit aussi l’option `-R` qui interdit le remplacement. Sur une box dédiée qui porte déjà l’APK QA, ajouter `--reuse-exact` aux deux commandes. Le lanceur recopie le binaire installé et exige exactement l’empreinte du fichier fourni, y compris si les deux versions sont admises par le banc. L’application reste installée à la fin de l’essai.
 
 Atlas démarre sur un port éphémère de la boucle locale du poste. La seule redirection créée sur la box relie le port 8788 à ce service. Si le port est occupé, le lanceur s’arrête. La redirection créée est libérée à la fermeture normale. La liste M3U et ses segments circulent directement sur le LAN. L’écran et les réglages d’économie d’énergie restent sous le contrôle de l’opérateur : prévoir une session de plus de 80 minutes et consigner tout réglage de mise en veille utilisé pendant l’essai.
 
