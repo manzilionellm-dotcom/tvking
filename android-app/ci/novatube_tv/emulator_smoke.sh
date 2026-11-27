@@ -28,7 +28,9 @@ out="$(mkdir -p "$2" && readlink -f "$2")"
 pkg="com.sevenmotion.novatube.tv"
 api=30
 image="system-images;android-${api};google_apis;x86_64"
-serial="emulator-5554"
+port="${NOVATUBE_PORT:-5554}"
+serial="emulator-$port"
+avd_name="novatube-$port"
 sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?ANDROID_HOME manquant}}"
 emu_pid=""
 
@@ -42,6 +44,7 @@ finish() {
   if [[ -n "$emu_pid" ]]; then
     adb -s "$serial" emu kill >/dev/null 2>&1 || true
     kill "$emu_pid" >/dev/null 2>&1 || true
+    wait "$emu_pid" 2>/dev/null || true
   fi
   exit "$status"
 }
@@ -60,9 +63,9 @@ grep -q "^application-label:'NovaTube'" "$out/badging.txt"
 grep -q "^leanback-launchable-activity:" "$out/badging.txt"
 
 step "Création et démarrage de l'émulateur"
-printf 'no\n' | avdmanager create avd --force --name novatube \
+printf 'no\n' | avdmanager create avd --force --name "$avd_name" \
   --package "$image" --device pixel_2 > "$out/avd-create.txt" 2>&1
-"$sdk/emulator/emulator" -avd novatube -port 5554 \
+"$sdk/emulator/emulator" -avd "$avd_name" -port "$port" \
   -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
   -gpu swiftshader -accel on -memory 1536 -cores 2 \
   -camera-back none -camera-front none > "$out/emulator.txt" 2>&1 &

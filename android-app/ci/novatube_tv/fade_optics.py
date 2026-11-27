@@ -10,7 +10,7 @@ def run(args,timeout=15):
  return subprocess.run(adb+args,capture_output=True,check=True,timeout=timeout).stdout
 def source(im):
  im=im.convert('L');w,h=im.size
- for top,bottom in ((0,0),(0,24),(0,48),(24,0),(24,24),(48,0),(48,48)):
+ for top,bottom in ((0,96),(0,0),(0,48),(0,72),(0,84),(0,108),(0,120),(0,144),(24,96),(24,108),(0,24),(24,0),(24,24),(48,0),(48,48)):
   hh=min(h-top-bottom,w*9/16);ww=hh*16/9;x=(w-ww)/2;y=top+(h-top-bottom-hh)/2
   ch,n=decode([im.getpixel((round(x+ww*(496+32*i)/1920),round(y+hh*650/1080))) for i in range(30)])
   if ch:return ch,n
@@ -37,6 +37,7 @@ with tempfile.TemporaryDirectory() as tmp:
     row,blob=capture(method,folder)
     if row.get('ch')=='A':
      winner=method;(out/'plein-calibration.png').write_bytes(blob);break
+    if blob:(out/('calibration-'+method+'.png')).write_bytes(blob)
     if not row['ok']:break
     time.sleep(.4)
    if winner:break

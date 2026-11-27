@@ -2,7 +2,7 @@ name: NovaTube audit Android 11 (mires uniquement)
 
 on:
   push:
-    branches: ['qa/novatube-fondu-optique-20261127']
+    branches: ['qa/novatube-fondu-ecran-20261127']
 
 permissions:
   contents: read
@@ -148,7 +148,7 @@ jobs:
             service=$!
             for k in $(seq 1 50); do test ! -s "$RUNNER_TEMP/atlas-$variant.json" || break; sleep .5; done
             test -s "$RUNNER_TEMP/atlas-$variant.json"
-            NOVATUBE_EMULATOR_APK="$emu" NOVATUBE_TEST_MEDIA="$RUNNER_TEMP/novatube-media" bash android-app/ci/novatube_tv/emulator_smoke.sh "$apk" "artifacts/results/$variant" || errors=1
+            NOVATUBE_PORT=$((5554+2*i)) NOVATUBE_EMULATOR_APK="$emu" NOVATUBE_TEST_MEDIA="$RUNNER_TEMP/novatube-media" bash android-app/ci/novatube_tv/emulator_smoke.sh "$apk" "artifacts/results/$variant" || errors=1
             kill "$service" || true
             wait "$service" || true
             sleep 3
@@ -159,7 +159,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: novatube-fondu-optique-${{ matrix.ordre }}-${{ github.sha }}
+          name: novatube-fondu-ecran-${{ matrix.ordre }}-${{ github.sha }}
           path: artifacts/results/
           if-no-files-found: warn
           retention-days: 14
