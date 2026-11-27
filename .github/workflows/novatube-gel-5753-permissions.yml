@@ -1,0 +1,77 @@
+name: NovaTube — contrôle des piles et SQLite sur image Android TV de production
+on:
+  push:
+    branches: ['qa/novatube-inspection-5753-20261127']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 46469874ba68a0d0c149afe87f585af3bd9d4016
+          path: pilot
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 77ce78f49b65f674e8493e8573a6dcc7b62eae6d
+          path: pilot/atlas
+          persist-credentials: false
+          sparse-checkout: android-app/cloudflare
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46030053519
+          name: novatube-emulateur-apk-6b0a720180d63143ce375b8379e39c56e0e93833
+          path: pilot/qa-apks
+      - name: Vérifier les piles et la base pendant la lecture
+        env:
+          APP: novatube
+          FREEZE_SCENARIO: stable
+        working-directory: pilot
+        run: |
+          set -euo pipefail
+          cp ../android-app/ci/novatube_tv/inspect_freeze_android.py android-app/ci/novatube_tv/freeze_android.py
+          (cd qa-apks && sha256sum -c sha256-inspect.txt)
+          python3 - <<'PREP'
+          from pathlib import Path
+          import re
+          p=Path("android-app/ci/novatube_tv/freeze_runner.sh");s=p.read_text()
+          sha=Path("qa-apks/sha256-inspect.txt").read_text().split()[0]
+          assert re.fullmatch(r'[a-f0-9]{64}',sha)
+          s,n=re.subn(r'^expected=[a-f0-9]{64}$',"expected="+sha,s,flags=re.M);assert n==1
+          measure='python3 "$work/freeze_benchmark.py" "$out"'
+          assert s.count(measure)==1
+          s=s.replace(measure, 'adb shell run-as "$pkg" id > "$out/run-as.txt"\nsleep 4\npython3 "$work/freeze_android.py" capture --out "$out/inspection" --package "$pkg" --reason qa_manual_measurement')
+          p.write_text(s)
+          PREP
+          bash android-app/ci/novatube_tv/freeze_runner.sh
+          python3 - <<'CHECK'
+          import json
+          from pathlib import Path
+          p=Path("pilot-results")
+          snap=next((p/"inspection").glob("snapshot-*/snapshot.json"))
+          data=json.loads(snap.read_text())
+          stacks=(snap.parent/"java-stacks-private.txt").read_text()
+          assert data["run_as"] and data["java_private"]["valid_java_stacks"], data["java_private"]
+          assert "tid" in stacks and "NovaTubeFreezeProbe" in stacks
+          sql=data["sqlite"]["validation"]
+          assert any(isinstance(v,dict) and v.get("quick_check")==[["ok"]] and v.get("tables") for v in sql.values()),sql.keys()
+          print("Kept Java and Linux threads",len(stacks.splitlines()), "SQLite databases", len(sql))
+          CHECK
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: gel-5753-permissions-${{ github.run_id }}
+          path: pilot/pilot-results
+          retention-days: 14
