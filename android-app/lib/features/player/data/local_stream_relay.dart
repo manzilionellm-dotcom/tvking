@@ -59,6 +59,7 @@ import 'player_settings.dart';
 /// donc un flux qui hoquette longtemps continue. On n'abandonne que si le
 /// serveur reste injoignable plusieurs essais d'affilée.
 const int _kMaxReconnectFailures = 12;
+const int _kMaxEmptyStarts = 3;
 
 /// Relais singleton. Une instance pour toute l'app : un seul serveur HTTP
 /// local, qui multiplexe N chaînes (sessions) si besoin.
@@ -66,7 +67,7 @@ class LocalStreamRelay {
   LocalStreamRelay._();
   static final LocalStreamRelay instance = LocalStreamRelay._();
 
-  HttpServer? _server;
+  Future<void>? _binding;
   int _port = 0;
 
   /// Sessions actives, indexées par l'URL RÉELLE du flux (la clé est
@@ -77,6 +78,15 @@ class LocalStreamRelay {
   /// `true` si une chaîne donnée est en cours d'enregistrement via le relais.
   bool isRecording(String realUrl) =>
       _sessions[realUrl]?.recordSink != null;
+
+  /// Se termine après fermeture du fichier, y compris lors d'un arrêt amont.
+  Future<void> recordingFinished(String realUrl) async {
+    try {
+      await _sessions[realUrl]?.recordSink?.done;
+    } on IOException {
+      // Le fichier a aussi cessé de recevoir des octets en cas d'erreur disque.
+    }
+  }
 
   /// Démarre le serveur local si besoin et renvoie l'URL LOCALE que le
   /// lecteur doit ouvrir à la place de l'URL IPTV réelle. L'URL réelle
@@ -95,21 +105,39 @@ class LocalStreamRelay {
   Future<bool> startRecording({
     required String realUrl,
     required String filePath,
-  }) async {
-    final _RelaySession session = _ensureSession(realUrl);
-    _ensureUpstream(session);
-    if (session.recordSink != null) {
-      // Déjà en train d'enregistrer cette chaîne → on ignore le double-start.
-      return true;
-    }
+  }) {
+    final session = _ensureSession(realUrl);
+    if (session.recordSink != null) return Future.value(true);
+    return session.openingRecording ??= _openRecording(session, filePath)
+        .whenComplete(() {
+      session.openingRecording = null;
+      _maybeCloseSession(session);
+    });
+  }
+
+  Future<bool> _openRecording(_RelaySession session, String filePath) async {
+    IOSink? opening;
     try {
       final File file = File(filePath);
       await file.parent.create(recursive: true);
-      session.recordSink = file.openWrite();
+      final sink = file.openWrite();
+      opening = sink;
+      // openWrite ouvre le fichier de manière asynchrone. Attendre son
+      // ouverture avant de confirmer REC et avant de tirer le flux.
+      unawaited(sink.done.then<void>((_) {}, onError: (Object _, StackTrace __) {
+        if (identical(session.recordSink, sink)) {
+          session.recordSink = null;
+          _maybeCloseSession(session);
+        }
+      }));
+      await sink.addStream(const Stream<List<int>>.empty());
+      session.recordSink = sink;
       session.recordPath = filePath;
       session.recordBytes = 0;
+      _ensureUpstream(session);
     } catch (e) {
-      if (kDebugMode) debugPrint('[Relay] ouverture fichier KO: $e');
+      try { await opening?.close(); } catch (_) {}
+      if (kDebugMode) debugPrint('[Relay] fichier indisponible (${e.runtimeType})');
       return false;
     }
     StructuredLogger.instance.info(
@@ -125,7 +153,9 @@ class LocalStreamRelay {
   /// vivante tant que le lecteur est branché).
   Future<int> stopRecording(String realUrl) async {
     final _RelaySession? session = _sessions[realUrl];
-    if (session == null || session.recordSink == null) return 0;
+    if (session == null) return 0;
+    await session.openingRecording;
+    if (session.recordSink == null) return 0;
     final IOSink sink = session.recordSink!;
     final int bytes = session.recordBytes;
     session.recordSink = null;
@@ -152,14 +182,20 @@ class LocalStreamRelay {
   //  Serveur HTTP local
   // ---------------------------------------------------------------
 
-  Future<void> _ensureServer() async {
-    if (_server != null) return;
+  Future<void> _ensureServer() {
+    return _binding ??= _bindServer().catchError((Object error) {
+      _binding = null; // Le prochain démarrage peut retenter le bind.
+      throw error;
+    });
+  }
+
+  Future<void> _bindServer() async {
     // Port 0 = l'OS choisit un port libre. On le mémorise pour fabriquer
     // les URLs locales. Bind sur loopback uniquement (jamais exposé).
-    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    _port = _server!.port;
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _port = server.port;
     if (kDebugMode) debugPrint('[Relay] serveur local prêt sur 127.0.0.1:$_port');
-    _server!.listen(_handleRequest, onError: (Object e) {
+    server.listen(_handleRequest, onError: (Object e) {
       if (kDebugMode) debugPrint('[Relay] erreur serveur: $e');
     });
   }
@@ -232,13 +268,14 @@ class LocalStreamRelay {
   Future<void> _connectUpstream(_RelaySession session) async {
     final HttpClientResponse? resp =
         await _openUpstream(session, session.realUrl);
+    if (session.closed) return;
     if (resp == null) {
+      session.emptyStarts = 0;
       // Échec d'ouverture → on tente de reconnecter (avec back-off) tant
       // qu'il reste des consommateurs.
       _scheduleReconnect(session);
       return;
     }
-    session.reconnectFailures = 0;
     _attachUpstreamListener(session, resp);
   }
 
@@ -269,7 +306,10 @@ class LocalStreamRelay {
       cReq.maxRedirects = 8;
       cReq.headers.set(HttpHeaders.acceptHeader, '*/*');
 
-      final HttpClientResponse cResp = await cReq.close();
+      // connectionTimeout couvre la connexion TCP, pas un serveur qui accepte
+      // la socket et ne renvoie jamais ses en-têtes.
+      final HttpClientResponse cResp =
+          await cReq.close().timeout(const Duration(seconds: 30));
       if (cResp.statusCode != 200 && cResp.statusCode != 206) {
         if (kDebugMode) {
           debugPrint('[Relay] HTTP ${cResp.statusCode} sur ${_short(url)}');
@@ -281,7 +321,8 @@ class LocalStreamRelay {
       }
       return cResp;
     } catch (e) {
-      if (kDebugMode) debugPrint('[Relay] _openUpstream KO: $e');
+      session.client?.close(force: true);
+      if (kDebugMode) debugPrint('[Relay] ouverture refusée (${e.runtimeType})');
       return null;
     }
   }
@@ -290,13 +331,25 @@ class LocalStreamRelay {
     _RelaySession session,
     HttpClientResponse resp,
   ) {
-    session.sub = resp.listen(
+    // idleTimeout de HttpClient concerne les connexions inactives du pool.
+    // Borner aussi le silence du corps d'une réponse déjà ouverte.
+    session.sub = resp.timeout(const Duration(seconds: 30)).listen(
       (List<int> chunk) => _fanout(session, chunk),
       onError: (Object e, StackTrace s) {
-        if (kDebugMode) debugPrint('[Relay] upstream onError: $e');
+        session.emptyStarts = 0;
+        if (kDebugMode) debugPrint('[Relay] lecture interrompue (${e.runtimeType})');
         _scheduleReconnect(session);
       },
       onDone: () {
+        if (!session.receivedData && ++session.emptyStarts >= _kMaxEmptyStarts) {
+          StructuredLogger.instance.warn(
+            domain: 'rec',
+            event: 'relay.empty_source',
+            ctx: <String, Object?>{'attempts': session.emptyStarts},
+          );
+          _closeSession(session);
+          return;
+        }
         if (kDebugMode) {
           debugPrint('[Relay] upstream fermé par le serveur, reconnexion');
         }
@@ -309,6 +362,11 @@ class LocalStreamRelay {
   /// Recopie un paquet vers TOUS les consommateurs : le(s) lecteur(s) et
   /// le fichier d'enregistrement s'il est actif.
   void _fanout(_RelaySession session, List<int> chunk) {
+    if (chunk.isEmpty || session.closed) return;
+    // Un 200 vide ne prouve aucune reprise. Seuls les octets reçus
+    // réinitialisent le budget de cette session.
+    session.receivedData = true;
+    session.reconnectFailures = 0;
     // Lecteurs : on écrit, on retire ceux dont la socket est morte.
     final List<_PlayerConsumer> dead = <_PlayerConsumer>[];
     for (final _PlayerConsumer c in session.players) {
@@ -339,7 +397,7 @@ class LocalStreamRelay {
         if (kDebugMode) debugPrint('[Relay] écriture disque KO: $e');
         session.recordSink = null;
         try {
-          sink.close();
+          unawaited(sink.close().then<void>((_) {}, onError: (Object _, StackTrace __) {}));
         } catch (_) {}
       }
     }
@@ -348,15 +406,18 @@ class LocalStreamRelay {
   /// Reconnexion upstream avec back-off, tant qu'il reste des
   /// consommateurs et qu'on n'a pas trop échoué d'affilée.
   Future<void> _scheduleReconnect(_RelaySession session) async {
+    if (session.closed || session.retryTimer != null) return;
     // Plus personne n'écoute → inutile de reconnecter.
     if (!session.hasConsumers) {
       _maybeCloseSession(session);
       return;
     }
+    session.client?.close(force: true);
     try {
       await session.sub?.cancel();
     } catch (_) {}
     session.sub = null;
+    if (session.closed) return;
 
     session.reconnectFailures++;
     if (session.reconnectFailures > _kMaxReconnectFailures) {
@@ -373,12 +434,10 @@ class LocalStreamRelay {
     }
 
     final int wait = (2 * session.reconnectFailures).clamp(2, 16);
-    await Future<void>.delayed(Duration(seconds: wait));
-    if (!session.hasConsumers) {
-      _maybeCloseSession(session);
-      return;
-    }
-    await _connectUpstream(session);
+    session.retryTimer = Timer(Duration(seconds: wait), () {
+      session.retryTimer = null;
+      if (!session.closed) unawaited(_connectUpstream(session));
+    });
   }
 
   /// Ferme la session si plus aucun consommateur (ni lecteur ni REC).
@@ -388,6 +447,12 @@ class LocalStreamRelay {
   }
 
   void _closeSession(_RelaySession session) {
+    // Une ancienne réponse locale peut se terminer après le démarrage
+    // d'une nouvelle session sur la même URL.
+    if (session.closed) return;
+    session.closed = true;
+    session.retryTimer?.cancel();
+    session.retryTimer = null;
     try {
       session.sub?.cancel();
     } catch (_) {}
@@ -401,7 +466,7 @@ class LocalStreamRelay {
     // rester figé indéfiniment sur une session morte.
     for (final _PlayerConsumer c in List<_PlayerConsumer>.from(session.players)) {
       try {
-        c.res.close();
+        unawaited(c.res.close().then<void>((_) {}, onError: (Object _, StackTrace __) {}));
       } catch (_) {}
       c.markClosed();
     }
@@ -411,7 +476,7 @@ class LocalStreamRelay {
     session.recordSink = null;
     if (sink != null) {
       try {
-        sink.flush().then((_) => sink.close());
+        unawaited(sink.close().then<void>((_) {}, onError: (Object _, StackTrace __) {}));
       } catch (_) {}
     }
     session.upstreamActive = false;
@@ -422,8 +487,7 @@ class LocalStreamRelay {
     }
   }
 
-  String _short(String url) =>
-      url.length <= 48 ? url : '${url.substring(0, 45)}…';
+  String _short(String url) => Uri.tryParse(url)?.host ?? '?';
 }
 
 /// Un lecteur branché sur une session (la réponse HTTP locale vers mpv).
@@ -448,7 +512,12 @@ class _RelaySession {
   HttpClient? client;
   StreamSubscription<List<int>>? sub;
   bool upstreamActive = false;
+  bool closed = false;
+  Timer? retryTimer;
+  Future<bool>? openingRecording;
   int reconnectFailures = 0;
+  int emptyStarts = 0;
+  bool receivedData = false;
 
   /// Lecteurs branchés (mpv). En pratique 0 ou 1, mais on supporte
   /// plusieurs (mpv ouvre parfois une connexion de sonde + une de
@@ -462,5 +531,6 @@ class _RelaySession {
 
   /// Vrai tant qu'au moins un consommateur (lecteur ou enregistrement)
   /// a besoin de l'upstream.
-  bool get hasConsumers => players.isNotEmpty || recordSink != null;
+  bool get hasConsumers =>
+      players.isNotEmpty || recordSink != null || openingRecording != null;
 }

@@ -190,6 +190,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // fichier capture EXACTEMENT ce qui est à l'écran. Hors enregistrement, la
   // lecture reste DIRECTE (le relais n'est pas dans le chemin).
   Recording? _activeRecording;
+  bool _startingRecording = false;
   bool get _isRecording => _activeRecording != null;
   String?
   _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
@@ -203,7 +204,29 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   bool get _isFavorite => _favIds.contains(_current.id);
 
   // Anti-gel : on suit la progression réelle (position qui avance).
-  DateTime _lastProgress = DateTime.now();
+  // Une correction de l'heure de la box ne doit pas imiter un gel vidéo.
+  final Stopwatch _sinceProgress = Stopwatch()..start();
+
+  // QA seulement. Aucun nom de chaîne, identifiant ni adresse dans logcat.
+  static const bool _measure = bool.fromEnvironment('NOVATUBE_QA_METRICS');
+  Stopwatch? _startClock;
+  String _startAction = '';
+  Object? _lastCadence;
+
+  void _traceStart(String action) {
+    if (!_measure) return;
+    _traceEnd('superseded');
+    _startAction = action;
+    _startClock = Stopwatch()..start();
+  }
+
+  void _traceEnd(String outcome) {
+    final clock = _startClock;
+    if (clock == null) return;
+    _startClock = null;
+    clock.stop();
+    debugPrint('[NovaTubeQA] action=$_startAction outcome=$outcome elapsed_ms=${clock.elapsedMilliseconds}');
+  }
   Duration _lastPos = Duration.zero;
   // App au premier plan ? (Home / multitâche → lecture en pause : le chien de
   // garde ne doit PAS « réparer » une pause voulue, sinon le son repartirait
@@ -250,6 +273,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.startAtUrl == null) _traceStart('open_screen');
     TvActivity.enter();
     BlackBox.instance.info('SCREEN', 'Lecteur ouvert');
     // Halo autour de l'image, selon le genre de la chaîne.
@@ -282,7 +306,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       },
       onVisibilityChanged: (bool visible) {
         _appActive = visible;
-        _lastProgress = DateTime.now();
+        _sinceProgress.reset();
       },
     );
     unawaited(
@@ -320,16 +344,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // plus tard, jusqu'au budget, puis l'écran « Réessayer ».)
     _watchdog = Timer.periodic(_watchEvery, (_) {
       if (!_appActive || _casting) {
-        _lastProgress = DateTime.now(); // pause voulue : pas un gel
+        _sinceProgress.reset(); // pause voulue : pas un gel
         return;
       }
       // Pause du direct en attente de timeshift : le flux ne progresse
       // plus, ce n'est pas un gel. On ne rouvre pas le direct par-dessus.
       if (_livePausedAt != null && _canTimeshift) {
-        _lastProgress = DateTime.now();
+        _sinceProgress.reset();
         return;
       }
-      if (DateTime.now().difference(_lastProgress) > _frozen) {
+      if (_sinceProgress.elapsed > _frozen) {
         _recover();
       }
     });
@@ -369,6 +393,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   void _suspendOutside(bool forceStop) {
     _appActive = false;
+    _traceEnd('background');
     _cancelRecover();
     _zapSettle?.cancel();
     if (NativeVideoController.backgroundPauseOnly && !forceStop) {
@@ -380,7 +405,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   void _resumeInside() {
     _appActive = true;
-    _lastProgress = DateTime.now();
+    _sinceProgress.reset();
     if (_zapHolding) {
       _zapHolding = false;
       _open();
@@ -402,6 +427,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   void dispose() {
+    _traceEnd('closed');
     _pip.dispose();
     TvActivity.leave();
     TvAmbientDirector.instance.clear();
@@ -430,8 +456,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // (arrêt du relais + clôture en base), sans toucher au controller détruit.
     if (_activeRecording != null) {
       final Recording rec = _activeRecording!;
-      LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _playingUrl);
-      RecordingRepository.instance.finishRecording(rec);
+      _activeRecording = null;
+      unawaited(LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _playingUrl)
+          .then((_) => RecordingRepository.instance.finishRecording(rec)));
     }
     _controller.removeListener(_onPlayer);
     subtitlesFlag.changes.removeListener(_onSubsFlag);
@@ -470,6 +497,18 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
     if (_zapHolding) return;
+    if (_measure && !_casting && _appActive && !_catchup) {
+      if (_controller.firstFrame && !_controller.holdFrame) {
+        _traceEnd('first_frame');
+      }
+      final cadence = _controller.videoQuality.cadence;
+      if (!identical(cadence, _lastCadence)) {
+        _lastCadence = cadence;
+        if (cadence != null) {
+          debugPrint('[NovaTubeQA] window_ms=${cadence.windowMs} rendered=${cadence.renderedFrames} dropped=${cadence.droppedFrames}');
+        }
+      }
+    }
     // Replay : l'archive n'a JAMAIS montré d'image et le lecteur est déjà
     // en échec ou en train de réessayer → elle n'existe pas chez le
     // fournisseur. Avant, on attendait la fin de tous les essais (environ
@@ -486,9 +525,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
     if (_controller.reopenCount != _seenReopen) {
       _seenReopen = _controller.reopenCount;
-      _lastProgress = DateTime.now();
+      _sinceProgress.reset();
     }
     if (_controller.engineExhausted) {
+      _traceEnd('engine_exhausted');
       if (!_fatal && mounted) {
         setState(() {
           _fatal = true;
@@ -518,7 +558,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // échecs. La prochaine vraie avancée pourra alors être reconnue.
     _lastPos = _controller.position;
     if (progressed) {
-      _lastProgress = DateTime.now();
+      _sinceProgress.reset();
       _recoverAttempts = 0;
       _cancelRecover();
       if (_fatal && mounted) setState(() => _fatal = false);
@@ -575,7 +615,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _open({bool reuse = false}) {
-    _lastProgress = DateTime.now();
+    _sinceProgress.reset();
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
     // Nouvelle chaîne → budget de reconnexion neuf, on lève tout état d'erreur.
@@ -592,6 +632,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _livePausedAt = null;
     _canTimeshift = TimeshiftPause.supports(_current);
     if (!reuse) {
+      _relayPlayUrl = null;
       // Nouvelle chaîne → on charge la nouvelle URL dans le MÊME lecteur
       // (dans le format qui a déjà marché sur ce serveur, s'il y en a un).
       _playingUrl = LiveFallback.preferred(_current.streamUrl);
@@ -657,6 +698,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _zap(int delta) {
     final int n = widget.channels.length;
     if (n <= 1) return;
+    _traceStart('zap_key');
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
@@ -693,6 +735,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _showFatal() {
+    _traceEnd('failed');
     PlaybackHealth.instance.mark(stalled: true);
     _cancelRecover();
     if (!mounted) return;
@@ -732,7 +775,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final int delay = ReconnectPlan.delayMs(next);
     _recoverAttempts = next;
     _recoverArmed = true;
-    _lastProgress = DateTime.now();
+    _sinceProgress.reset();
     BlackBox.instance.warn(
       'PLAYER',
       'reconnexion dans ${delay}ms (tentative $next/$_maxRecover)'
@@ -745,7 +788,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _recoverTimer = Timer(Duration(milliseconds: delay), () {
       _recoverTimer = null;
       _recoverArmed = false;
-      if (!mounted || !_appActive || _fatal || _zapHolding) return;
+      if (!mounted || !_appActive || _casting || _fatal || _zapHolding ||
+          (_livePausedAt != null && _canTimeshift)) return;
       if (NativeVideoController.blocksReopenInBackground) {
         _noteBackgroundRefusal();
         return;
@@ -827,51 +871,65 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   Future<void> _startRecording() async {
-    if (_isRecording) return;
-    // L'adresse qui JOUE (éventuellement une adresse de secours).
-    final String realUrl = _playingUrl;
+    if (_isRecording || _startingRecording) return;
+    _startingRecording = true;
+    final channel = _current;
+    final realUrl = _playingUrl;
+    final relay = LocalStreamRelay.instance;
+    final repo = RecordingRepository.instance;
+    String? localUrl;
+    bool attached = false;
+    bool current() => mounted && channel.id == _current.id && _playingUrl == realUrl;
     try {
-      final String path = await RecordingRepository.instance.createFilePath(
-        channelName: _current.cleanName,
-      );
-
-      // 1) On bascule D'ABORD la lecture sur le relais : le lecteur lâche la
-      //    connexion DIRECTE et le relais ouvre L'UNIQUE connexion vers le
-      //    serveur. On évite ainsi d'avoir 2 connexions en même temps
-      //    (incompatible avec les fournisseurs max_connections=1).
-      final String localUrl = await LocalStreamRelay.instance.playUrlFor(
-        realUrl,
-      );
+      final path = await repo.createFilePath(channelName: channel.cleanName);
+      localUrl = await relay.playUrlFor(realUrl);
+      if (!current()) return;
       _relayPlayUrl = localUrl;
       _controller.setUrl(localUrl);
-
-      // 2) On attache l'écriture fichier à CETTE MÊME session relais (pas de
-      //    nouvelle connexion : le tee recopie juste les octets vers le .ts).
-      final bool ok = await LocalStreamRelay.instance.startRecording(
-        realUrl: realUrl,
-        filePath: path,
-      );
-      if (!ok) {
-        _relayPlayUrl = null;
-        _controller.setUrl(realUrl); // on revient au direct
-        _flash(context.l10n.tvRecordingError);
+      attached = await relay.startRecording(realUrl: realUrl, filePath: path);
+      if (!attached) {
+        if (mounted && current() && _relayPlayUrl == localUrl) {
+          _relayPlayUrl = null;
+          _controller.setUrl(realUrl);
+          _flash(context.l10n.tvRecordingError);
+        }
         return;
       }
-
-      // 3) On enregistre la fiche en base (liste « Enregistrements »).
-      final Recording rec = await RecordingRepository.instance.startRecording(
-        channelId: _current.id,
-        channelName: _current.cleanName,
+      final closed = relay.recordingFinished(realUrl);
+      final rec = await repo.startRecording(
+        channelId: channel.id,
+        channelName: channel.cleanName,
         filePath: path,
-        channelLogoUrl: _current.logoUrl,
+        channelLogoUrl: channel.logoUrl,
         streamUrl: realUrl,
       );
-      if (mounted) {
-        setState(() => _activeRecording = rec);
-        _flash(context.l10n.tvRecordingStarted);
+      if (!mounted || !current() || _relayPlayUrl != localUrl) {
+        await relay.stopRecording(realUrl);
+        await repo.finishRecording(rec);
+        return;
       }
-    } catch (e) {
+      setState(() => _activeRecording = rec);
+      _flash(context.l10n.tvRecordingStarted);
+      // Un arrêt automatique de la source ou du disque clôt aussi la fiche.
+      // Un stop manuel a déjà détaché la fiche avant de fermer le fichier.
+      unawaited(closed.then((_) async {
+        if (!mounted || !identical(_activeRecording, rec)) return;
+        setState(() => _activeRecording = null);
+        if (_relayPlayUrl == localUrl) _relayPlayUrl = null;
+        _flash(context.l10n.tvRecordingError);
+        await repo.finishRecording(rec);
+      }).catchError((Object error) {
+        BlackBox.instance.warn('REC', 'clôture interrompue (${error.runtimeType})');
+      }));
+    } catch (error) {
+      if (attached) await relay.stopRecording(realUrl);
+      if (current() && localUrl != null && _relayPlayUrl == localUrl) {
+        _relayPlayUrl = null;
+        _controller.setUrl(realUrl);
+      }
       if (mounted) _flash(context.l10n.tvRecordingError);
+    } finally {
+      _startingRecording = false;
     }
   }
 
@@ -1412,7 +1470,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       // Lecture reprend ce flux. Plus longtemps, et seulement si le
       // fournisseur a un catch-up, on ouvrira le timeshift.
       _livePausedAt = DateTime.now();
-      _lastProgress = _livePausedAt!;
+      _sinceProgress.reset();
       _controller.pause();
     } else {
       final DateTime? pausedAt = _livePausedAt;
@@ -1515,14 +1573,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _jumpNumber() {
-    _zapSettle?.cancel();
-    _zapHolding = false;
     final int? n = int.tryParse(_numBuffer);
     _numBuffer = '';
     if (n == null || n <= 0) {
       setState(() {});
       return;
     }
+    _traceStart('number_confirmed');
+    _zapSettle?.cancel();
+    _zapHolding = false;
     setState(() => _index = (n - 1).clamp(0, widget.channels.length - 1));
     _open();
   }
@@ -1793,8 +1852,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                           imageUrl: _current.logoUrl,
                           onHandoffChanged: (bool active) {
                             if (!mounted) return;
+                            if (active) _traceEnd('cast');
                             _cancelRecover();
-                            _lastProgress = DateTime.now();
+                            _sinceProgress.reset();
                             setState(() => _casting = active);
                             _updatePip();
                           },
