@@ -407,6 +407,7 @@ class NativeVideoView(
     // Epoch Dart du setUrl en cours (accusé). null = pas un setUrl.
     private var dartEpoch: Int? = null
     private val qaViewId = id
+    private var tagRenderedFrame = false
     private var qaPhases = false
     private var qaDecoderReadyAt = 0L
     private var qaFirstFrameSeen = false
@@ -1425,6 +1426,7 @@ class NativeVideoView(
                 val epoch = call.argument<Number>("epoch")?.toInt()
                 dartEpoch = epoch
                 qaPhases = call.argument<Boolean>("qaPhases") == true
+                tagRenderedFrame = qaPhases || call.argument<Boolean>("tagRenderedFrame") == true
                 val url = call.argument<String>("url")
                 if (url.isNullOrEmpty()) {
                     result.error("no_url", "setUrl appelé sans url", null)
@@ -2036,7 +2038,7 @@ class NativeVideoView(
         emit("buffering", false)
         unmuteIfThisSession()
         // Le banc relie la première image à la vue et à la source exactes.
-        val renderProof = if (qaPhases) mapOf(
+        val renderProof = if (tagRenderedFrame) mapOf(
             "view" to qaViewId, "epoch" to dartEpoch, "timeMs" to renderTimeMs
         ) else null
         emit("firstFrame", renderProof)

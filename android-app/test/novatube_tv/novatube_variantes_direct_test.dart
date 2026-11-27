@@ -18,6 +18,7 @@ import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/epg/data/epg_repository.dart';
 import 'package:tv_king/features/tv/core/tv_provider_channel_name.dart';
+import 'package:tv_king/features/security/data/parental_controls.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/favorites_repository.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
@@ -186,6 +187,124 @@ void main() {
       await tester.pump(const Duration(seconds: 10));
     }
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  const compactBuild =
+      kNovatubeTv && bool.fromEnvironment('NOVATUBE_COMPACT_ZAP');
+  final notice = find.byKey(const ValueKey('compact-zap-notice'));
+  final spinner = find.byType(CircularProgressIndicator);
+  Channel mire(String name, {String category = 'Sports', bool live = true}) =>
+      Channel(id: '$category-$name', name: name, category: category,
+          streamUrl: 'http://example.invalid/${name.hashCode}.ts', isLive: live);
+  void frame(NativeVideoController native, int epoch) {
+    native.applyBackendEvent('firstFrame',
+        {'view': 7, 'epoch': epoch, 'timeMs': 1200 + epoch});
+  }
+
+  testWidgets('un zap bref identifie la destination jusqu’à sa trame rendue',
+      (tester) async {
+    try {
+      await show(tester, TvPlayerScreen(channels: [mire('Mire A'), mire('Mire B')],
+          startIndex: 0));
+      expect(spinner, findsOneWidget);
+      expect(notice, findsNothing);
+      final native = tester.widget<NativeVideoView>(find.byType(NativeVideoView)).controller;
+      frame(native, 0);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.channelDown);
+      await tester.pump(const Duration(milliseconds: 181));
+      expect(spinner, compactBuild ? findsNothing : findsOneWidget);
+      expect(notice, compactBuild ? findsOneWidget : findsNothing);
+      if (compactBuild) {
+        expect(find.text('Chargement de la chaîne… Mire B'), findsOneWidget);
+        expect(find.text('Mire B'), findsNothing);
+        final bounds = tester.getRect(notice);
+        expect(bounds.contains(tester.getCenter(find.byType(NativeVideoView))), isFalse);
+        expect(bounds.height, lessThan(120));
+      }
+      native.applyBackendEvent('ack', 1);
+      native.applyBackendEvent('playing', true);
+      native.applyBackendEvent('position', 1000);
+      frame(native, 0);
+      await tester.pump();
+      if (compactBuild) {
+        expect(notice, findsOneWidget);
+        expect(find.text('Mire B'), findsNothing);
+      }
+      frame(native, 1);
+      await tester.pump();
+      expect(notice, findsNothing);
+      expect(spinner, findsNothing);
+      expect(find.text('Mire B'), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 10));
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  for (final scenario in [
+    'touche maintenue', 'répétition rapide', 'première image non confirmée',
+    'mode enfants', 'source adulte', 'destination adulte', 'replay',
+    'reconnexion initiale', 'reconnexion pendant le zap', 'protection pendant le zap',
+    'saisie numérique',
+  ]) {
+    testWidgets('le carton couvre la vidéo en cas de $scenario', (tester) async {
+      final kids = ParentalControls.instance.kidsMode;
+      final previousMode = kids.value;
+      try {
+        kids.value = scenario == 'mode enfants';
+        await show(tester, TvPlayerScreen(channels: [
+          mire('Mire A', category: scenario == 'source adulte' ? 'XXX Adult' : 'Sports'),
+          mire('Mire B', category: scenario == 'destination adulte' ? 'XXX Adult' : 'Sports'),
+          mire('Mire C'),
+        ], startIndex: 0, startAtUrl: scenario == 'replay' ? 'https://example.invalid/replay' : null));
+        final native = tester.widget<NativeVideoView>(find.byType(NativeVideoView)).controller;
+        if (scenario == 'première image non confirmée') {
+          native.applyBackendEvent('playing', true);
+          native.applyBackendEvent('position', 250);
+        } else {
+          frame(native, 0);
+        }
+        if (scenario == 'reconnexion initiale') {
+          native.applyBackendEvent('reconnecting', true);
+        }
+        await tester.pump();
+        if (scenario == 'touche maintenue') {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.channelDown);
+        } else if (scenario == 'saisie numérique') {
+          await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
+        } else {
+          await tester.sendKeyEvent(LogicalKeyboardKey.channelDown);
+        }
+        if (scenario == 'répétition rapide') {
+          await tester.pump(const Duration(milliseconds: 50));
+          await tester.sendKeyEvent(LogicalKeyboardKey.channelDown);
+        }
+        await tester.pump(const Duration(milliseconds: 181));
+        if (scenario == 'saisie numérique') await tester.pump(const Duration(seconds: 3));
+        if (scenario == 'touche maintenue') {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.channelDown);
+        }
+        if (scenario == 'reconnexion pendant le zap' || scenario == 'protection pendant le zap') {
+          expect(notice, findsOneWidget);
+          if (scenario == 'protection pendant le zap') {
+            kids.value = true;
+            kids.value = false;
+          } else {
+            native.applyBackendEvent('ack', 1);
+            native.applyBackendEvent('reconnecting', true);
+            native.applyBackendEvent('reconnecting', false);
+          }
+          await tester.pump();
+        }
+        expect(notice, findsNothing);
+        expect(spinner, findsOneWidget);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 10));
+        kids.value = previousMode;
+      }
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !compactBuild);
+  }
 
   testWidgets('une seule lecture du guide par chaîne ouverte au zapping', (tester) async {
     final channels = PlaylistRepository.instance.currentChannels;

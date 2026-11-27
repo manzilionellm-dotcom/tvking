@@ -44,7 +44,11 @@ import '../../player/domain/image_engine.dart';
 import '../../player/domain/live_bar_slots.dart';
 import '../../player/domain/reconnect_plan.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/app/repair_flags.dart';
+import '../../profiles/data/profile_repository.dart';
+import '../../security/data/parental_controls.dart';
+import '../core/tv_provider_channel_name.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import 'tv_localized_format.dart';
 import 'tv_playback_quality.dart';
@@ -87,6 +91,11 @@ import '../core/tv_remote_map.dart';
 import '../core/tv_zap.dart';
 import 'tv_channel_guide_screen.dart';
 import 'tv_cinema_common.dart';
+
+const _compactZapEnabled =
+    kNovatubeTv && bool.fromEnvironment('NOVATUBE_COMPACT_ZAP');
+
+enum _ZapPresentation { standard, compact, covered }
 
 class TvPlayerScreen extends StatefulWidget {
   const TvPlayerScreen({
@@ -186,6 +195,41 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // nouvel appui). Un seul setUrl au lieu d'un par répétition de touche.
   Timer? _zapSettle;
   bool _zapHolding = false;
+  LogicalKeyboardKey? _shortZapKey;
+  bool _shortZapReleased = false;
+  _ZapPresentation _zapPresentation = _ZapPresentation.standard;
+
+  bool get _profileAllowsPreview =>
+      !ParentalControls.instance.kidsMode.value &&
+      !ProfileRepository.instance.activeIsKids &&
+      !SubscriptionState.instance.shouldBlockUser;
+
+  bool _ordinaryChannel(Channel channel) =>
+      channel.isLive &&
+      ChannelClassifier.classifyGenre(channel.name, channel.category) !=
+          ChannelGenre.adult;
+
+  bool get _canShowPreviousPicture =>
+      _appActive && !_pip.isInPipMode && !_casting && !_catchup &&
+      !_fatal && !_recoverArmed && _recoverAttempts == 0 &&
+      !_controller.hasError && !_controller.nativeRetrying &&
+      !_controller.engineExhausted && !_controller.holdFrame &&
+      !_controller.isEnded && !_isRecording && !_startingRecording &&
+      _livePausedAt == null;
+
+  // Un changement de contexte referme le carton jusqu'à une image datée de
+  // la destination. Un simple événement de position peut provenir de l'audio.
+  void _coverZap() {
+    _shortZapKey = null;
+    if (_zapPresentation == _ZapPresentation.compact && mounted) {
+      setState(() => _zapPresentation = _ZapPresentation.covered);
+    }
+  }
+
+  void _onPreviewPermissionChanged() {
+    if (!_profileAllowsPreview) _coverZap();
+  }
+
   String _numBuffer = ''; // saisie d'un numéro de chaîne (touches 0-9)
   // Une fois par minute, tant que l'image tourne : on note le
   // programme du guide. Pas à chaque image (ça chaufferait la box).
@@ -320,10 +364,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       onSuspend: _suspendOutside,
       onResume: _resumeInside,
       onModeChanged: () {
+        if (_pip.isInPipMode) _coverZap();
         _publishVideoAspect();
         if (mounted) setState(() {});
       },
       onVisibilityChanged: (bool visible) {
+        if (!visible) _coverZap();
         _appActive = visible;
         _sinceProgress.reset();
       },
@@ -346,6 +392,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // il reprend tout seul en quittant le lecteur.
     unawaited(CinemaDownloads.pauseForLive());
     _controller.addListener(_onPlayer);
+    if (_compactZapEnabled) {
+      ParentalControls.instance.kidsMode.addListener(_onPreviewPermissionChanged);
+      ProfileRepository.instance.addListener(_onPreviewPermissionChanged);
+      SubscriptionState.instance.addListener(_onPreviewPermissionChanged);
+    }
     // Favoris en direct (le ❤ se met à jour tout seul).
     FavoritesRepository.instance.initialize();
     _favSub = FavoritesRepository.instance.favoritesStream.listen((
@@ -411,6 +462,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _suspendOutside(bool forceStop) {
+    _coverZap();
     _appActive = false;
     _traceEnd('background');
     _cancelRecover();
@@ -479,6 +531,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       unawaited(LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _playingUrl)
           .then((_) => RecordingRepository.instance.finishRecording(rec)));
     }
+    if (_compactZapEnabled) {
+      ParentalControls.instance.kidsMode.removeListener(_onPreviewPermissionChanged);
+      ProfileRepository.instance.removeListener(_onPreviewPermissionChanged);
+      SubscriptionState.instance.removeListener(_onPreviewPermissionChanged);
+    }
     _controller.removeListener(_onPlayer);
     subtitlesFlag.changes.removeListener(_onSubsFlag);
     ClearVoiceFlag.changes.removeListener(_onClearVoice);
@@ -516,6 +573,15 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
     if (_zapHolding) return;
+    if (_zapPresentation != _ZapPresentation.standard) {
+      if (!_canShowPreviousPicture || _controller.reopenCount != _seenReopen) {
+        _coverZap();
+      }
+      if (_controller.hasRenderedCurrentSource && !_controller.holdFrame &&
+          !_controller.hasError && !_controller.nativeRetrying) {
+        setState(() => _zapPresentation = _ZapPresentation.standard);
+      }
+    }
     if (_measure && !_casting && _appActive && !_catchup) {
       if (_controller.qaRenderedFrame != null && !_controller.holdFrame) {
         _traceEnd('first_frame');
@@ -633,7 +699,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     _offerSubtitles();
   }
 
-  void _open({bool reuse = false}) {
+  void _open({bool reuse = false, bool compactZap = false}) {
+    _shortZapKey = null;
+    _zapPresentation =
+        compactZap ? _ZapPresentation.compact : _ZapPresentation.standard;
     _sinceProgress.reset();
     _lastPos = Duration.zero;
     _everShownFrame = false; // nouvelle ouverture → pas encore d'image
@@ -714,16 +783,27 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
           defaultTargetPlatform == TargetPlatform.macOS ||
           defaultTargetPlatform == TargetPlatform.linux);
 
-  void _zap(int delta) {
+  void _zap(int delta, {LogicalKeyboardKey? singleKey}) {
     final int n = widget.channels.length;
     if (n <= 1) return;
     _traceStart('zap_key');
+    final next = tvNextZapIndex(_index, delta, n);
+    _shortZapKey = _compactZapEnabled && singleKey != null &&
+            defaultTargetPlatform == TargetPlatform.android &&
+            !_zapHolding && _zapPresentation == _ZapPresentation.standard &&
+            _controller.hasRenderedCurrentSource && !_buffering &&
+            _canShowPreviousPicture && _profileAllowsPreview &&
+            _ordinaryChannel(_current) && _ordinaryChannel(widget.channels[next])
+        ? singleKey
+        : null;
+    _shortZapReleased = false;
+    _zapPresentation = _ZapPresentation.standard;
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
     _livePausedAt = null;
     setState(() {
-      _index = tvNextZapIndex(_index, delta, n);
+      _index = next;
       _zapHolding = true;
       _canTimeshift = TimeshiftPause.supports(_current);
     });
@@ -742,7 +822,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         if (!mounted) return;
         _zapHolding = false;
         TvAmbientDirector.instance.show(_current.genre);
-        _open();
+        _open(compactZap: _shortZapKey != null && _shortZapReleased &&
+            _canShowPreviousPicture && _profileAllowsPreview);
       },
     );
   }
@@ -785,6 +866,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // Le natif attend déjà (1 s, 2 s, 4 s, 8 s). Un setUrl ici
     // annulerait ce délai et préparerait un second flux.
     if (ReconnectPlan.letNativeOwnRetry(_controller.nativeRetrying)) return;
+    _coverZap();
     // BORNE : au-delà, écran « Réessayer ». Plus de boucle infinie.
     if (_recoverAttempts >= _maxRecover) {
       _showFatal();
@@ -1029,6 +1111,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // Affiche/masque la barre (tap sur l'écran tactile). Au masquage on retire
   // le surlignage D-pad.
   void _toggleOverlay() {
+    _coverZap();
     setState(() {
       _overlay = !_overlay;
       if (!_overlay) _btnFocus = -1;
@@ -1638,8 +1721,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   // Télécommandes universelles : toutes les variantes mènent à l'action.
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    // On prend l'appui ET la répétition (touche maintenue). Le relâchement
-    // (KeyUp) est ignoré. Le flux, lui, n'est ouvert qu'une fois dans _zap.
+    // Le relâchement distingue un appui bref sans changer le délai de setUrl.
+    if (event is KeyUpEvent && _shortZapKey == event.logicalKey) {
+      _shortZapReleased = true;
+    }
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -1665,6 +1750,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     }
 
     if (remote?.action == TvRemoteAction.digit && remote!.digit != null) {
+      _coverZap();
       _onDigit(remote.digit!);
       return KeyEventResult.handled;
     }
@@ -1672,16 +1758,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (remote?.action == TvRemoteAction.up ||
         remote?.action == TvRemoteAction.channelUp ||
         remote?.action == TvRemoteAction.pageUp) {
-      _zap(-1);
+      _zap(-1, singleKey: event is KeyDownEvent ? k : null);
       return KeyEventResult.handled;
     }
     if (remote?.action == TvRemoteAction.down ||
         remote?.action == TvRemoteAction.channelDown ||
         remote?.action == TvRemoteAction.pageDown) {
-      _zap(1);
+      _zap(1, singleKey: event is KeyDownEvent ? k : null);
       return KeyEventResult.handled;
     }
 
+    _coverZap();
     if (remote?.action == TvRemoteAction.left) {
       _navBtn(-1);
       return KeyEventResult.handled;
@@ -1742,6 +1829,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    final compact = _zapPresentation == _ZapPresentation.compact;
+    final awaitingRender = _zapPresentation != _ZapPresentation.standard;
     // Material TRANSPARENT obligatoire : le lecteur est poussé comme route
     // SÉPARÉE (hors de TvShell). Sans Material ancêtre, Flutter dessine tout
     // texte avec son style d'ERREUR (police machine à écrire + double
@@ -1788,9 +1877,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   if (!_pip.isInPipMode &&
                       !_casting &&
                       (_zapHolding ||
-                          (_buffering && !_fatal && !_everShownFrame)))
-                    _loadingCard(),
-                  if (!_pip.isInPipMode && _missed != null)
+                          (!_fatal && (awaitingRender ||
+                              (_buffering && !_everShownFrame)))))
+                    if (compact) _compactZapNotice() else _loadingCard(),
+                  if (!awaitingRender && !_pip.isInPipMode && _missed != null)
                     Align(
                       alignment: Alignment.topCenter,
                       child: MissedNotice(
@@ -1809,7 +1899,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // Panneau de lecture (façon YouTube / Netflix) : glisse depuis le
                   // bas + fondu, masqué automatiquement après 5 s. Contient l'info
                   // chaîne + tous les contrôles (dont REC et ❤ en bas).
-                  Align(
+                  if (!compact) Align(
                     alignment: Alignment.bottomCenter,
                     // L'opacité de la barre appelle saveLayer. On isole
                     // ce calque pour qu'il ne repeigne pas le reste.
@@ -1828,6 +1918,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             ignoring: !_overlay || _pip.isInPipMode,
                             child: _ControlsBar(
                               channel: _current,
+                              showChannelInfo: !awaitingRender && _shortZapKey == null,
                               guideTitle: _guideTitle,
                               qualityController: _casting ? null : _controller,
                               index: _index,
@@ -1891,7 +1982,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                           imageUrl: _current.logoUrl,
                           onHandoffChanged: (bool active) {
                             if (!mounted) return;
-                            if (active) _traceEnd('cast');
+                            if (active) {
+                              _coverZap();
+                              _traceEnd('cast');
+                            }
                             _cancelRecover();
                             _sinceProgress.reset();
                             setState(() => _casting = active);
@@ -1997,6 +2091,33 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _compactZapNotice() {
+    final tokens = TvAppTokens.playbackOf(context);
+    final name = tvProviderChannelName(_current, context.l10n.tvVoiceKindChannel);
+    return PositionedDirectional(
+      top: TvDimens.safeV,
+      start: TvDimens.safeH,
+      child: IgnorePointer(
+        child: Container(
+          key: const ValueKey('compact-zap-notice'),
+          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .45),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          decoration: BoxDecoration(
+            color: tokens.bg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            '${context.l10n.tvPlayerLoading} $name',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: tokens.text, fontSize: TvDimens.label,
+                fontWeight: FontWeight.w700),
           ),
         ),
       ),
@@ -2207,6 +2328,7 @@ class _ControlsBar extends StatelessWidget {
   const _ControlsBar({
     required this.channel,
     required this.guideTitle,
+    required this.showChannelInfo,
     this.qualityController,
     required this.index,
     required this.total,
@@ -2239,6 +2361,7 @@ class _ControlsBar extends StatelessWidget {
 
   final Channel channel;
   final String? guideTitle;
+  final bool showChannelInfo;
   final NativeVideoController? qualityController;
   final int index;
   final int total;
@@ -2305,7 +2428,7 @@ class _ControlsBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           // ---- Ligne info chaîne ----
-          Row(
+          if (showChannelInfo) Row(
             children: <Widget>[
               _logo(context),
               const SizedBox(width: 16),
@@ -2314,7 +2437,7 @@ class _ControlsBar extends StatelessWidget {
               _channelNumber(context),
             ],
           ),
-          if (qualityController != null) ...<Widget>[
+          if (showChannelInfo && qualityController != null) ...<Widget>[
             const SizedBox(height: TvDimens.rowGap),
             Align(
               alignment: AlignmentDirectional.centerStart,

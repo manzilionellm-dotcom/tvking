@@ -319,6 +319,9 @@ class NativeVideoController extends ChangeNotifier {
   ({int view, int epoch, int timeMs})? get qaRenderedFrame =>
       _renderedFrame?.epoch == _epoch ? _renderedFrame : null;
 
+  /// Une image rendue porte la génération de la source actuellement ouverte.
+  bool get hasRenderedCurrentSource => qaRenderedFrame != null;
+
   /// Erreur de lecture remontée par ExoPlayer (l'écran déclenche _recover).
   bool hasError = false;
 
@@ -433,6 +436,8 @@ class NativeVideoController extends ChangeNotifier {
       'url': url,
       'epoch': _epoch,
       if (const bool.fromEnvironment('NOVATUBE_QA_METRICS')) 'qaPhases': true,
+      if (const bool.fromEnvironment('NOVATUBE_TV') &&
+          const bool.fromEnvironment('NOVATUBE_COMPACT_ZAP')) 'tagRenderedFrame': true,
       if (openAsVod) 'vod': true,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
     };
@@ -723,6 +728,8 @@ class NativeVideoController extends ChangeNotifier {
       'url': url,
       'epoch': _epoch,
       if (const bool.fromEnvironment('NOVATUBE_QA_METRICS')) 'qaPhases': true,
+      if (const bool.fromEnvironment('NOVATUBE_TV') &&
+          const bool.fromEnvironment('NOVATUBE_COMPACT_ZAP')) 'tagRenderedFrame': true,
       if (vod) 'vod': true,
       if (startAt > Duration.zero) 'startMs': startAt.inMilliseconds,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
