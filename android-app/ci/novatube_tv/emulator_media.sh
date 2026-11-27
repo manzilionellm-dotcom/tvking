@@ -78,6 +78,8 @@ wait_home
 alive "accueil après import"
 shot 09-apres-import
 
+adb -s "$serial" logcat -v monotonic -s flutter:I NovaTubeQA:I | grep --line-buffered NovaTubeQA > "$out/qa-complet.txt" &
+qa_log=$!
 step "Accueil → Direct"
 key KEYCODE_DPAD_CENTER 4
 grab
@@ -97,8 +99,27 @@ alive "lecture plein écran"
 shot 12-lecture-plein-ecran
 sleep 8
 shot 13-lecture-10s-plus-tard
+# Relever le CPU de l'application, la mémoire du processus et les événements QA.
+meter() {
+  local pid
+  pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r' | cut -d' ' -f1)"
+  test -n "$pid"
+  adb -s "$serial" shell "cat /proc/uptime; cat /proc/$pid/stat; getconf CLK_TCK 2>/dev/null || echo unknown" > "$out/proc-$1.txt"
+  adb -s "$serial" shell dumpsys meminfo "$pkg" > "$out/memoire-$1.txt"
+}
+meter direct-avant
+sleep 20
+meter direct-apres
+for iteration in $(seq 1 100); do
+  # Une commande entière toutes les quatre secondes. Les ouvertures
+  # remplacées et les échecs restent dans le journal.
+  key KEYCODE_CHANNEL_DOWN 4
+done
+meter zaps-apres
+adb -s "$serial" logcat -d -s flutter:I NovaTubeQA:I | grep NovaTubeQA > "$out/qa-lecteur.txt" || true
 key KEYCODE_BACK 3
 wait_word 'mire|barres'
+kill "$qa_log" 2>/dev/null || true
 shot 14-retour-direct
 key KEYCODE_BACK 3
 wait_home
