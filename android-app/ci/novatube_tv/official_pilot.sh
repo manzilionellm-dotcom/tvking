@@ -6,10 +6,6 @@ mkdir -p "$out"
 export ANDROID_SERIAL=emulator-5554
 sudo apt-get update -qq
 sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
-(cd atlas/android-app/cloudflare && npm ci --no-audit --no-fund)
- ATLAS_PORT=8788 node "$work/atlas_local_server.mjs" atlas/android-app/cloudflare "$RUNNER_TEMP/atlas.json" > "$RUNNER_TEMP/atlas.log" 2>&1 &
- for n in $(seq 1 60); do if [[ -s "$RUNNER_TEMP/atlas.json" ]]; then break; fi; sleep 1; done
- test -s "$RUNNER_TEMP/atlas.json"
 image='system-images;android-36;android-tv;x86_64'
 echo "$image" > "$out/system-image.txt"
 sdkmanager platform-tools emulator 'build-tools;35.0.0' "$image" </dev/null >/dev/null
@@ -42,25 +38,22 @@ adb shell wm size 1920x1080
 adb shell svc power stayon true
 adb shell input keyevent 82
 adb reverse tcp:18471 tcp:18471
-adb reverse tcp:8788 tcp:8788
+
 adb shell cat /proc/meminfo | sed -n '1p' > "$out/client-memory.txt"
 curl -fsS --max-time 6 https://www.cloudflare.com/cdn-cgi/trace | sed -nE '/^(loc|colo)=/p' > "$out/egress-country.txt" || true
+curl -sS --max-time 3 -H Metadata:true --noproxy '*' 'http://169.254.169.254/metadata/instance/compute/location?api-version=2021-02-01&format=text' > "$out/runner-region.txt" || true
 export BENCH_ZAPS_ONLY=1 OMP_THREAD_LIMIT=1
+overall_status=0
 IFS=- read -r first second <<< "$ORDER"
 for app in "$first" "$second"; do
     version_out="$out/$app"
     mkdir -p "$version_out"
     case "$app" in
       novatube)
-        root="$PWD/qa-apks/apk-candidat"
-        (cd "$root" && sha256sum -c SHA256SUMS)
-        test "$(cat "$root/app-commit")" = "$EXPECTED_CANDIDAT"
-        cp "$root/app-commit" "$version_out/app-commit"
-        apk="$root/NovaTube-TV-emulateur.apk"
-        digest=$(cut -d" " -f1 "$root/SHA256SUMS")
-        cp "$root/build-flags.txt" "$version_out/"
-        grep -Fxq "NOVATUBE_COMPACT_ZAP=true" "$version_out/build-flags.txt"
-        pkg=com.sevenmotion.novatube.tv
+        apk="$RUNNER_TEMP/NovaTube-LAB.apk"
+        curl -fLsS --retry 2 --proto '=https' https://github.com/manzilionellm-dotcom/tvking/releases/download/novatube-tv-lab-caf2209b/NovaTube-LAB.apk -o "$apk"
+        digest=410bc89ecc396704218311f7053c91df4e3efd30aa52e84e9fe20934fb33f54b
+        pkg=com.sevenmotion.novatube.tv.lab
         ;;
       televizo)
         apk="$RUNNER_TEMP/televizo-officiel.apk"
@@ -99,13 +92,31 @@ for app in "$first" "$second"; do
       sleep 2
     done
     test "$match" -eq 1
-    adb reverse tcp:8788 tcp:8788
+    
     adb reverse tcp:18471 tcp:18471
     adb logcat -c
     adb shell am start -W -n "$pkg/$activity" > "$version_out/launch.txt"
     sleep 20
-    python3 "$work/${app}_pilot.py" "$version_out"
-    python3 "$work/benchmark.py" "$version_out"
+    # Onboarding screens may contain a test device code. Keep their screenshots
+    # and console output private to this temporary runner.
+    if ! python3 "$work/${app}_pilot.py" "$version_out" > "$RUNNER_TEMP/$app-setup.log" 2>&1; then
+        python3 - "$version_out" <<'STATUS'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+steps = [f.stem for f in root.glob('*.png') if f.stem.startswith(('nova-', 'tel-'))]
+(root/'setup-status.txt').write_text('onboarding incomplete; recorded steps: ' + ', '.join(sorted(steps)))
+STATUS
+        cat "$version_out/setup-status.txt"
+        adb uninstall "$pkg"
+        overall_status=1
+        continue
+    fi
+    if ! python3 "$work/benchmark.py" "$version_out"; then
+        overall_status=1
+        adb uninstall "$pkg"
+        continue
+    fi
     adb logcat -d -s NovaTubeQA:I flutter:I > "$version_out/player.log"
     # Contrôle visuel supplémentaire après les 50 chronométrages. L'enregistrement
     # de la transition ne concurrence aucune des observations optiques classées.
@@ -120,3 +131,4 @@ for app in "$first" "$second"; do
     adb shell rm -f /sdcard/novatube-qa-visual.mp4
     adb uninstall "$pkg"
 done
+exit "$overall_status"

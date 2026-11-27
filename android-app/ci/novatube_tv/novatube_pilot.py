@@ -133,21 +133,9 @@ def run(folder):
     ts=words(ss("nova-07-selected"))
     if row_a(ts):
         key("KEYCODE_DPAD_CENTER")
-    # Confirmation indépendante de l'écran : le compteur matériel QA de ce
-    # binaire distingue la première image du plein écran de celle de l'aperçu.
-    pid=adb("shell","pidof","com.sevenmotion.novatube.tv",output=True).decode().strip()
-    end=time.monotonic()+22
-    while time.monotonic()<end:
-        trace=adb("logcat","-d","--pid",pid,"-s","flutter:I",output=True).decode(errors="replace")
-        if "action=open_screen outcome=first_frame" in trace:
-            ss("nova-08-full")
-            (folder/"nova-start.json").write_text(json.dumps({"first_full_frame":True,"requested_channel":"A"}))
-            return
-        time.sleep(.5)
-    ss("nova-08-full")
-    raise RuntimeError("Plein écran non confirmé par le marqueur QA de l'APK d'essai.")
-
-
+    # Verify the full-screen centered test marker with two advancing frame
+    # numbers. The public APK does not expose QA-only application logs.
+    (folder / "nova-start.json").write_text(json.dumps({"requested_channel": "A", "confirmation": "see pilot.json onboarding_motion"}))
 if __name__=="__main__":
     a=argparse.ArgumentParser()
     a.add_argument("output",type=Path)

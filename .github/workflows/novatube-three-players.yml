@@ -1,10 +1,9 @@
-name: NovaTube cadrage corrigé et Televizo · 100 zaps croisés
+name: NovaTube LAB public et Televizo · 100 zaps et coupures
 on:
   push:
-    branches: ['qa/novatube-held-geometry-duel-20261127']
+    branches: ['qa/novatube-lab-zaps-regions-20261127']
 permissions:
   contents: read
-  actions: read
 env:
   CI: 'true'
   FLUTTER_SUPPRESS_ANALYTICS: 'true'
@@ -26,45 +25,32 @@ jobs:
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           accept-android-sdk-licenses: false
-      - name: Code Atlas pour le test NovaTube
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: 77ce78f49b65f674e8493e8573a6dcc7b62eae6d
-          path: atlas
-          persist-credentials: false
-          sparse-checkout: android-app/cloudflare
-      - name: Node 22 pour le Worker local
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
-        with:
-          node-version: '22'
-      - name: Attendre la publication du binaire exact du contrôle de cadrage
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eu
-          for attempt in $(seq 1 80); do
-            count=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46062060492/artifacts" --jq '[.artifacts[] | select(.name == "apk-candidat" and .expired == false)] | length')
-            if [[ "$count" == 1 ]]; then exit 0; fi
-            sleep 15
-          done
-          exit 1
-      - name: Télécharger le binaire exact de l'essai de coupure
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          github-token: ${{ github.token }}
-          run-id: 46062060492
-          name: apk-candidat
-          path: qa-apks/apk-candidat
       - name: Tester les deux lecteurs sur le même émulateur
         env:
           ORDER: ${{ matrix.order }}
-          EXPECTED_CANDIDAT: caf2209bd772ad54e085e8574d1c0cd8be1783b6
         run: bash android-app/ci/novatube_tv/official_pilot.sh
       - name: Conserver les traces et les 50 observations de chaque lecteur
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: zaps-${{ matrix.order }}
-          path: pilot-results
+          path: |
+            pilot-results/egress-country.txt
+            pilot-results/runner-region.txt
+            pilot-results/system-image.txt
+            pilot-results/client-memory.txt
+            pilot-results/*/SHA256SUMS
+            pilot-results/*/signature.txt
+            pilot-results/*/badging.txt
+            pilot-results/*/installed.sha256
+            pilot-results/*/pilot.json
+            pilot-results/*/fixture-preflight.jsonl
+            pilot-results/*/launch.txt
+            pilot-results/*/calibration/
+            pilot-results/*/post-zap.mp4
+            pilot-results/*/capture-events.jsonl
+            pilot-results/*/cut-*.csv
+            pilot-results/*/setup-status.txt
+            pilot-results/*/nova-start.json
           retention-days: 14
           if-no-files-found: warn

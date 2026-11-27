@@ -118,6 +118,15 @@ if os.environ.get('BENCH_ZAPS_ONLY') == '1':
     persist()
     if len(attempts)!=50:
         sys.exit('Campagne de zaps incomplète, observations conservées')
+    from extended import recover
+    result['cuts'] = []
+    for seconds in (5, 15, 60):
+        channel, _, _ = motion(8)
+        if channel:
+            result['cuts'].append(recover(out, seconds, channel, screenshot))
+        else:
+            result['cuts'].append({'cut_s': seconds, 'status': 'no motion before interruption'})
+        persist()
     sys.exit(0)
 current,_,raw=motion(8)
 if not current: sys.exit('Aucun mouvement vérifié avant la lecture continue')
