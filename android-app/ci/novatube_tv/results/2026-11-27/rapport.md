@@ -390,7 +390,34 @@ Trois émulateurs Android TV 36 ont installé l’APK de la campagne de zapping,
 
 Pendant la coupure de 60 s, sur l’image de 1 920 × 1 080 pixels, les deux premières frontières de couleur passent des abscisses 320 et 640 aux abscisses 776 et 1 552. L’agrandissement horizontal atteint **2,425 fois**. La capture prise après environ 43 s de coupure et la première capture après rétablissement sont identiques. Le cadrage retrouve ses dimensions normales lorsque la lecture reprend. La coupure de 15 s conserve le cadrage initial sur les quatre captures enregistrées.
 
-[Mesures individuelles et empreintes des archives](fe134dd4-mesures.json) · [Campagne de coupures](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46060741078) · [Banc prévu pour la SHIELD et la box de 1 à 2 Go](https://github.com/manzilionellm-dotcom/tvking/blob/0bfe571b740095bde94564225cbc1b5e2e9b37e0/android-app/ci/novatube_tv/CAMPAGNE-BOX.md)
+[Mesures individuelles et empreintes des archives](fe134dd4-mesures.json) · [Campagne de coupures](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46060741078) · [Banc prévu pour la SHIELD et la box de 1 à 2 Go](https://github.com/manzilionellm-dotcom/tvking/blob/14705bb6b89848bc689cc4e2a5ef2513e4afa39c/android-app/ci/novatube_tv/CAMPAGNE-BOX.md)
+
+## Cadrage corrigé et zapping de caf2209b
+
+`caf2209b` est issu du candidat de zapping `fe134dd4`. La copie de la dernière image utilisait un rectangle calculé à partir de la taille de la vue pour découper la surface vidéo. Le correctif copie toute la surface dans un bitmap limité à 1 280 × 720 pixels et garde le rapport largeur/hauteur de la vue. Sur les deux émulateurs corrigés, le bitmap effectivement affiché mesurait 792 × 445 pixels. [Correction en revue](https://github.com/manzilionellm-dotcom/tvking/pull/280) · [API PixelCopy d’Android](https://developer.android.com/reference/android/view/PixelCopy)
+
+Trois instances Android TV 36 ont reçu la même coupure HTTP 503 de 60 s. Les horloges du lecteur et les copies de l’écran documentent le passage à l’image conservée et son retrait sur les deux instances corrigées. Chaque délai de reprise est une borne supérieure depuis la réouverture du chemin média jusqu’à deux avancées successives de la bonne chaîne.
+
+| Version | Cadrage de la copie | Captures identiques de la copie | Durée minimale avec les mêmes pixels | Reprise automatique |
+| --- | --- | ---: | ---: | ---: |
+| Témoin fe134dd4 | Coin supérieur gauche agrandi ×2,425 | 153 | 43,633 s | ≤ 3,363 s |
+| Correctif caf2209b, essai 1 | Mire entière, compteur central lisible | 140 | 43,977 s | ≤ 3,774 s |
+| Correctif caf2209b, essai 2 | Mire entière, compteur central lisible | 142 | 43,767 s | ≤ 3,031 s |
+
+Les mêmes repères étaient à 320, 640 et 410 pixels en lecture normale, à 776, 1 552 et 995 pixels pendant le gel du témoin, puis à 321, 641 et 411 pixels pendant le maintien par le correctif. La comparaison valide la correction du cadrage. L’effet sur le temps de reprise reste INCERTAIN. [Traces des trois interruptions](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46062060492)
+
+![Mire avant, pendant et après une coupure de 60 secondes sur la version de référence et la version corrigée](cadrage-coupure-60s.png)
+
+### Même APK face à Televizo
+
+Le duel a relu les APK installés sur deux émulateurs Android TV 36. Chaque appareil a exécuté 50 zaps par lecteur avec les mêmes mires HLS et dans l’ordre inverse de l’autre appareil. Les deux sorties réseau sont américaines (PDX). Les temps commencent à l’envoi de la touche et incluent la capture de l’écran.
+
+| Lecteur | P95 de la première image de la chaîne demandée | P95 du mouvement confirmé | Bonne chaîne en mouvement en moins de 3 s |
+| --- | ---: | ---: | ---: |
+| NovaTube caf2209b | 2,049 s | 2,478 s | 100/100 |
+| Televizo 1.9.9.44-d | 1,813 s | 2,155 s | 100/100 |
+
+Televizo précède NovaTube au P95 du mouvement sur les deux instances. Sur la première, les délais sont de 2,054 s et 2,437 s. Sur la seconde, ils sont de 2,184 s et 2,505 s. L’écart groupé est de **323 ms**. La comparaison avec les temps de `fe134dd4` correspond à des hôtes différents et ne permet pas d’attribuer une évolution de vitesse au correctif. [Données par zap, essais de cadrage et empreintes](caf2209b-mesures.json) · [Duel optique](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46062431135)
 
 ## États-Unis · candidat à indication compacte face à Televizo
 
