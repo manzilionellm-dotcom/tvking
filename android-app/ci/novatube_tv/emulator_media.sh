@@ -155,6 +155,7 @@ for l in sys.stdin:
   k=next((x for x in ("socket:","pipe:","anon_inode:","/dev/ashmem","/memfd:","/dev/","/data/","/system/","/apex/") if p.startswith(x)),"other")
   v[k]+=1
 for k in sorted(v):print(k,v[k])' > "$out/fd-classes-$label.txt"
+  adb -s "$serial" shell dumpsys media.resource_manager > "$out/codec-resources-$label.txt" 2>&1 || true
   adb -s "$serial" shell dumpsys media.codec > "$out/codecs-$label.txt" 2>&1 || true
 }
 finish_profile() {
