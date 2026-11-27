@@ -172,7 +172,7 @@ Après un lancement Android à froid, le banc ouvre un aperçu, puis demande le 
 | Initialisation décodeur (ms) | 150,500 / 211,000 (30) | 174,500 / 331,000 (30) |
 | Ouverture native → signal Media3 (ms) | 288,000 / 621,000 (30) | 329,500 / 951,000 (30) |
 
-Sur les ouvertures corrélées, le rappel natif intervient sous 3 secondes dans 0 cas sur 30 pour le témoin et 0 cas sur 30 pour le candidat. Le rappel inclut le délai du fil principal. La date d’apparition du premier pixel sur une dalle physique reste INCERTAINE.
+Sur les 30 ouvertures corrélées de chaque version, le rappel natif intervient en moins de 3 secondes dans 17 cas sur le témoin et 4 cas sur le candidat. Ces nombres proviennent des durées individuelles `input_handler_to_native_callback_ms` dans `cold_fresh_fullscreen` des [données par essai](mesures.json). Le rappel inclut le délai du fil principal. La date d’apparition du premier pixel sur une dalle physique reste INCERTAINE.
 
 Les deux séries utilisent une mire locale identique sur deux hôtes émulés. Les fichiers sont indexés par lancement. Une première campagne qui avait écrasé des traces individuelles a été écartée. Les délais publiés portent sur les essais effectivement corrélés.
 
@@ -317,6 +317,7 @@ Les 100 commandes de la campagne finale visent la même mire et utilisent la mê
 | --- | --- | --- |
 | Bonne chaîne dans une première capture, médiane | 3,147 s | 1,552 s |
 | Bonne chaîne dans une première capture, P95 | 3,323 s | 1,652 s |
+| Bonne chaîne détectée en moins de 3 s | 26 sur 100 | 100 sur 100 |
 | Mouvement confirmé, médiane | 3,484 s | 1,865 s |
 | Mouvement confirmé, P95 | 3,693 s | 1,964 s |
 | Mouvement confirmé en moins de 3 s | 0 sur 100 | 100 sur 100 |
@@ -458,6 +459,20 @@ La dernière progression du numéro de trame a été observée à 57 min 52,926 
 Pour reproduire cet arrêt sur le binaire final, enregistrer en parallèle la progression du manifeste depuis un second client, les requêtes du lecteur, les erreurs Media3 et la vidéo de sortie. Ces quatre traces permettront d’attribuer l’interruption au serveur, au chemin réseau ou au lecteur.
 
 - [Capture finale et journal HTTP originaux](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46010491329/artifacts/15207672921)
+
+### Interruptions contrôlées du tunnel sur le même APK
+
+Deux émulateurs ont exécuté le même APK historique (`d8d4a1b3…17cb145`) pendant 80 minutes chacun. Le banc a retiré le tunnel réseau `adb reverse` pendant 110 secondes à deux reprises, aux minutes 2 et 10. Sur un émulateur, le flux passait par ce tunnel. Sur l’autre, le lecteur accédait directement au serveur de mire.
+
+| Chemin vers la mire | Observations sur 80 minutes |
+| --- | --- |
+| HTTP direct | La sonde a reconnu la chaîne sur 1 944 captures sur 1 944. Les 1 943 paires successives ont montré du mouvement. Le plus long intervalle entre deux observations de mouvement a été de 3,147 s. |
+| Tunnel `adb reverse` | Les deux suppressions du tunnel ont provoqué deux arrêts de l’image. La sonde a revu le mouvement 7,355 s puis 3,181 s après le rétablissement du tunnel. Le plus long intervalle entre deux observations de mouvement a atteint 109,985 s. |
+
+Ces interventions reproduisent un gel dû au chemin réseau du banc. La cause de l’incident spontané à 57 min 53 s reste **INCERTAINE**. La campagne initiale ne disposait pas d’une sonde indépendante qui aurait pu confirmer la disponibilité du segment suivant après la dernière requête.
+
+- [Mesures optiques et journal des interruptions, accès direct](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46029158432/artifacts/15220051776)
+- [Mesures optiques et journal des interruptions, tunnel](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46029158432/artifacts/15219124914)
 
 ## Televizo · Coupures et lecture prolongée
 
