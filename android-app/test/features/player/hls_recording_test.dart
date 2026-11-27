@@ -6,14 +6,14 @@ import 'package:tv_king/features/player/data/local_stream_relay.dart';
 
 void main() {
   test(
-      'le lecteur et le fichier reçoivent les mêmes segments HLS, une requête par séquence',
+      'une adresse sans extension redirigée sert les mêmes segments au lecteur et au fichier',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final dir = await Directory.systemTemp.createTemp('hls-segments-');
     final relay = LocalStreamRelay.instance;
     final http = HttpClient();
     final root = 'http://127.0.0.1:${server.port}';
-    final url = '$root/alias.m3u8';
+    final url = '$root/alias';
     final file = File('${dir.path}/capture.ts');
     final allowFirst = Completer<void>();
     final counts = <String, int>{};
@@ -21,7 +21,7 @@ void main() {
     server.listen((req) async {
       final path = req.uri.path;
       final n = counts.update(path, (v) => v + 1, ifAbsent: () => 1);
-      if (path == '/alias.m3u8') {
+      if (path == '/alias') {
         await req.response.redirect(Uri.parse('$root/base/master.m3u8'));
         return;
       } else if (path == '/base/master.m3u8') {
@@ -46,8 +46,9 @@ void main() {
       final done = relay.recordingFinished(url);
       final response = (await http.getUrl(Uri.parse(local))).close();
       allowFirst.complete();
-      final playback = await (await response).fold(
-          <int>[], (List<int> out, List<int> bytes) => out..addAll(bytes));
+      final playback = await (await response)
+          .fold(<int>[], (List<int> out, List<int> bytes) => out..addAll(bytes))
+          .timeout(const Duration(seconds: 10));
       expect(await done, isTrue);
       final expected = [
         for (final seq in [80, 81, 82]) ...packet(seq)
@@ -55,7 +56,7 @@ void main() {
       expect(await file.readAsBytes(), expected);
       expect(playback, expected);
       expect(counts, {
-        '/alias.m3u8': 1,
+        '/alias': 1,
         '/base/master.m3u8': 1,
         '/base/live.m3u8': 2,
         '/base/80.ts': 1,

@@ -347,7 +347,14 @@ class LocalStreamRelay {
     _RelaySession session,
     HttpClientResponse resp,
   ) {
+    // Certains fournisseurs redirigent une URL opaque vers un manifeste
+    // .m3u8 servi en texte ordinaire. L’indice peut être sur l’une ou
+    // l’autre adresse. La même réponse alimente ensuite le lecteur HLS.
+    final redirectedTo = resp.redirects.isEmpty
+        ? null
+        : HlsSegmentReader.effectiveUri(Uri.parse(session.realUrl), resp);
     final hls = isHlsPlaylist(session.realUrl) ||
+        (redirectedTo != null && isHlsPlaylist(redirectedTo.toString())) ||
         resp.headers[HttpHeaders.contentTypeHeader]?.any(
           (v) => v.split(';').first.trim().toLowerCase().endsWith('mpegurl'),
         ) == true;

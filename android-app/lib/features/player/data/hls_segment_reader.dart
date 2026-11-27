@@ -37,7 +37,9 @@ class HlsSegmentReader {
     return uri;
   }
 
-  static Uri _effectiveUri(Uri base, HttpClientResponse response) =>
+  /// Adresse finale après les redirections HTTP, y compris relatives.
+  /// Elle identifie le format et sert de base aux références du manifeste.
+  static Uri effectiveUri(Uri base, HttpClientResponse response) =>
       response.redirects
           .fold(base, (uri, redirect) => uri.resolveUri(redirect.location));
 
@@ -81,7 +83,7 @@ class HlsSegmentReader {
       ..reset()
       ..start();
     while (!_closed) {
-      uri = _effectiveUri(uri, response);
+      uri = effectiveUri(uri, response);
       final body =
           utf8.decode(await _bytes(response, 1024 * 1024, manifest: true));
       final lines = const LineSplitter()
