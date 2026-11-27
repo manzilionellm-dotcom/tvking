@@ -49,7 +49,7 @@ dependencies:
   # Client HTTP officiel Flutter. Sert à :
   #   - télécharger les fichiers .m3u depuis une URL
   #   - causer avec l'API Xtream Codes (player_api.php)
-  http: ^1.2.2
+  http: ^1.5.0
 
   # SQLite pour Flutter. Permet de stocker localement :
   #   - la liste des playlists ajoutées

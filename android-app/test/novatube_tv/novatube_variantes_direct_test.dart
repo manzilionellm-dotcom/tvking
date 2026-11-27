@@ -14,6 +14,7 @@ import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/core/tv_provider_channel_name.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
+import 'package:tv_king/features/playlists/data/favorites_repository.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
 import 'package:tv_king/features/tv/presentation/tv_live_screen.dart';
 import 'package:tv_king/features/tv/presentation/tv_player_screen.dart';
@@ -69,6 +70,8 @@ void main() {
         hasLength(3));
   });
   tearDownAll(() async {
+    // Attendre les lectures du Direct avant de fermer la base temporaire.
+    await FavoritesRepository.instance.initialize();
     removeAhemFonts();
     await PlaylistDatabase.instance.closeForTesting();
     await dir.delete(recursive: true);

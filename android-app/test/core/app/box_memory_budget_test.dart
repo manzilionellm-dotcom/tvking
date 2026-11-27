@@ -9,7 +9,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/core/app/box_memory_budget.dart';
 
+import 'package:tv_king/features/tv/core/tv_glass.dart';
+
 void main() {
+  test('le verre suit la réponse mémoire tardive sans nouvelle lecture native', () {
+    BoxMemoryBudget.resetForTest();
+    TvGlassPolicy.useBoxMemoryBudget();
+    addTearDown(() => TvGlassPolicy.debugSetCapable(false));
+    expect(TvGlassPolicy.capable, isFalse);
+    BoxMemoryBudget.note(totalMb: 4096, lowRam: false);
+    expect(TvGlassPolicy.capable, isTrue);
+    BoxMemoryBudget.note(totalMb: 4096, lowRam: true);
+    expect(TvGlassPolicy.capable, isFalse);
+  });
+
   tearDown(BoxMemoryBudget.resetForTest);
 
   test('seuils historiques : low RAM, 1 Go, 2 Go, au-delà', () {

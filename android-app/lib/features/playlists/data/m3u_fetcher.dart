@@ -37,6 +37,7 @@ import 'm3u_parser.dart' show M3uParser;
 import '../../../core/app/novatube_tv_edition.dart';
 import '../domain/source_import_problem.dart';
 import 'import_progress.dart';
+import 'catalog_http.dart';
 import 'playlist_import_limits.dart';
 
 abstract final class M3uFetcher {
@@ -170,19 +171,17 @@ abstract final class M3uFetcher {
           // Connection) avec un code maison (ex. « 884 »), MÊME avec un UA de
           // navigateur. NB : on ne force PAS d'Accept-Encoding (dart:io ajoute
           // « gzip » tout seul et décompresse automatiquement).
-          final http.Request req = http.Request('GET', Uri.parse(url))
-            ..followRedirects = true
-            ..headers.addAll(<String, String>{
+          final http.StreamedResponse resp = await sendCatalogGet(
+              client, Uri.parse(url), <String, String>{
               'User-Agent': ua,
               'Accept': '*/*',
               'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
               'Connection': 'keep-alive',
-            });
-          final http.StreamedResponse resp =
-              await client.send(req).timeout(t.headers);
+            }, t.headers);
           headersSeen = true;
 
           if (resp.statusCode != 200) {
+            await resp.stream.listen(null).cancel();
             // Serveur qui refuse cette signature (souvent 403 / 401 /
             // un code maison comme 884). On essaie la signature suivante.
             lastError = kNovatubeTv
@@ -196,12 +195,12 @@ abstract final class M3uFetcher {
           // kMaxM3uBytes → on ne charge JAMAIS une source géante d'un bloc en
           // RAM (cause racine OOM box faibles). Dépassement → PlaylistImportTooLarge.
           final Uint8List bytes = await _readCapped(
-            resp.stream,
+            catalogBody(resp.stream, t.total),
             kMaxM3uBytes,
             idle: t.idle,
             onBytes: (int n) => received = n,
             onFirstLines: onFirstLines,
-          ).timeout(t.total);
+          ).timeout(t.total); // Borne aussi le rappel applicatif du premier lot.
           // Sniff sur les 64 premiers Ko (Latin-1 : ne lève jamais) — assez
           // pour voir #EXTM3U / #EXTINF / une URL, sans décoder 60 Mo ici.
           final int sniffLen = bytes.length < 65536 ? bytes.length : 65536;
@@ -319,23 +318,21 @@ abstract final class M3uFetcher {
         int received = 0;
         final Stopwatch sw = Stopwatch()..start();
         try {
-          final http.Request req = http.Request('GET', Uri.parse(url))
-            ..followRedirects = true
-            ..headers.addAll(<String, String>{
+          final http.StreamedResponse resp = await sendCatalogGet(
+              client, Uri.parse(url), <String, String>{
               'User-Agent': ua,
               'Accept': '*/*',
               'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
               'Connection': 'keep-alive',
-            });
-          final http.StreamedResponse resp =
-              await client.send(req).timeout(t.headers);
+            }, t.headers);
           headersSeen = true;
           if (resp.statusCode != 200) {
+            await resp.stream.listen(null).cancel();
             lastError = Exception('HTTP ${resp.statusCode} sur $host');
             continue;
           }
           sink = target.openWrite();
-          final Stream<List<int>> guarded = resp.stream.timeout(
+          final Stream<List<int>> guarded = catalogBody(resp.stream, t.total).timeout(
             t.idle,
             onTimeout: (EventSink<List<int>> out) {
               out.addError(TimeoutException(
@@ -343,19 +340,16 @@ abstract final class M3uFetcher {
               out.close();
             },
           );
-          await () async {
-            await for (final List<int> chunk in guarded) {
-              received += chunk.length;
-              if (received > maxBytes) {
-                throw PlaylistImportTooLarge(
-                  'Le M3U dépasse ${maxBytes ~/ (1024 * 1024)} Mo : '
-                  'Cinéma ne peut pas le lire en entier.',
-                );
-              }
-              sink!.add(chunk);
+          await sink.addStream(guarded.map((chunk) {
+            received += chunk.length;
+            if (received > maxBytes) {
+              throw PlaylistImportTooLarge(
+                'Le M3U dépasse ${maxBytes ~/ (1024 * 1024)} Mo : '
+                'Cinéma ne peut pas le lire en entier.',
+              );
             }
-          }()
-              .timeout(t.total);
+            return chunk;
+          }));
           await sink.flush();
           await sink.close();
           sink = null;

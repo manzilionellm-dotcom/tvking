@@ -107,6 +107,10 @@ abstract final class M3uParser {
     final List<Channel> channels = <Channel>[];
     final List<String> warnings = <String>[];
 
+    int lineNumber = 0;
+    int ignored = 0;
+    const sampleLimit = 16;
+
     // ----- Normalisation préalable -----
 
     // Strip BOM UTF-8 si présent (commun sur les exports Windows).
@@ -137,6 +141,7 @@ abstract final class M3uParser {
     String? pendingGroup; // #EXTGRP: hors EXTINF
 
     do {
+      lineNumber++;
       final String raw = lines.current;
       final String line = raw.trim();
 
@@ -156,29 +161,17 @@ abstract final class M3uParser {
 
       // ----- Directives connues -----
 
-      if (line.toUpperCase().startsWith('#EXTM3U')) {
-        // Header initial — peut aussi contenir des attributs
-        // globaux qu'on ignore pour l'instant.
-        continue;
-      }
-
-      if (line.toUpperCase().startsWith('#EXTINF:')) {
-        final _ExtInf parsed = _parseExtInf(line);
-        pendingAttrs = parsed.attrs;
-        pendingName = parsed.name;
-        continue;
-      }
-
-      if (line.toUpperCase().startsWith('#EXTGRP:')) {
-        // Group title sur ligne séparée — s'applique à la
-        // prochaine chaîne (M3U_PLUS variant).
-        pendingGroup = line.substring('#EXTGRP:'.length).trim();
-        continue;
-      }
-
-      // Ignorer silencieusement toutes les autres directives
-      // (#EXTVLCOPT, #KODIPROP, #EXT-X-*, commentaires).
       if (line.startsWith('#')) {
+        // Comparer uniquement le préfixe : les URL et les métadonnées
+        // longues n'ont jamais besoin d'une copie entière en majuscules.
+        final prefix = line.substring(0, line.length < 8 ? line.length : 8).toUpperCase();
+        if (prefix == '#EXTINF:') {
+          final parsed = _parseExtInf(line);
+          pendingAttrs = parsed.attrs;
+          pendingName = parsed.name;
+        } else if (prefix == '#EXTGRP:') {
+          pendingGroup = line.substring(8).trim();
+        }
         continue;
       }
 
@@ -188,8 +181,11 @@ abstract final class M3uParser {
       // dans sa playlist. media_kit gère http/https/rtmp/udp.
       final bool looksLikeUrl = _looksLikeUrl(line);
       if (!looksLikeUrl) {
-        warnings.add('Ligne ignorée (pas une URL valide) : '
-            '${line.length > 80 ? "${line.substring(0, 80)}…" : line}');
+        // Un catalogue corrompu peut contenir des millions de lignes.
+        // Garder quelques positions suffit et ne copie aucun identifiant.
+        if (++ignored <= sampleLimit) {
+          warnings.add('Ligne $lineNumber ignorée (pas une URL valide).');
+        }
         continue;
       }
 
@@ -258,6 +254,10 @@ abstract final class M3uParser {
       pendingGroup = null;
     } while (lines.moveNext());
 
+    if (ignored > sampleLimit) {
+      warnings.add('${ignored - sampleLimit} autres lignes ignorées.');
+    }
+
     if (kDebugMode) {
       debugPrint(
         '[M3uParser] ${channels.length} chaînes parsées, '
@@ -304,51 +304,51 @@ abstract final class M3uParser {
   ///   #EXTINF:-1 tvg-id=x tvg-logo=http://y/z.png,Canal+    ← sans quote
   ///   #EXTINF:-1,Canal+                                      ← sans attrs
   static _ExtInf _parseExtInf(String line) {
-    // Couper à la 1ère virgule HORS guillemets pour séparer
-    // les attributs du nom de chaîne.
-    final int splitIndex = _findNameSeparatorIndex(line);
-    final String head =
-        splitIndex >= 0 ? line.substring(0, splitIndex) : line;
-    final String name = splitIndex >= 0
-        ? line.substring(splitIndex + 1).trim()
-        : '';
-
-    final Map<String, String> attrs = <String, String>{};
-
-    // Pattern 1 : `key="value"` ou `key='value'` (le plus standard)
-    final RegExp quoted =
-        RegExp(r'''([a-zA-Z0-9_\-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')''');
-    for (final RegExpMatch m in quoted.allMatches(head)) {
-      final String key = m.group(1)!.toLowerCase();
-      final String value = m.group(2) ?? m.group(3) ?? '';
-      attrs[key] = value;
-    }
-
-    // Pattern 2 : `key=value` sans guillemets, valeur jusqu'au prochain
-    // espace. On ne le tente QUE si rien n'a été matché par le pattern
-    // 1 — pour éviter de re-matcher des fragments d'attribut quoted.
-    if (attrs.isEmpty) {
-      final RegExp unquoted = RegExp(r'([a-zA-Z0-9_\-]+)=([^\s,]+)');
-      for (final RegExpMatch m in unquoted.allMatches(head)) {
-        attrs[m.group(1)!.toLowerCase()] = m.group(2)!;
+    const comma = 0x2c;
+    const equals = 0x3d;
+    const space = 0x20;
+    const singleQuote = 0x27;
+    const doubleQuote = 0x22;
+    final attrs = <String, String>{};
+    int i = 8; // Après « #EXTINF: ».
+    while (i < line.length) {
+      final code = line.codeUnitAt(i);
+      if (code == comma) {
+        return _ExtInf(attrs: attrs, name: line.substring(i + 1).trim());
       }
+      if (code <= space || code == equals) {
+        i++;
+        continue;
+      }
+      final start = i;
+      while (i < line.length) {
+        final c = line.codeUnitAt(i);
+        if (c <= space || c == comma || c == equals) break;
+        i++;
+      }
+      final end = i;
+      while (i < line.length && line.codeUnitAt(i) <= space) {
+        i++;
+      }
+      // Durée ou champ isolé, sans signe égal.
+      if (i == line.length || line.codeUnitAt(i) != equals) continue;
+      i++;
+      while (i < line.length && line.codeUnitAt(i) <= space) {
+        i++;
+      }
+      final quote = i < line.length ? line.codeUnitAt(i) : 0;
+      final quoted = quote == doubleQuote || quote == singleQuote;
+      if (quoted) i++;
+      final valueStart = i;
+      while (i < line.length) {
+        final c = line.codeUnitAt(i);
+        if (quoted ? c == quote : c <= space || c == comma) break;
+        i++;
+      }
+      attrs[line.substring(start, end).toLowerCase()] = line.substring(valueStart, i);
+      if (quoted && i < line.length) i++;
     }
-
-    return _ExtInf(attrs: attrs, name: name);
-  }
-
-  /// Trouve l'index de la virgule "vraie" (séparateur attrs/nom),
-  /// en ignorant celles dans les guillemets " ou '.
-  static int _findNameSeparatorIndex(String line) {
-    bool inDouble = false;
-    bool inSingle = false;
-    for (int i = 0; i < line.length; i++) {
-      final String c = line[i];
-      if (c == '"' && !inSingle) inDouble = !inDouble;
-      if (c == "'" && !inDouble) inSingle = !inSingle;
-      if (c == ',' && !inDouble && !inSingle) return i;
-    }
-    return -1;
+    return _ExtInf(attrs: attrs, name: '');
   }
 }
 

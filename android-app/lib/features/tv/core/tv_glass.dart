@@ -20,6 +20,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../../core/app/box_memory_budget.dart';
 import 'tv_app_tokens.dart';
 import 'tv_tokens.dart';
 
@@ -27,13 +28,19 @@ import 'tv_tokens.dart';
 /// n'a pas lu la RAM : le doute profite à la fluidité.
 abstract final class TvGlassPolicy {
   static bool _capable = false;
-  static bool get capable => _capable;
+  static bool _useBoxBudget = false;
+  static bool get capable =>
+      _useBoxBudget ? BoxMemoryBudget.current == BoxRamTier.roomy : _capable;
+
+  // Le résultat de l'appel initial peut arriver après le premier écran.
+  static void useBoxMemoryBudget() => _useBoxBudget = true;
 
   static const MethodChannel _device =
       MethodChannel('com.manzilionellm.tvking/device');
 
   /// Même canal que le réglage du cache d'images. Best-effort.
   static Future<void> load() async {
+    _useBoxBudget = false;
     try {
       final Object? raw = await _device.invokeMethod<Object?>('getMemoryInfo');
       if (raw is! Map) return;
@@ -47,11 +54,14 @@ abstract final class TvGlassPolicy {
 
   static bool allowsBlur(BuildContext context) {
     if (MediaQuery.disableAnimationsOf(context)) return false;
-    return _capable;
+    return capable;
   }
 
   /// Tests : force la décision sans canal natif.
-  static void debugSetCapable(bool value) => _capable = value;
+  static void debugSetCapable(bool value) {
+    _useBoxBudget = false;
+    _capable = value;
+  }
 }
 
 /// Panneau de verre. [blur] null = la politique (coupée sur box lente).

@@ -45,6 +45,7 @@ import '../../../core/app/repair_flags.dart';
 import '../../../core/blackbox/black_box.dart';
 import '../../channels/domain/channel.dart';
 import 'import_progress.dart';
+import 'catalog_http.dart';
 import '../../player/data/player_settings.dart';
 import '../../vod/domain/vod_movie.dart';
 import 'json_array_stream.dart';
@@ -562,39 +563,31 @@ class XtreamClient {
     Object? lastError;
     for (final String ua in _candidateUserAgents()) {
       try {
-        final http.Request req = http.Request('GET', uri)
-          ..followRedirects = true
-          ..headers.addAll(<String, String>{
+        final http.StreamedResponse resp = await sendCatalogGet(
+              _http, uri, <String, String>{
             'Accept': 'application/json',
             'User-Agent': ua,
             // En-têtes « complets » façon navigateur — certains fronts
             // CDN bloquent les requêtes trop nues (cf. m3u_fetcher).
             'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
             'Connection': 'keep-alive',
-          });
-        final http.StreamedResponse resp =
-            await _http.send(req).timeout(_timeout);
+          }, _timeout);
         if (resp.statusCode == 200) {
           _workingUserAgent = ua;
           // [idleTimeout] (bouquet entier) : délai d'INACTIVITÉ — tant que
           // des octets arrivent, on continue (24 Mo à 5 Mbit/s ≈ 40 s) —
           // borné par une durée max. Sinon (petites réponses) : délai total.
-          final Stream<List<int>> body =
-              idleTimeout ? resp.stream.timeout(_timeout) : resp.stream;
-          final Future<Uint8List?> read = _readCapped(
-            body,
+          final body = catalogBody(resp.stream,
+              idleTimeout ? kXtreamSingleShotMaxDuration : _timeout);
+          return await _readCapped(
+            idleTimeout ? body.timeout(_timeout) : body,
             kMaxXtreamJsonBytes,
             softMax: softMax,
             onBytes: onBytes,
             onPrefix: onPrefix,
-            // Le `.timeout` ci-dessous abandonne l'attente, pas la lecture :
-            // sans cette borne, un bloc lent mais continu continuait de se
-            // télécharger en mémoire PENDANT le repli par catégorie.
-            maxDuration: idleTimeout ? kXtreamSingleShotMaxDuration : null,
           );
-          return await read
-              .timeout(idleTimeout ? kXtreamSingleShotMaxDuration : _timeout);
         }
+        await resp.stream.listen(null).cancel();
         lastError = kNovatubeTv && (resp.statusCode == 401 || resp.statusCode == 403)
             ? SourceImportProblem.denied : XtreamException(
           'Erreur HTTP ${resp.statusCode} sur ${uri.host}',
@@ -622,20 +615,13 @@ class XtreamClient {
       Stream<List<int>> stream, int maxBytes,
       {int? softMax,
       void Function(int received)? onBytes,
-      void Function(Uint8List)? onPrefix,
-      Duration? maxDuration}) async {
+      void Function(Uint8List)? onPrefix}) async {
     // On ne conserve jamais plus de 16 Kio en plus du corps déjà borné.
     final BytesBuilder? prefix = onPrefix == null ? null : BytesBuilder();
     bool sent = false;
     final BytesBuilder builder = BytesBuilder(copy: false);
-    final Stopwatch clock = Stopwatch()..start();
     int total = 0;
     await for (final List<int> chunk in stream) {
-      // Durée max dépassée : l'exception sort de la boucle, ce qui annule
-      // l'abonnement et ferme la connexion (comme le plafond souple).
-      if (maxDuration != null && clock.elapsed > maxDuration) {
-        throw TimeoutException('bouquet entier trop long', maxDuration);
-      }
       total += chunk.length;
       onBytes?.call(total); // progression « Téléchargement… x Mo » (limitée côté bus)
       // Plafond souple : on arrête de lire (le `return` annule l'abonnement →

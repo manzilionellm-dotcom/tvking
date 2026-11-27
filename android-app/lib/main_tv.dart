@@ -67,7 +67,10 @@ import 'features/tv/presentation/tv_app.dart';
 /// « test » pour la box de test (voir build-zuno-tv.yml).
 const String kZunoUpdateChannel = String.fromEnvironment('ZUNO_UPDATE_CHANNEL');
 
-void main() => runGuarded(bootstrapZunoTv);
+void main() => runGuarded(
+      bootstrapZunoTv,
+      preloadMemory: !(kNovatubeTv && Platform.isAndroid),
+    );
 
 /// « fr » / « en » / … pour le choix de piste. Suit le réglage de l'app,
 /// ou la langue de la TV si le réglage est « Système ».
@@ -250,7 +253,13 @@ Future<void> bootstrapZunoTv({Widget Function(Widget app)? wrap}) async {
   await StartupTrace.step('ambient', TvAmbientDirector.instance.load);
   // Flou du verre : seulement si la box a de la RAM. Sinon le voile
   // translucide suffit (pas de BackdropFilter).
-  await StartupTrace.step('glass', TvGlassPolicy.load);
+  // NovaTube Android a déjà lancé getMemoryInfo avec un plafond de 300 ms.
+  // Un deuxième appel avant runApp pouvait bloquer le premier écran.
+  if (kNovatubeTv && Platform.isAndroid) {
+    TvGlassPolicy.useBoxMemoryBudget();
+  } else {
+    await StartupTrace.step('glass', TvGlassPolicy.load);
+  }
   await StartupTrace.step('look', TvLook.instance.load);
   // Profil : après le boot, le canal des préférences est libre.
   // Plafond 500 ms, comme avant. Défaut synchrone = profil 1.
