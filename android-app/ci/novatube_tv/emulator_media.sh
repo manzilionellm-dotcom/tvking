@@ -151,17 +151,20 @@ result['anchors_boottime_bounds_logcat_ms']=anchors
 VERIFY
 
 step "Aller-retour répété entre HLS et TS progressif"
+first_epoch=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["epoch"])' "$out/preuve-rendu.json")
 for n in 1 2 3 4; do
   pos=$(wc -l < "$out/serveur-local.txt")
-  adb -s "$serial" logcat -c
-  adb -s "$serial" shell input keyevent KEYCODE_CHANNEL_DOWN
-  for k in $(seq 1 30); do
-    adb -s "$serial" logcat -d --pid="$pid" -v monotonic -s NovaTubeQA:I flutter:I | grep NovaTubeQA > "$out/zap-$n.log" || true
-    if grep -q 'action=zap_key outcome=first_frame .*view=' "$out/zap-$n.log"; then break; fi
-    sleep .5
+  expected=$((first_epoch+n))
+  label="OWNER_ZAP_${n}_START"
+  adb -s "$serial" shell "log -t NovaDriver $label; input keyevent KEYCODE_CHANNEL_DOWN"
+  for k in $(seq 1 60); do
+    adb -s "$serial" logcat -d -v monotonic -s NovaTubeQA:I flutter:I NovaDriver:I | awk -v mark="$label" 'index($0,mark){seen=1}seen' > "$out/zap-$n.log" || true
+    if grep -Eq "action=zap_key outcome=first_frame .* epoch=$expected render_ms=" "$out/zap-$n.log"; then break; fi
+    sleep .4
   done
   tail -n "+$((pos+1))" "$out/serveur-local.txt" > "$out/zap-$n-http.txt"
   shot "zap-$n"
+  grep -Eq "action=zap_key outcome=first_frame .* epoch=$expected render_ms=" "$out/zap-$n.log"
 done
 python3 - "$out" <<'ZAPVERIFY'
 import json,re,sys

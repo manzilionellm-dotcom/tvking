@@ -2,7 +2,7 @@ name: NovaTube audit Android 11 (mires uniquement)
 
 on:
   push:
-    branches: ['qa/novatube-propriete-android-20261127']
+    branches: ['qa/novatube-propriete-epochs-20261127']
 
 permissions:
   contents: read
@@ -137,7 +137,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: novatube-propriete-android-${{ github.sha }}
+          name: novatube-propriete-epochs-${{ github.sha }}
           path: artifacts/emulateur/
           if-no-files-found: warn
           retention-days: 14
