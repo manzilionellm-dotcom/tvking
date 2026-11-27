@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
+trap 'echo "public-hour failed during Android preparation at line $LINENO, status $?"' ERR
 work="$PWD/android-app/ci/novatube_tv"
 out="$PWD/hourly-public"
 mkdir -p "$out"
@@ -32,9 +33,24 @@ for n in $(seq 1 60); do
     sleep 2
 done
 test -s "$out/leanback.txt"
-adb shell wm size 1920x1080
-adb shell svc power stayon true
-adb shell input keyevent 82
+retry_shell() {
+  for attempt in $(seq 1 20); do
+    if timeout 12 adb -s emulator-5554 shell "$@"; then return 0; fi
+    timeout 6 adb reconnect offline || true
+    sleep 3
+  done
+  return 1
+}
+echo 'Waiting for package, activity and window services'
+for svc in package activity window; do
+  for attempt in $(seq 1 50); do
+    if timeout 8 adb shell service check "$svc" | grep -q ': found'; then break; fi
+    sleep 2
+  done
+done
+retry_shell wm size 1920x1080
+retry_shell svc power stayon true
+retry_shell input keyevent 82
 test -z "$(adb reverse --list)"
 
 adb shell cat /proc/meminfo | sed -n '1p' > "$out/client-memory.txt"
@@ -92,7 +108,7 @@ app="$APP"
 
     export OMP_THREAD_LIMIT=1
     test -z "$(adb reverse --list)"
-    adb shell am start -W -n "$pkg/$activity" > "$RUNNER_TEMP/launch.txt"
+    retry_shell am start -W -n "$pkg/$activity" > "$RUNNER_TEMP/launch.txt"
     sleep 17
     private="$RUNNER_TEMP/public-onboarding"
     mkdir -p "$private"
