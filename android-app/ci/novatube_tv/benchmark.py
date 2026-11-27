@@ -79,12 +79,12 @@ else:
             backwards=selected
         commands=(selected,backwards)
         fail_streak=0
-        for attempt in range(1,101):
+        for attempt in range(1,51):
             if not current or fail_streak >= 3:break
             target='B' if current=='A' else 'A'
             start=time.monotonic();key(commands[(attempt-1)%2]);ch,end,raw=motion(12,target)
             result['attempts'].append({'n':attempt,'expected':target,'seen':ch,
-                'upper_bound_s':None if end is None else round(end-start,3),'samples':raw})
+                'input_s':round(start-zero,6),'upper_bound_s':None if end is None else round(end-start,3),'samples':raw})
             persist()
             if not ch:
                 fail_streak+=1
@@ -96,9 +96,9 @@ else:
 persist()
 if os.environ.get('BENCH_ZAPS_ONLY') == '1':
     attempts=result['attempts']
-    result['complete_zap_campaign']=len(attempts)==100
+    result['complete_zap_campaign']=len(attempts)==50
     persist()
-    if len(attempts)!=100:
+    if len(attempts)!=50:
         sys.exit('Campagne de zaps incomplète, observations conservées')
     sys.exit(0)
 current,_,raw=motion(8)

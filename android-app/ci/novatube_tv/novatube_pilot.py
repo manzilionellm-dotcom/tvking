@@ -5,6 +5,7 @@ import io
 import json
 import re
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -21,10 +22,13 @@ def adb(*args, output=False, timeout=18):
 
 
 def words(path):
-    with Image.open(path) as im:
+    # Les captures RGBA de certaines images Android ont un alpha nul même
+    # lorsque le téléviseur affiche l’image. L’OCR travaille sur les trois canaux couleur.
+    with Image.open(path) as im, tempfile.NamedTemporaryFile(suffix=".png") as opaque:
         w, h = im.size
-    data = subprocess.check_output(["tesseract", str(path), "stdout", "--psm", "11", "tsv"],
-                                   stderr=subprocess.DEVNULL, text=True, timeout=18)
+        im.convert("RGB").save(opaque.name)
+        data = subprocess.check_output(["tesseract", opaque.name, "stdout", "--psm", "11", "tsv"],
+                                       stderr=subprocess.DEVNULL, text=True, timeout=45)
     result = []
     for row in csv.DictReader(io.StringIO(data), delimiter="\t"):
         text = re.sub("[^a-z0-9]", "", row["text"].lower())
