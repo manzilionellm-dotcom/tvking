@@ -62,12 +62,15 @@ with tempfile.TemporaryDirectory() as tmp:
     moving=row;(out/'mouvement.png').write_bytes(blob);break
   time.sleep(.025)
  worker.join();pid=run(['shell','pidof',pkg]).decode().strip()
- for i in range(20):
+ from decimal import Decimal
+ earliest=int(Decimal(command['bracket'].split()[0])*1000)
+ actions=[]
+ for i in range(28):
   logs=run(['logcat','-d','--pid='+pid,'-v','monotonic','-s','NovaTubeQA:I','flutter:I']).decode('utf8','replace')
-  if 'action=preview_to_full outcome=first_frame' in logs:break
+  actions=[fields for fields in re.findall(r'action=preview_to_full outcome=first_frame elapsed_ms=(\d+) view=(\d+) epoch=(\d+) render_ms=(\d+)',logs) if int(fields[3])>=earliest]
+  if actions:break
   time.sleep(.25)
  (out/'traces.txt').write_text(logs)
- actions=re.findall(r'action=preview_to_full outcome=first_frame elapsed_ms=(\d+) view=(\d+) epoch=(\d+) render_ms=(\d+)',logs)
  result={'method':method,'input':command,'snapshots':rows,'moving':bool(moving),'native_correlation':False}
  if len(actions)==1:
   duration,v,e,t=map(int,actions[0]);core=rf'view={v} epoch={e} phase='
