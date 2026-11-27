@@ -266,6 +266,10 @@ dev_dependencies:
   # de fontes, afin qu'aucun cache disque de la machine ne masque un asset absent.
   path_provider_platform_interface: ^2.1.2
 
+  # Compte les requêtes SQL réelles du lecteur dans le test de zapping.
+  # sqflite utilise déjà cette bibliothèque en production.
+  sqflite_common: ^2.5.17
+
   # Règles de lint officielles Flutter
   flutter_lints: ^4.0.0
 

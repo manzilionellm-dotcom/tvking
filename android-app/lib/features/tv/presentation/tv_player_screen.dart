@@ -141,10 +141,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   String _shownEngine = 'hardware';
   String? _engineNote;
   bool _followOn = true;
-  String? _guideTitle;
-  bool _guideFollowed = false;
+  EpgProgram? _guideProgram;
+  bool? _guideFollowed;
+  String? get _guideTitle =>
+      !_zapHolding && _guideProgram?.channelId == _current.id
+          ? _guideProgram?.title
+          : null;
   bool get _canFollow =>
-      _followOn && _guideTitle != null && _guideTitle!.trim().isNotEmpty;
+      _followOn &&
+      _guideFollowed != null &&
+      (_guideTitle?.trim().isNotEmpty ?? false);
   bool get _showStart => _missed?.canRewind == true || _catchup;
   bool _canTimeshift = false;
   DateTime? _livePausedAt;
@@ -1321,13 +1327,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final int gen = ++_missedGen;
     final String id = _current.id;
     final Channel channel = _current;
-    if (mounted) setState(() => _missed = null);
+    setState(() {
+      _missed = null;
+      _guideProgram = null;
+      _guideFollowed = null;
+    });
     unawaited(() async {
       try {
         final EpgProgram? program = await EpgRepository.instance.currentProgram(
           id,
         );
         if (!mounted || gen != _missedGen || _current.id != id) return;
+        // Le bandeau et les commandes utilisent la même lecture du guide.
+        setState(() => _guideProgram = program);
+        TvAmbientDirector.instance.noteEpg(program?.category);
         final String title = program?.title.trim() ?? '';
         bool followed = false;
         try {
@@ -1358,9 +1371,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             );
           }
         } catch (_) {}
-        if (!mounted || gen != _missedGen) return;
+        if (!mounted || gen != _missedGen || _current.id != id) return;
         setState(() {
-          _guideTitle = title.isEmpty ? null : title;
           _guideFollowed = followed;
           _missed = summary;
         });
@@ -1368,8 +1380,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         if (mounted && gen == _missedGen) {
           setState(() {
             _missed = null;
-            _guideTitle = null;
-            _guideFollowed = false;
+            _guideFollowed = null;
           });
         }
       }
@@ -1575,13 +1586,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   Future<void> _toggleFollow() async {
-    final String? title = _guideTitle;
-    if (title == null || title.isEmpty) return;
+    final String? title = _guideTitle?.trim();
+    if (!_canFollow || title == null || title.isEmpty) return;
+    final int gen = _missedGen;
     final bool now = await FollowedLog.instance.togglePin(
       title: title,
       channelId: _current.id,
     );
-    if (!mounted) return;
+    if (!mounted || gen != _missedGen || _zapHolding) return;
     final String code = Localizations.localeOf(context).languageCode;
     setState(() => _guideFollowed = now);
     _flash(
@@ -1816,6 +1828,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             ignoring: !_overlay || _pip.isInPipMode,
                             child: _ControlsBar(
                               channel: _current,
+                              guideTitle: _guideTitle,
                               qualityController: _casting ? null : _controller,
                               index: _index,
                               total: widget.channels.length,
@@ -1832,9 +1845,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                   : null,
                               followLabel: followedWord(
                                 Localizations.localeOf(context).languageCode,
-                                _guideFollowed ? 'following' : 'follow',
+                                _guideFollowed == true ? 'following' : 'follow',
                               ),
-                              followOn: _guideFollowed,
+                              followOn: _guideFollowed == true,
                               followIndex: _followBtn,
                               onStart: _showStart
                                   ? () => _activateBtn(_startBtn ?? 3)
@@ -2181,74 +2194,6 @@ class _PinnedVideoState extends State<_PinnedVideo> {
   }
 }
 
-/// Programme « maintenant » sous le nom, dans la barre du lecteur.
-/// Une requête indexée par chaîne : au zap on ne recharge que celle-ci.
-class _LiveEpgLine extends StatefulWidget {
-  const _LiveEpgLine({required this.channelId});
-  final String channelId;
-
-  @override
-  State<_LiveEpgLine> createState() => _LiveEpgLineState();
-}
-
-class _LiveEpgLineState extends State<_LiveEpgLine> {
-  Timer? _wait;
-  EpgProgram? _shown;
-
-  @override
-  void initState() {
-    super.initState();
-    _load(widget.channelId);
-  }
-
-  @override
-  void didUpdateWidget(covariant _LiveEpgLine old) {
-    super.didUpdateWidget(old);
-    if (old.channelId == widget.channelId) return;
-    // Zap rapide : on efface tout de suite le programme de la chaîne
-    // précédente (sinon il s'affiche sous le mauvais nom), et on ne
-    // requête la base qu'une fois le zapping calmé.
-    _wait?.cancel();
-    _shown = null;
-    final String id = widget.channelId;
-    _wait = Timer(const Duration(milliseconds: 200), () => _load(id));
-  }
-
-  void _load(String id) {
-    // Un guide absent ou une base occupée ne doit pas faire tomber
-    // le lecteur : on cache simplement la ligne.
-    EpgRepository.instance.currentProgram(id).then((EpgProgram? p) {
-      if (!mounted || widget.channelId != id) return;
-      setState(() => _shown = p);
-      TvAmbientDirector.instance.noteEpg(p?.category);
-    }, onError: (Object _) {});
-  }
-
-  @override
-  void dispose() {
-    _wait?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final EpgProgram? p = _shown;
-    if (p == null || p.title.trim().isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        '${context.l10n.tvEpgNow}  ·  ${p.title}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TvAppTokens.playbackOf(context).ui(
-          TvDimens.label,
-          color: TvAppTokens.playbackOf(context).accentBright,
-        ),
-      ),
-    );
-  }
-}
-
 /// Panneau de lecture moderne (façon YouTube / Netflix) : dégradé sombre en
 /// bas, infos chaîne (logo + nom + DIRECT + n° de chaîne) puis une rangée de
 /// commandes « verre » animées. À droite (« en bas ») : REC et ❤ favori.
@@ -2257,6 +2202,7 @@ class _LiveEpgLineState extends State<_LiveEpgLine> {
 class _ControlsBar extends StatelessWidget {
   const _ControlsBar({
     required this.channel,
+    required this.guideTitle,
     this.qualityController,
     required this.index,
     required this.total,
@@ -2288,6 +2234,7 @@ class _ControlsBar extends StatelessWidget {
   });
 
   final Channel channel;
+  final String? guideTitle;
   final NativeVideoController? qualityController;
   final int index;
   final int total;
@@ -2549,7 +2496,19 @@ class _ControlsBar extends StatelessWidget {
             ),
           ),
           // Programme en cours, sous le nom : le guide sans quitter l'image.
-          _LiveEpgLine(channelId: channel.id),
+          if (guideTitle?.trim().isNotEmpty ?? false)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${context.l10n.tvEpgNow}  ·  $guideTitle',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TvAppTokens.playbackOf(context).ui(
+                  TvDimens.label,
+                  color: TvAppTokens.playbackOf(context).accentBright,
+                ),
+              ),
+            ),
           const SizedBox(height: 6),
           Row(
             children: <Widget>[
