@@ -42,6 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           cp ../android-app/ci/novatube_tv/inspect_freeze_android.py android-app/ci/novatube_tv/freeze_android.py
+          cp ../android-app/ci/novatube_tv/inspect_freeze_ring.py android-app/ci/novatube_tv/freeze_ring.py
           (cd qa-apks && sha256sum -c sha256-inspect.txt)
           python3 - <<'PREP'
           from pathlib import Path
@@ -52,7 +53,17 @@ jobs:
           s,n=re.subn(r'^expected=[a-f0-9]{64}$',"expected="+sha,s,flags=re.M);assert n==1
           measure='python3 "$work/freeze_benchmark.py" "$out"'
           assert s.count(measure)==1
-          s=s.replace(measure, 'adb shell run-as "$pkg" id > "$out/run-as.txt"\nsleep 4\npython3 "$work/freeze_android.py" capture --out "$out/inspection" --package "$pkg" --reason qa_manual_measurement')
+          observe = '''adb shell run-as "$pkg" id > "$out/run-as.txt"
+          python3 "$work/freeze_ring.py" "$out" > "$out/perfetto-observer.log" 2>&1 &
+          ringpid=$!
+          touch "$out/observation-start.json"
+          sleep 18
+          touch "$out/freeze-trigger"
+          python3 "$work/freeze_android.py" capture --out "$out/inspection" --package "$pkg" --reason qa_manual_measurement
+          touch "$out/long-result.json"
+          wait "$ringpid"
+          test -s "$out/perfetto/capture-0.pftrace"'''
+          s=s.replace(measure,observe)
           p.write_text(s)
           PREP
           bash android-app/ci/novatube_tv/freeze_runner.sh
@@ -67,6 +78,10 @@ jobs:
           assert "tid" in stacks and "NovaTubeFreezeProbe" in stacks
           sql=data["sqlite"]["validation"]
           assert any(isinstance(v,dict) and v.get("quick_check")==[["ok"]] and v.get("tables") for v in sql.values()),sql.keys()
+          trace=p/"perfetto/capture-0.pftrace"; assert trace.stat().st_size > 65536,trace.stat().st_size
+          ring=[json.loads(line) for line in (p/"perfetto/events.jsonl").read_text().splitlines()]
+          assert any(e.get("reason")=="incident" and e.get("rc")==0 for e in ring),ring
+          print("Perfetto",trace.stat().st_size,"bytes",ring)
           print("Kept Java and Linux threads",len(stacks.splitlines()), "SQLite databases", len(sql))
           CHECK
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
