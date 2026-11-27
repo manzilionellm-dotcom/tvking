@@ -20,7 +20,7 @@ def command(args,timeout):
         return -1,b'',type(err).__name__
 
 
-def frame(adb,out,start):
+def frame(adb,out,start,console_fallback=True):
     def validate(data):
         if not data.startswith(b'\x89PNG\r\n\x1a\n'):raise ValueError('Image PNG absente')
         im=Image.open(io.BytesIO(data))
@@ -34,28 +34,29 @@ def frame(adb,out,start):
         except (OSError,ValueError) as e:
             err=type(e).__name__
     note={'host_monotonic':start,'guest_rc':code,'guest_error':err}
-    with tempfile.TemporaryDirectory(prefix='novatube-screen-') as folder:
-        rc,_,msg=command(adb+['emu','screenrecord','screenshot',folder],5)
-        note.update(console_rc=rc,console_error=msg)
-        for f in Path(folder).glob('*.png'):
-            try:
-                image,raw=validate(f.read_bytes())
-                note['result']='console'
-                with (out/'capture-events.jsonl').open('a') as log:
-                    log.write(json.dumps(note)+'\n')
-                return image,raw
-            except (OSError,ValueError):
-                continue
+    if console_fallback:
+        with tempfile.TemporaryDirectory(prefix='novatube-screen-') as folder:
+            rc,_,msg=command(adb+['emu','screenrecord','screenshot',folder],5)
+            note.update(console_rc=rc,console_error=msg)
+            for f in Path(folder).glob('*.png'):
+                try:
+                    image,raw=validate(f.read_bytes())
+                    note['result']='console'
+                    with (out/'capture-events.jsonl').open('a') as log:
+                        log.write(json.dumps(note)+'\n')
+                    return image,raw
+                except (OSError,ValueError):
+                    continue
     note['result']='missing'
     with (out/'capture-events.jsonl').open('a') as log:
         log.write(json.dumps(note)+'\n')
     return None,b''
 
 
-def sparse_hour(out,adb,screenshot,channel):
+def sparse_hour(out,adb,screenshot,channel,duration=3600):
     """Une heure murale et deux observateurs indépendants, sans encodeur dans le guest."""
     start=time.monotonic()
-    deadline=start+3600
+    deadline=start+duration
     package=os.getenv('BENCH_PACKAGE','com.sevenmotion.novatube.tv')
     samples=out/'hour-samples.jsonl'
     states=out/'hour-process.jsonl'

@@ -1,16 +1,22 @@
 """Pilote sur émulateur TV. Télémétrie visuelle indépendante des trois applications."""
-import csv, io, json, os, statistics, subprocess, sys, time
+import argparse, csv, io, json, math, os, statistics, subprocess, sys, time
 from pathlib import Path
 from PIL import Image
 from read_display_capture import decode
 from pilot_observer import frame, sparse_hour
 
 
-out=Path(sys.argv[1])
-adb=['adb','-s','emulator-5554']
+parser = argparse.ArgumentParser()
+parser.add_argument('output', type=Path)
+parser.add_argument('--physical-serial')
+args = parser.parse_args()
+out = args.output
+physical = bool(args.physical_serial)
+adb = ['adb', '-s', args.physical_serial or 'emulator-5554']
+planned = 100 if physical else 50
 def screenshot(name=None):
     start=time.monotonic()
-    image,raw=frame(adb,out,start)
+    image,raw=frame(adb,out,start,console_fallback=not physical)
     if image is None:return None,None,start,time.monotonic()
     if name: (out/(name+'.png')).write_bytes(raw)
     image=image.convert('L')
@@ -38,14 +44,16 @@ def key(code):
 def persist():
     (out/'pilot.json').write_text(json.dumps(result,indent=2))
 zero=time.monotonic()
-result={'region':os.environ.get('REGION_OBS','unknown'),'kind':'Android TV emulator, 1536 MiB',
+result={'region':os.environ.get('REGION_OBS','unknown'),'kind':'Android TV physique' if physical else 'Android TV emulator, 1536 MiB',
         'method':'host input dispatch to confirmation of two successive decoded screen markers; upper bound',
         'attempts':[],'probe':[]}
 current,_,data=motion(12)
 result['onboarding_motion']={'channel':current,'samples':data}
 persist();screenshot('onboarding-result')
 if not current: sys.exit('Aucune première image animée identifiée après import')
-if os.environ.get('BENCH_SKIP_VERIFIED_ZAPS') == '1':
+if physical and current != 'A':
+    sys.exit('Ouvrir Mire A en plein écran avant de commencer la calibration.')
+if not physical and os.environ.get('BENCH_SKIP_VERIFIED_ZAPS') == '1':
     result['zap_status']='déjà mesuré par la campagne référencée'
     result['zap_source_run']=os.environ.get('BENCH_PRIOR_ZAPS_RUN','')
 else:
@@ -79,7 +87,7 @@ else:
             backwards=selected
         commands=(selected,backwards)
         fail_streak=0
-        for attempt in range(1,51):
+        for attempt in range(1,planned+1):
             if not current or fail_streak >= 3:break
             target='B' if current=='A' else 'A'
             start=time.monotonic();key(commands[(attempt-1)%2]);ch,end,raw=motion(12,target)
@@ -94,6 +102,32 @@ else:
                 fail_streak=0
         print('ZAPS',len(result['attempts']),flush=True)
 persist()
+if physical:
+    # Les tentatives sans mouvement confirmé restent dans le dénominateur.
+    attempts = result['attempts']
+    measured = sorted(row['upper_bound_s'] for row in attempts if row['upper_bound_s'] is not None)
+    rank = math.ceil(0.95 * planned)
+    result['zap_summary'] = {
+        'planned': planned, 'attempted': len(attempts), 'confirmed': len(measured),
+        'under_3_s': sum(delay < 3 for delay in measured),
+        'p95_s': measured[rank - 1] if len(attempts) == planned and len(measured) >= rank else None,
+    }
+    persist()
+    if len(attempts) != planned:
+        sys.exit('Série interrompue, tentatives brutes conservées.')
+    current, _, _ = motion(12)
+    if not current:
+        sys.exit('Mire en mouvement absente avant la lecture continue.')
+    result['reading'] = sparse_hour(out, adb, screenshot, current, duration=4800)
+    # Vérifier le sens du compteur et conserver toute capture illisible.
+    rows = [json.loads(line) for line in (out / 'hour-samples.jsonl').read_text().splitlines()]
+    forward = sum(a['channel'] == b['channel'] == current
+                  and 0 < (b['frame'] - a['frame']) % (1 << 20) < (1 << 19)
+                  for a, b in zip(rows, rows[1:]))
+    result['forward_pairs'] = forward
+    result['all_sampled_pairs_moved'] = len(rows) > 1 and forward == len(rows) - 1
+    persist()
+    sys.exit(0)
 if os.environ.get('BENCH_ZAPS_ONLY') == '1':
     attempts=result['attempts']
     result['complete_zap_campaign']=len(attempts)==50
