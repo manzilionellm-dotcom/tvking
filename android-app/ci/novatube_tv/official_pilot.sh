@@ -15,6 +15,9 @@ if [[ -n "$uri" ]]; then
  curl -fLsS --retry 2 "$uri" -o "$RUNNER_TEMP/pilot.apk"
  echo "$digest  $RUNNER_TEMP/pilot.apk" | sha256sum -c -
 fi
+if [[ "$APP" == novatube && -z "$uri" ]]; then
+  echo "3dc5440dd3edd2ab057dc355ac0d35ea5ac8fbd6435546f9991233c201493dd5  $RUNNER_TEMP/pilot.apk" | sha256sum -c -
+fi
 sha256sum "$RUNNER_TEMP/pilot.apk" | cut -d' ' -f1 > "$out/apk.sha256"
 if [[ "$APP" == novatube ]]; then
  (cd atlas/android-app/cloudflare && npm ci --no-audit --no-fund)
@@ -68,7 +71,7 @@ printf '%s\n' "$REGION_OBS" > "$out/runner-region.txt"
 curl -fsS --max-time 6 https://www.cloudflare.com/cdn-cgi/trace | sed -nE '/^(loc|colo)=/p' > "$out/egress-country.txt" || true
 export BENCH_PACKAGE="$pkg"
 case "$APP" in
-  novatube) export BENCH_SKIP_VERIFIED_ZAPS=1 BENCH_PRIOR_ZAPS_RUN=46004506404 ;;
+  novatube) export BENCH_ZAPS_ONLY=1 ;;
   televizo) export BENCH_SKIP_VERIFIED_ZAPS=1 BENCH_PRIOR_ZAPS_RUN=46007134467 ;;
 esac
 python3 "$work/${APP}_pilot.py" "$out"

@@ -94,6 +94,13 @@ else:
                 fail_streak=0
         print('ZAPS',len(result['attempts']),flush=True)
 persist()
+if os.environ.get('BENCH_ZAPS_ONLY') == '1':
+    attempts=result['attempts']
+    result['complete_zap_campaign']=len(attempts)==100
+    persist()
+    if len(attempts)!=100:
+        sys.exit('Campagne de zaps incomplète, observations conservées')
+    sys.exit(0)
 current,_,raw=motion(8)
 if not current: sys.exit('Aucun mouvement vérifié avant la lecture continue')
 from extended import hour,recover
