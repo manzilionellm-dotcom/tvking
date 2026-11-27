@@ -1,0 +1,58 @@
+name: NovaTube — gel après 57 minutes sur Android TV
+on:
+  push:
+    branches: ['qa/novatube-gel-5753-*']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  longue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [historique-a, historique-b, stable, loss, memoire, direct, candidat]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 77ce78f49b65f674e8493e8573a6dcc7b62eae6d
+          path: atlas
+          persist-credentials: false
+          sparse-checkout: android-app/cloudflare
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: APK historique du gel, SHA contrôlé avant installation
+        if: matrix.scenario != 'candidat'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46002079321
+          name: novatube-emulateur-apk-2e018b0ffe4bd41f53995ec5e336f9e0ed113221
+          path: qa-apks
+      - name: APK final de la PR, SHA contrôlé avant installation
+        if: matrix.scenario == 'candidat'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46010144518
+          name: novatube-emulateur-apk-52e2b794383e097607c0d5b12dd722b5cdbcf370
+          path: qa-apks
+      - name: Lire 70 minutes et conserver les observations indépendantes
+        env:
+          APP: novatube
+          FREEZE_SCENARIO: ${{ matrix.scenario }}
+          FREEZE_DURATION: '4200'
+        run: bash android-app/ci/novatube_tv/freeze_runner.sh
+      - name: Conserver les traces, y compris après incident
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: gel-5753-${{ matrix.scenario }}-${{ github.run_id }}
+          path: pilot-results
+          retention-days: 14
