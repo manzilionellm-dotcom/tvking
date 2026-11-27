@@ -48,7 +48,7 @@ for trial in range(4):
     remote=f'/data/misc/perfetto-traces/nt_freeze_{trial}.pftrace'
     out=dst/f'capture-{trial}.pftrace'
     with (dst/f'command-{trial}.log').open('ab') as log:
-        launch=call(['shell','perfetto','--txt','--background-wait','-c',remote_cfg,'-o',remote],16)
+        launch=call(['shell',f'cat {remote_cfg} | perfetto --txt --background-wait -c - -o {remote}'],16)
         log.write(launch.stdout + launch.stderr)
         record(phase='armed',trial=trial,rc=launch.returncode)
         if launch.returncode:break
