@@ -37,6 +37,8 @@ class FavoritesRepository {
   /// Base pour laquelle le schéma est prêt (06/10/2026 : le drapeau était
   /// global au processus ; une base rouverte — tests — restait sans table).
   Database? _initializedFor;
+  // Accueil, Direct et lecteur peuvent demander la même base en parallèle.
+  final _opening = Expando<Future<void>>();
   bool get _initialized => _initializedFor != null;
   bool _listening = false;
 
@@ -46,11 +48,19 @@ class FavoritesRepository {
   Future<void> initialize() async {
     final Database db = await PlaylistDatabase.instance.database;
     if (identical(_initializedFor, db)) return;
-    await _ensureSchema(db);
-    await _migrateLegacyOnce(db);
-    _initializedFor = db;
-    _listenProfile();
-    await _reload();
+    await (_opening[db] ??= _initializeFor(db));
+  }
+
+  Future<void> _initializeFor(Database db) async {
+    try {
+      await _ensureSchema(db);
+      await _migrateLegacyOnce(db);
+      await _reload();
+      _initializedFor = db;
+      _listenProfile();
+    } finally {
+      _opening[db] = null;
+    }
   }
 
   Future<void> _ensureSchema(Database db) async {

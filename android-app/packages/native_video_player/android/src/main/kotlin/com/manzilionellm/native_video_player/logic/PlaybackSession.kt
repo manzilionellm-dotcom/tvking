@@ -19,4 +19,8 @@ class PlaybackSession {
     }
 
     fun isCurrent(token: Int): Boolean = token > 0 && token == generation
+
+    // Un événement déjà en file peut être livré après le changement de média.
+    fun acceptsRendererEvent(mediaToken: Int?, openedAtMs: Long, producedAtMs: Long): Boolean =
+        mediaToken != null && isCurrent(mediaToken) && openedAtMs > 0 && producedAtMs >= openedAtMs
 }

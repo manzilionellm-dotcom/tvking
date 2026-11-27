@@ -122,6 +122,9 @@ class NovatubeAtlas {
     }
   }
 
+  /// Masque du format serveur, identique quelle que soit la langue de la box.
+  static const String accessCodeMask = 'NVMAX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX';
+
   /// Les codes sont saisis ou collés. On tolère la casse et les espaces
   /// autour, mais on ne corrige pas un caractère ambigu à la place du client.
   /// Ce format n'accorde aucun accès : seul le serveur peut accepter le code.

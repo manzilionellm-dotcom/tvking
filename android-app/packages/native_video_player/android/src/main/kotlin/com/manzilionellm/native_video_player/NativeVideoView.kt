@@ -34,6 +34,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Timeline
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
@@ -397,6 +398,7 @@ class NativeVideoView(
 
     // Jeton de CETTE vue. Un callback n'agit que s'il porte le dernier.
     private val sessions = PlaybackSession()
+    private val rendererWindow = Timeline.Window()
 
     // Horodatage du dernier silence / zap. Un événement Analytics plus
     // vieux que ça décrit l'ancienne chaîne : on le jette.
@@ -404,6 +406,10 @@ class NativeVideoView(
 
     // Epoch Dart du setUrl en cours (accusé). null = pas un setUrl.
     private var dartEpoch: Int? = null
+    private val qaViewId = id
+    private var qaPhases = false
+    private var qaDecoderReadyAt = 0L
+    private var qaFirstFrameSeen = false
 
     // Langue audio demandée par l'app pour cette lecture.
     private var prefAudio: String? = null
@@ -1418,6 +1424,7 @@ class NativeVideoView(
                 // événement né après le silence porte un horodatage neuf.
                 val epoch = call.argument<Number>("epoch")?.toInt()
                 dartEpoch = epoch
+                qaPhases = call.argument<Boolean>("qaPhases") == true
                 val url = call.argument<String>("url")
                 if (url.isNullOrEmpty()) {
                     result.error("no_url", "setUrl appelé sans url", null)
@@ -1841,14 +1848,20 @@ class NativeVideoView(
 
     // ---- natif → Dart (AnalyticsListener) ----------------------------------
     //
-    // Chaque événement porte l'heure à laquelle il a été PRODUIT, pas
-    // l'heure à laquelle on le reçoit. Un zap ou un silence note
-    // [sessionOpenedAt] : tout ce qui est plus vieux est l'ancienne
-    // chaîne (1re image figée, position, « je joue ») et on le jette.
+    // EventTime provient du collecteur Analytics. Les rappels du renderer
+    // portent en plus leur propre instant de production et le média associé.
 
     private fun fresh(eventTime: AnalyticsListener.EventTime): Boolean {
         if (released) return false
         return eventTime.realtimeMs >= sessionOpenedAt && sessionOpenedAt > 0L
+    }
+
+    private fun freshRendererEvent(eventTime: AnalyticsListener.EventTime, producedAtMs: Long): Boolean {
+        if (!fresh(eventTime)) return false
+        val timeline = eventTime.timeline
+        if (eventTime.windowIndex !in 0 until timeline.windowCount) return false
+        val item = timeline.getWindow(eventTime.windowIndex, rendererWindow).mediaItem
+        return sessions.acceptsRendererEvent(item.localConfiguration?.tag as? Int, sessionOpenedAt, producedAtMs)
     }
 
     override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
@@ -2000,9 +2013,19 @@ class NativeVideoView(
         output: Any,
         renderTimeMs: Long,
     ) {
-        // L'heure de l'événement, pas « maintenant » : une trame déjà
-        // décodée avant le zap ne retire pas le logo de la nouvelle chaîne.
-        if (!fresh(eventTime)) return
+        if (!freshRendererEvent(eventTime, renderTimeMs)) return
+        if (qaPhases && !qaFirstFrameSeen) {
+            // Media3 date l’émission avant de poster l’événement. Les deux
+            // instants utilisent elapsedRealtime, y compris après une veille.
+            val dispatchMs = SystemClock.elapsedRealtime() - renderTimeMs
+            qaFirstFrameSeen = true
+            val sinceCodec = if (qaDecoderReadyAt > 0) renderTimeMs - qaDecoderReadyAt else null
+            android.util.Log.i(
+                "NovaTubeQA",
+                "view=$qaViewId epoch=$dartEpoch phase=first_render open_ms=${renderTimeMs - sessionOpenedAt}" +
+                    " codec_to_render_ms=$sinceCodec dispatch_ms=$dispatchMs",
+            )
+        }
         reconnect.onRecovered()
         behindLiveCount = 0
         sawFrame = true
@@ -2012,7 +2035,11 @@ class NativeVideoView(
         emit("reconnecting", false)
         emit("buffering", false)
         unmuteIfThisSession()
-        emit("firstFrame", null)
+        // Le banc relie la première image à la vue et à la source exactes.
+        val renderProof = if (qaPhases) mapOf(
+            "view" to qaViewId, "epoch" to dartEpoch, "timeMs" to renderTimeMs
+        ) else null
+        emit("firstFrame", renderProof)
         emitNativeAiStatus()
         // Une copie tôt : si la coupure arrive dans les secondes qui
         // suivent, on a déjà une image à montrer.
@@ -2027,8 +2054,12 @@ class NativeVideoView(
         initializedTimestampMs: Long,
         initializationDurationMs: Long,
     ) {
-        if (!fresh(eventTime)) return
+        if (!freshRendererEvent(eventTime, initializedTimestampMs)) return
         resetVideoCadence()
+        if (qaPhases) {
+            qaDecoderReadyAt = initializedTimestampMs
+            android.util.Log.i("NovaTubeQA", "view=$qaViewId epoch=$dartEpoch phase=decoder_ready open_ms=${initializedTimestampMs - sessionOpenedAt} init_ms=$initializationDurationMs")
+        }
         videoDecoderReady = true
         decoderReadyAtMs = SystemClock.elapsedRealtime()
         emit("videoDecoder", decoderName)
@@ -2235,6 +2266,8 @@ class NativeVideoView(
         aiSessionId = sessions.generation
         contrastFallbackPosted = false
         sessionOpenedAt = SystemClock.elapsedRealtime()
+        qaDecoderReadyAt = 0L
+        qaFirstFrameSeen = false
         audioChosenForSession = false
         videoChosenForSession = false
         readyThisSession = false

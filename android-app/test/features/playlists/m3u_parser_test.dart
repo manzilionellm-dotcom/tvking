@@ -18,6 +18,24 @@ String _m3u(List<String> lines) => lines.join('\n');
 
 void main() {
   group('M3uParser.parse', () {
+    test('attributs mixtes, virgule citée et apostrophe dans une valeur nue', () {
+      final channel = M3uParser.parse(
+        """#EXTM3U\n#EXTINF:-1 tvg-id=c1 tvg-name="A, B" group-title=Rock'n'Roll,Canal, FR\nhttp://localhost/c.ts""",
+        playlistId: 1,
+      ).channels.single;
+      expect(channel.id, 'c1');
+      expect(channel.category, "Rock'n'Roll");
+      expect(channel.name, 'Canal, FR');
+    });
+
+    test('les lignes invalides sont comptées sans saturer la mémoire', () {
+      final input = List.filled(1000, 'mauvaise ligne').join('\n');
+      final result = M3uParser.parse('#EXTM3U\n$input\nhttp://localhost/a.ts', playlistId: 1);
+      expect(result.channels, hasLength(1));
+      expect(result.warnings, hasLength(17));
+      expect(result.warnings.last, contains('984'));
+    });
+
     test('M3U_PLUS : nom, id (tvg-id), catégorie (group-title), logo, URL', () {
       final M3uParseResult r = M3uParser.parse(
         _m3u(<String>[

@@ -40,7 +40,7 @@ import '../theme/bundled_fonts.dart';
 /// `void` et non `Future` : on ne veut PAS que l'appelant `await` — la zone
 /// vit aussi longtemps que l'app. Les points d'entrée se contentent de
 /// `runGuarded(() async { … });`.
-void runGuarded(Future<void> Function() body) {
+void runGuarded(Future<void> Function() body, {bool preloadMemory = true}) {
   // 1) Un sous-arbre qui plante ne casse pas tout l'écran : fond Maison Noir.
   //    NB : on utilise volontairement une couleur LITTÉRALE ici (et non
   //    AppColors) — ce widget de secours ne doit dépendre de RIEN qui
@@ -76,7 +76,7 @@ void runGuarded(Future<void> Function() body) {
       // RAM ⇒ élargit. Best-effort, ne retarde jamais le démarrage.
       // Les seuils vivent dans BoxMemoryBudget (même arithmétique qu'ici
       // avant) : le focus et les logos lisent le même palier.
-      unawaited(BoxMemoryBudget.load());
+      if (preloadMemory) unawaited(BoxMemoryBudget.load());
 
       // 2) Erreurs Flutter (build/layout/paint).
       final FlutterExceptionHandler? presentError = FlutterError.onError;

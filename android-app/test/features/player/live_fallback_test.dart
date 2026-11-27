@@ -65,6 +65,14 @@ void main() {
     expect(c.toSet().length, c.length, reason: 'aucun doublon');
   });
 
+  test('un secours distant tardif garde sa priorité sur un grand lot local', () {
+    final current = _ch('source', 'Mire HD', 'http://localhost/source.ts');
+    final local = List.generate(5000, (i) => _ch('local-$i', 'Mire', 'http://localhost/$i.ts'));
+    final distant = _ch('distant', 'Mire', 'http://distant.invalid/live.ts');
+    expect(LiveFallback.backups(current, [...local, distant, distant]),
+        [distant.streamUrl, ...local.take(3).map((c) => c.streamUrl)]);
+  });
+
   test('mémoire : le format qui a marché devient le 1er pour ce serveur', () {
     expect(LiveFallback.preferred(ts), ts);
     LiveFallback.remember(ts, 'http://a.example.invalid:8080/live/u/p/123.m3u8');

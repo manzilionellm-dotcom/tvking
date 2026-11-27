@@ -314,6 +314,11 @@ class NativeVideoController extends ChangeNotifier {
   /// Passe à true au 1er onRenderedFirstFrame → on peut masquer le logo.
   bool firstFrame = false;
 
+  // Le repli visuel basé sur la position ne confirme aucun rendu natif.
+  ({int view, int epoch, int timeMs})? _renderedFrame;
+  ({int view, int epoch, int timeMs})? get qaRenderedFrame =>
+      _renderedFrame?.epoch == _epoch ? _renderedFrame : null;
+
   /// Erreur de lecture remontée par ExoPlayer (l'écran déclenche _recover).
   bool hasError = false;
 
@@ -427,6 +432,7 @@ class NativeVideoController extends ChangeNotifier {
     return <String, dynamic>{
       'url': url,
       'epoch': _epoch,
+      if (const bool.fromEnvironment('NOVATUBE_QA_METRICS')) 'qaPhases': true,
       if (openAsVod) 'vod': true,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
     };
@@ -546,6 +552,12 @@ class NativeVideoController extends ChangeNotifier {
           }
         }
       case 'firstFrame':
+        if (call.arguments case {
+          'view': int view, 'epoch': int epoch, 'timeMs': int timeMs,
+        }) {
+          if (epoch != _epoch) return;
+          _renderedFrame = (view: view, epoch: epoch, timeMs: timeMs);
+        }
         firstFrame = true;
         isBuffering = false;
         holdFrame = false;
@@ -571,6 +583,7 @@ class NativeVideoController extends ChangeNotifier {
       case 'cues':
         cues = (call.arguments as String?) ?? '';
       case 'reopen':
+        _renderedFrame = null;
         videoQuality = videoQuality.withAiPicture(null);
         firstFrame = false;
         isBuffering = true;
@@ -709,6 +722,7 @@ class NativeVideoController extends ChangeNotifier {
     final Map<String, dynamic> args = <String, dynamic>{
       'url': url,
       'epoch': _epoch,
+      if (const bool.fromEnvironment('NOVATUBE_QA_METRICS')) 'qaPhases': true,
       if (vod) 'vod': true,
       if (startAt > Duration.zero) 'startMs': startAt.inMilliseconds,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,

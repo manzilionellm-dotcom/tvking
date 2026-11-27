@@ -83,6 +83,30 @@ void main() {
     c.dispose();
   });
 
+  test('la preuve de rendu QA exige la vue et la révision de la vraie image', () {
+    final c = NativeVideoController();
+    c.setUrl('http://a.example.invalid/1.ts');
+    c.applyBackendEvent('ack', 1);
+    c.applyBackendEvent('playing', true);
+    c.applyBackendEvent('position', 700);
+    expect(c.firstFrame, isTrue);
+    expect(c.qaRenderedFrame, isNull);
+    c.applyBackendEvent('firstFrame', null);
+    expect(c.qaRenderedFrame, isNull);
+    c.applyBackendEvent('firstFrame', {'view': 4, 'epoch': 1, 'timeMs': 3200});
+    expect(c.qaRenderedFrame, (view: 4, epoch: 1, timeMs: 3200));
+    c.setUrl('http://a.example.invalid/2.ts', keepPicture: true);
+    expect(c.qaRenderedFrame, isNull);
+    c.applyBackendEvent('ack', 2);
+    c.applyBackendEvent('firstFrame', {'view': 4, 'epoch': 1, 'timeMs': 3300});
+    expect(c.qaRenderedFrame, isNull);
+    c.applyBackendEvent('firstFrame', {'view': 4, 'epoch': 2, 'timeMs': 4000});
+    expect(c.qaRenderedFrame, (view: 4, epoch: 2, timeMs: 4000));
+    c.applyBackendEvent('reopen', null);
+    expect(c.qaRenderedFrame, isNull);
+    c.dispose();
+  });
+
   test('un repli décodeur remet le logo sans compter une erreur', () {
     final NativeVideoController c = NativeVideoController();
     c.setUrl('http://a.example.invalid/live/u/p/1.ts');
