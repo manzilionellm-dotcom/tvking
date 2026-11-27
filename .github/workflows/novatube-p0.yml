@@ -1,8 +1,8 @@
-name: NovaTube audit Android 11 (mires uniquement)
+name: NovaTube · trente transitions après démarrage à froid
 
 on:
   push:
-    branches: ['qa/novatube-cycles-reprise-20261127']
+    branches: ['qa/novatube-ouverture-froid-20261127']
 
 permissions:
   contents: read
@@ -28,8 +28,8 @@ jobs:
             sha: b475f0b35f45448bab70d5ec6f22f07f63b19007
             run: '45998784741'
           - variante: apres
-            sha: b53eb8f56de3515987aae7d99f3e50735167c121
-            run: '45998775045'
+            sha: ec95c2390e531dedcb557e7024f61e9a3fee232d
+            run: '46005227751'
 
     runs-on: ubuntu-24.04
     timeout-minutes: 85
@@ -132,7 +132,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: novatube-cycles-${{ matrix.variante }}-${{ github.sha }}
+          name: novatube-ouverture-froid-${{ matrix.variante }}-${{ github.sha }}
           path: artifacts/emulateur/
           if-no-files-found: warn
           retention-days: 14

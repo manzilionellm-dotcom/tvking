@@ -78,67 +78,63 @@ wait_home
 alive "accueil après import"
 shot 09-apres-import
 
-# Appelé depuis la phase média, sur l'accueil NovaTube après l'import.
-qa_dir="$(dirname "$(readlink -f "$0")")"
-sha256sum "$NOVATUBE_EMULATOR_APK" > "$out/apk-mesure-sha256.txt"
+# La liste et les réglages survivent au redémarrage comme sur la box réelle.
+component="$(tr -d '\r\n' < "$out/activite-leanback.txt")"
+test "${component%%/*}" = "$pkg"
+sha256sum "$NOVATUBE_EMULATOR_APK" > "$out/apk-teste.txt"
 adb -s "$serial" shell cat /proc/meminfo | head -1 > "$out/memoire-appareil.txt"
-fixed_pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
-same_pid() {
-  local current
-  current="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
-  [[ "$current" == "$fixed_pid" ]]
+trace_pid() { adb -s "$serial" logcat -d --pid="$1" -v monotonic -s NovaTubeQA:I flutter:I; }
+wait_stable() {
+  local current="$1"
+  for n in $(seq 1 23); do
+    if trace_pid "$current" | grep -F '[BootGuard] app stable' > /dev/null; then return 0; fi
+    if adb -s "$serial" shell cat "/data/user/0/$pkg/shared_prefs/FlutterSharedPreferences.xml" 2>/dev/null | grep -E 'name="(flutter\.)?bootguard\.attempts" value="0"' >/dev/null; then return 0; fi
+    sleep 1
+  done
+  # Une fois passée la fenêtre BootGuard de 20 s sans changement de PID,
+  # le prochain démarrage constitue aussi un démarrage isolé.
+  [[ "$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')" == "$current" ]]
 }
-measure_pss() {
-  same_pid
-  adb -s "$serial" shell dumpsys meminfo "$pkg" > "$out/pss-$1.txt"
-  echo "$1 $(date -u +%T) $(awk '/TOTAL PSS:/ {print $3}' "$out/pss-$1.txt")" | tee -a "$out/pss-kib.txt"
-}
-log_trial() {
-  adb -s "$serial" logcat -d --pid="$fixed_pid" -v monotonic -s flutter:I NovaTubeQA:I | grep 'NovaTubeQA' > "$out/$1.txt" || true
-}
-cycle() {
-  local tag="$1" cut="$2"
-  same_pid
-  tap_word 'live|direct'
-  wait_word 'mire|barres'
-  # Même chaîne animée sur chaque passage. Le délai d'attente laisse démarrer l'aperçu.
-  sleep 4
-  # Les marqueurs Telecommande et Media3 proviennent du même essai.
+completed=0
+for attempt in $(seq 1 36); do
+  old="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
+  wait_stable "$old" || { step "BootGuard : aucune confirmation stable avant le redémarrage"; exit 2; }
+  adb -s "$serial" shell input keyevent KEYCODE_HOME
+  sleep 1
+  adb -s "$serial" shell am force-stop "$pkg"
+  for spin in $(seq 1 30); do
+    if ! adb -s "$serial" shell pidof "$pkg" >/dev/null; then break; fi
+    sleep .2
+  done
+  if adb -s "$serial" shell pidof "$pkg" >/dev/null; then exit 3; fi
   adb -s "$serial" logcat -c
+  launch="$out/froid-$attempt-android.txt"
+  adb -s "$serial" shell am start -W -n "$component" | tr -d '\r' > "$launch"
+  pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
+  test "$pid" != "$old" && test -n "$pid"
+  if ! grep -Fxq "Activity: $component" "$launch" || ! grep -Fxq 'Status: ok' "$launch" || ! grep -Fxq 'LaunchState: COLD' "$launch"; then
+    step "Essai $attempt : lancement Android écarté, voir activité observée"
+    continue
+  fi
+  completed=$((completed + 1))
+  wait_home
+  tap_word 'live|direct'
+  wait_word 'mire|barres' .18 .72
+  sleep 4
+  # Un clic sur la même ligne de chaîne puis OK seulement si la liste reste ouverte.
   tap_word 'mire|barres' .18 .62
   grab
-  if word 'barres|search' 0 .62 >/dev/null; then key KEYCODE_DPAD_CENTER 1; fi
-  for attempt in $(seq 1 16); do
-    log_trial "$tag"
-    if grep -q 'action=open_screen outcome=first_frame' "$out/$tag.txt"; then break; fi
+  if word 'recent|favorites' 0 .45 >/dev/null && word 'mire|barres' .18 .72 >/dev/null; then key KEYCODE_DPAD_CENTER .3; fi
+  outfile="$out/froid-$attempt-rendu.log"
+  for n in $(seq 1 35); do
+    trace_pid "$pid" | grep 'NovaTubeQA' > "$outfile" || true
+    if grep -q 'action=preview_to_full outcome=first_frame' "$outfile" && grep -q 'phase=first_render' "$outfile"; then break; fi
     sleep .5
   done
-  if grep -q 'action=open_screen outcome=first_frame' "$out/$tag.txt"; then
-    echo "$tag first_frame" | tee -a "$out/ouvertures.txt"
-  else
-    echo "$tag sans_confirmation" | tee -a "$out/ouvertures.txt"
-  fi
-  if ((cut > 0)); then
-    sleep 3
-    python3 "$qa_dir/outage_probe.py" "$serial" "$out" "$cut"
-  fi
-  log_trial "$tag"
-  key KEYCODE_BACK 1
-  wait_word 'mire|barres'
-  key KEYCODE_BACK 1
-  wait_home
-}
-for cut in 5 15 60; do cycle "coupure-$cut" "$cut"; done
-sleep 7
-measure_pss depart
-for iteration in $(seq 1 30); do
-  cycle "cycle-$iteration" 0
-  sleep 7
-  measure_pss "cycle-$iteration"
+  sleep 1
+  trace_pid "$pid" | grep 'NovaTubeQA' > "$outfile" || true
+  printf '%s %s %s\n' "$completed" "$attempt" "$pid" >> "$out/froids.tsv"
+  step "Lancement froid $completed sur 30 (tentative $attempt)"
+  if [[ "$completed" = 30 ]]; then break; fi
 done
-start="$SECONDS"
-for deadline in 30 60 120 300 600 900; do
-  delay=$((start + deadline - SECONDS))
-  if ((delay > 0)); then sleep "$delay"; fi
-  measure_pss "repos-$deadline"
-done
+test "$completed" = 30
