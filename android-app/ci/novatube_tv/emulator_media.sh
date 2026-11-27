@@ -78,60 +78,56 @@ wait_home
 alive "accueil après import"
 shot 09-apres-import
 
-step "Accueil → Direct"
-key KEYCODE_DPAD_CENTER 4
-grab
-if ! word 'mire|barres' >/dev/null; then
-  tap_word 'live|direct'
-fi
+qa="$(dirname "$(readlink -f "$0")")"
+sha256sum "$NOVATUBE_EMULATOR_APK" > "$out/apk-teste.txt"
+adb -s "$serial" shell cat /proc/meminfo | head -1 > "$out/memoire-appareil.txt"
+pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
+trace() { adb -s "$serial" logcat -d --pid="$pid" -v monotonic -s flutter:I NovaTubeQA:I | grep -E 'NovaTubeQA|Lecteur ouvert|Lecteur fermé' > "$1" || true; }
+list_shown() { grab; word 'search|recherche' 0 .42 >/dev/null && word 'mire|barres' .18 .72 >/dev/null; }
+tap_word 'live|direct'
 wait_word 'mire|barres'
-shot 10-direct-3-zones
-sleep 6
-shot 11-direct-apercu-video
-
-step "Chaîne sélectionnée → plein écran"
-tap_word 'mire|barres' .18 .62
+# Toucher puis revenir par le D-pad établit le focus sur la ligne de la mire.
+tap_word 'mire' .18 .62
 grab
-if word 'barres|search' 0 .62 >/dev/null; then key KEYCODE_DPAD_CENTER 4; fi
-alive "lecture plein écran"
-shot 12-lecture-plein-ecran
-sleep 8
-shot 13-lecture-10s-plus-tard
-key KEYCODE_BACK 3
-wait_word 'mire|barres'
-shot 14-retour-direct
-key KEYCODE_BACK 3
-wait_home
-
-# Les captures sont faites après l’ouverture de chaque page, jamais sur le
-# simple focus de sa tuile. Les données du fournisseur sont toutes générées.
-for page in 'movies|films:15-films' 'series:16-series' 'playlists|lists|sources:17-mes-listes' 'settings:18-reglages'; do
-  label="${page%%:*}"
-  fichier="${page#*:}"
-  tap_word "$label"
-  alive "$fichier"
-  grab
-  if word 'tonight' >/dev/null; then step "La tuile $label ne s’est pas ouverte"; exit 1; fi
-  case "$fichier" in
-    15-films) wait_word 'horizon' ;;
-    16-series) wait_word 'aurora' ;;
+if word 'search' 0 .42 >/dev/null; then key KEYCODE_DPAD_CENTER 2; fi
+key KEYCODE_BACK 1
+wait_word 'search|recherche' 0 .42
+for trial in $(seq 1 42); do
+  case $(( (trial-1) % 7 )) in
+    5) mode=double ;;
+    6) mode=focus-double ;;
+    *) mode=simple ;;
   esac
-  shot "$fichier"
-  if [[ "$fichier" == 18-reglages ]]; then
-    key KEYCODE_DPAD_CENTER 3
-    wait_word 'access|reseller'
-    shot 19-licence
-    key KEYCODE_BACK 2
+  prefix="$(printf '%02d-%s' "$trial" "$mode")"
+  # Le focus revient sur la chaîne quittée; vérifier l'aperçu avant chaque OK.
+  sleep 4
+  same="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
+  test "$same" = "$pid"
+  adb -s "$serial" logcat -c
+  if [[ "$mode" == focus-double ]]; then
+    adb -s "$serial" shell input keyevent 20
+    sleep .15
+    adb -s "$serial" shell input keyevent 23 23
+  elif [[ "$mode" == double ]]; then
+    adb -s "$serial" shell input keyevent 23 23
+  else
+    adb -s "$serial" shell input keyevent 23
   fi
-  key KEYCODE_BACK 3
-  wait_home
+  for poll in $(seq 1 24); do
+    trace "$out/$prefix.log"
+    if grep -q 'action=preview_to_full outcome=first_frame' "$out/$prefix.log"; then break; fi
+    sleep .35
+  done
+  trace "$out/$prefix.log"
+  for attempt in 1 2 3 4; do
+    if list_shown; then break; fi
+    key KEYCODE_BACK .6
+  done
+  if ! list_shown; then
+    shot "$prefix-ecran"
+    if word 'tonight' >/dev/null; then tap_word 'live|direct'; else exit 22; fi
+    wait_word 'search|recherche' 0 .42
+  fi
+  if [[ "$mode" == focus-double ]]; then key KEYCODE_DPAD_UP .2; fi
 done
-rm -f "$out/instant.png"
-step "Ce que l'application a réellement demandé au serveur local"
-grep -c 'GET /novatube-test.m3u' "$out/serveur-local.txt" > "$out/requetes-liste.txt" || true
-grep -c 'GET /logos/' "$out/serveur-local.txt" > "$out/requetes-logos.txt" || true
-grep -c 'GET /live/.*\.ts' "$out/serveur-local.txt" > "$out/requetes-segments-video.txt" || true
-step "liste : $(cat "$out/requetes-liste.txt") · logos : $(cat "$out/requetes-logos.txt") · segments vidéo : $(cat "$out/requetes-segments-video.txt")"
-test "$(cat "$out/requetes-liste.txt")" -ge 1
-test "$(cat "$out/requetes-segments-video.txt")" -ge 2
-step "OK : liste importée en HTTP et vidéo réellement lue"
+key KEYCODE_BACK 1

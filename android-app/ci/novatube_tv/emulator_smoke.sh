@@ -64,7 +64,7 @@ printf 'no\n' | avdmanager create avd --force --name novatube \
   --package "$image" --device pixel_2 > "$out/avd-create.txt" 2>&1
 "$sdk/emulator/emulator" -avd novatube -port 5554 \
   -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
-  -gpu swiftshader -accel on -memory 3072 -cores 2 \
+  -gpu swiftshader -accel on -memory 1536 -cores 2 \
   -camera-back none -camera-front none > "$out/emulator.txt" 2>&1 &
 emu_pid=$!
 booted=false
@@ -122,6 +122,7 @@ alive() {
 shot() { adb -s "$serial" exec-out screencap -p > "$out/$1.png"; }
 key() { adb -s "$serial" shell input keyevent "$1"; sleep "${2:-3}"; }
 
+adb -s "$serial" shell cat /proc/meminfo | head -1 > "$out/memoire-appareil.txt"
 step "Premier démarrage"
 adb -s "$serial" logcat -c
 adb -s "$serial" shell am start -W -n "$component" > "$out/demarrage-1.txt" 2>&1
