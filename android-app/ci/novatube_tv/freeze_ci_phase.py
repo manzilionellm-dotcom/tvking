@@ -14,7 +14,7 @@ if sys.argv[1] == 'wait-final':
     raise SystemExit(int(finished.read_text().strip()))
 while not finished.exists():
     origin = base/'observation-start.json'
-    if origin.exists() and time.monotonic() - json.loads(origin.read_text())['monotonic'] >= 820:
+    if origin.exists() and time.monotonic() - json.loads(origin.read_text())['monotonic'] >= 90:
         break
     time.sleep(5)
 checkpoint.mkdir(exist_ok=True)

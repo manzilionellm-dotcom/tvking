@@ -1,7 +1,7 @@
-name: NovaTube TV · endurance du candidat fe134dd4 à 1536 Mio
+name: NovaTube TV · endurance du candidat fe134dd4 à 1024 Mio
 on:
   push:
-    branches: ['qa/novatube-fe134dd4-endurance-1536-install']
+    branches: ['qa/novatube-fe134dd4-endurance-1024-install']
 permissions:
   contents: read
   actions: read
@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ram_mib: [1536]
+        ram_mib: [1024]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -43,7 +43,7 @@ jobs:
           FREEZE_DURATION: '4800'
         run: |
           nohup bash -c 'bash android-app/ci/novatube_tv/freeze_runner.sh; printf "%s" "$?" > freeze-run.exit.tmp; mv freeze-run.exit.tmp freeze-run.exit' < /dev/null > "$RUNNER_TEMP/freeze-run.log" 2>&1 &
-      - name: Observer les treize premières minutes de lecture
+      - name: Vérifier la première minute et demie avant de poursuivre
         run: python3 android-app/ci/novatube_tv/freeze_ci_phase.py checkpoint
       - name: Publier le point intermédiaire
         if: always()
