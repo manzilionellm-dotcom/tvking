@@ -1,7 +1,7 @@
 name: NovaTube — gel après 57 minutes sur Android TV
 on:
   push:
-    branches: ['qa/novatube-freeze-passif-*']
+    branches: ['qa/nt-optical-passive-20261127']
 permissions:
   contents: read
   actions: read
@@ -35,19 +35,11 @@ jobs:
           run-id: 46002079321
           name: novatube-emulateur-apk-2e018b0ffe4bd41f53995ec5e336f9e0ed113221
           path: qa-apks
-      - name: APK diagnostique inspectable
-        if: matrix.scenario != 'temoin-passif'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          github-token: ${{ github.token }}
-          run-id: 46030053519
-          name: novatube-emulateur-apk-6b0a720180d63143ce375b8379e39c56e0e93833
-          path: qa-apks
       - name: Démarrer le banc et ses témoins dans le même job
         env:
           APP: novatube
           FREEZE_SCENARIO: ${{ matrix.scenario }}
-          FREEZE_DURATION: '4800'
+          FREEZE_DURATION: '4320'
         run: |
           nohup bash -c 'bash android-app/ci/novatube_tv/freeze_runner.sh; printf "%s" "$?" > freeze-run.exit.tmp; mv freeze-run.exit.tmp freeze-run.exit' < /dev/null > "$RUNNER_TEMP/freeze-run.log" 2>&1 &
       - name: Observer les treize premières minutes de lecture
@@ -56,10 +48,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: diagnostic-early-${{ matrix.scenario }}-${{ github.run_id }}
+          name: passif-optique-early-${{ matrix.scenario }}-${{ github.run_id }}
           path: freeze-checkpoint
           retention-days: 14
-      - name: Attendre la fin des 80 minutes et vérifier le résultat du banc
+      - name: Attendre la fin des 72 minutes et vérifier le résultat du banc
         run: |
           python3 android-app/ci/novatube_tv/freeze_ci_phase.py wait-final || { tail -40 "$RUNNER_TEMP/freeze-run.log"; exit 1; }
           tail -8 "$RUNNER_TEMP/freeze-run.log"
@@ -67,6 +59,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: diagnostic-final-${{ matrix.scenario }}-${{ github.run_id }}
+          name: passif-optique-final-${{ matrix.scenario }}-${{ github.run_id }}
           path: pilot-results
           retention-days: 14

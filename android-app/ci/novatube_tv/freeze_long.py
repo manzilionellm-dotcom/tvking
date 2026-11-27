@@ -72,6 +72,14 @@ def observe(out, screenshot, channel, seconds):
                     dump(incident / "request.json", newest_event)
                     (out / "freeze-trigger").touch()
                     screenshot(str(incident / "screen"))
+                if newest_event is not None:
+                    elapsed=end-newest_event["monotonic"]
+                    for delay in (20,55):
+                        flag="screen_after_"+str(delay)
+                        if elapsed>=delay and not newest_event.get(flag):
+                            item=events_dir/newest_event["id"]/("after-"+str(delay)+"s")
+                            screenshot(str(item))
+                            newest_event[flag]=True
                 if end>=next_heartbeat:
                     print(f"{phase}: {end-start:.1f}s, {valid}/{rows} identifiable, {len(events)} gaps", flush=True)
                     next_heartbeat=end+300

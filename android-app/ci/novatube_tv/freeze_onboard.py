@@ -69,11 +69,6 @@ def run(folder):
             if image is not None:
                 path.write_bytes(raw)
                 return path
-            if attempt == 2:
-                subprocess.run(["adb", "reconnect", "offline"], timeout=12, capture_output=True, check=False)
-                subprocess.run(transport+["wait-for-device"], timeout=28, capture_output=True, check=False)
-                adb("reverse", "tcp:18471", "tcp:18471")
-                adb("reverse", "tcp:8788", "tcp:8788")
             time.sleep(.8)
         raise RuntimeError(name + ": 6 captures du démarrage ont échoué")
     def poll(name, predicate, seconds=28):

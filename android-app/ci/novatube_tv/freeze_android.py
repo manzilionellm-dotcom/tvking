@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Observe an isolated Android QA emulator. No media-server or app callbacks drive the clocks."""
 import argparse
+import fcntl
 import concurrent.futures
 import json
 import os
@@ -120,9 +121,18 @@ def request_private_threads(bridge, base, tag):
     return {"rc":rc,"valid_java_stacks":ok,"bytes":len(data),**timestamp()}
 
 
-def snapshot(bridge, out, reason, pid=None):
+def snapshot(bridge, out, reason, pid=None, trigger_ns=None, campaign=None):
+    # Also serialise the terminal capture (a second process) with any in-flight incident.
+    campaign = campaign or out.parent
+    campaign.mkdir(parents=True, exist_ok=True)
+    with (campaign/".android-capture.lock").open("a") as guard:
+        fcntl.flock(guard.fileno(),fcntl.LOCK_EX)
+        return capture_state(bridge,out,reason,pid,trigger_ns)
+
+
+def capture_state(bridge, out, reason, pid, trigger_ns):
     start = timestamp()
-    base = out/("snapshot-"+str(start["utc_ns"]))
+    base = out/("snapshot-"+str(trigger_ns or start["utc_ns"]))
     base.mkdir(parents=True)
     pid = pid or next(iter(bridge.processes()), None)
     meta = {"reason": reason, "pid":pid, "started":start}
@@ -160,37 +170,34 @@ def snapshot(bridge, out, reason, pid=None):
         rc, data, err = bridge.shell(cmd,timeout=16)
         (base/(key+".txt")).write_bytes(data + (b"\nSTDERR\n"+err if err else b""))
         return key,{"rc":rc,"bytes":len(data),"start":start,"end":timestamp()}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)+3) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         private=pool.submit(request_private_threads,bridge,base,str(start["utc_ns"])) if can_run_as else None
-        fut={pool.submit(capture_task,item) for item in tasks.items()}
         db=pool.submit(dump_database,bridge,base)
-        # Snapshot first on every independent channel. Querying a busy system
-        # service can take several seconds; it must never delay the ART dump.
-        heavy={}
-        if pid and pid in bridge.processes():
-            def stacks():
-                b = f"test -r /proc/{pid}/status || exit 3; "
-                art = b + "old=$(ls -t /data/anr/anr* 2>/dev/null | head -1); " + f"kill -3 {pid} || exit 4; "
-                art += ('for i in 1 2 3 4 5 6 7 8; do '
-                        'f=$(ls -t /data/anr/anr* 2>/dev/null | head -1); '
-                        f'if test -n "$f" && test "$f" != "$old" && head -c 1500 "$f" | grep -q "pid {pid} at"; '
-                        'then cat "$f"; exit 0; fi; sleep .25; done; '
-                        'ls -lt /data/anr; exit 5')
-                native=b+f"debuggerd -b {pid}"
-                if who!=b"0" and can_run_as:
-                    art=f"run-as {bridge.pkg} kill -3 {pid}; rc=$?; echo ART_SIGQUIT_delivery=$rc; exit $rc"
-                    # The independently running Java worker above owns the guaranteed
-                    # stack path. Some user images permit debuggerd only to shell.
-                    native=(f"debuggerd -b {pid} || run-as {bridge.pkg} debuggerd -b {pid}")
-                return dict([capture_task(("art",art)),capture_task(("native",native))])
-            heavy=pool.submit(stacks)
-        img=bridge.call("exec-out","screencap","-p",timeout=12)
-        if img[0]==0 and img[1].startswith(b"\x89PNG"):
-            (base/"screen.png").write_bytes(img[1])
+        image=pool.submit(bridge.call,"exec-out","screencap","-p",timeout=12)
+        # Queue secondary state only after the private Android stacks, SQLite and screen.
+        fut=[pool.submit(capture_task,item) for item in tasks.items()]
+        img=image.result()
+        if img[0]==0 and img[1].startswith(b"\x89PNG"):(base/"screen.png").write_bytes(img[1])
         meta["task_results"]=dict(f.result() for f in fut)
-        if heavy:meta["task_results"].update(heavy.result())
         meta["sqlite"]=db.result()
         meta["java_private"]=private.result() if private else {"valid_java_stacks":False,"reason":"run_as_unavailable"}
+    # On the production system image debuggerd requires root. The app-provided
+    # Java stacks are available without SIGQUIT. Sample only the debuggable UID
+    # after the primary snapshot and retain the profile's coverage limitations.
+    meta["primary_finished"]=timestamp()
+    (base/"snapshot.json").write_text(json.dumps(meta,indent=2))
+    sampler=Path(__file__).with_name("inspect_sample_native.py")
+    if can_run_as and pid and sampler.exists():
+        try:
+            pre=timestamp()
+            prof=subprocess.run([sys.executable,str(sampler),str(base/"simpleperf"),bridge.pkg],
+                                capture_output=True,timeout=45)
+            (base/"simpleperf-command.txt").write_bytes(prof.stdout+prof.stderr)
+            meta["simpleperf"]={"rc":prof.returncode,"start":pre,"end":timestamp()}
+        except (OSError,subprocess.TimeoutExpired) as ex:meta["simpleperf"]={"error":str(ex)}
+    elif who==b"0" and pid:
+        name,r=capture_task(("native",f"debuggerd -b {pid}"))
+        meta["task_results"][name]=r
     meta["finished"]=timestamp()
     (base/"snapshot.json").write_text(json.dumps(meta,indent=2))
 
@@ -223,26 +230,87 @@ def watch(bridge, out, duration, armfile, stall, campaign):
             finally:
                 proc.terminate()
     threading.Thread(target=read_log,daemon=True).start()
-    def external_triggers():
-        seen=set()
-        while not STOP.is_set():
-            for request in campaign.glob("freeze-events/event-*/request.json"):
-                if request in seen: continue
-                try:
-                    payload=json.loads(request.read_text())
-                except (OSError, ValueError):continue
-                seen.add(request)
-                log_object(out/"external-triggers.jsonl",{"request":str(request.relative_to(campaign))})
+    pending=[]
+    queue_lock=threading.Lock()
+    def submit_native(reason,pid):
+        with queue_lock:pending.append((time.monotonic(),reason,pid))
+    def dispatch():
+        # Every optical request remains on disk. It wins over native candidates
+        # from the same episode. One worker writes one primary directory per episode.
+        seen=set();active=None;waiting=[];future=None;jobs=[]
+        pool=concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        def publish(episode,source,path=None):
+            link={"source":source,"primary":str(episode["path"].relative_to(campaign)),
+                  "episode_start":episode["start"],**timestamp()}
+            log_object(out/"snapshot-links.jsonl",link)
+            if path:(path.parent/"android-snapshot-ref.json").write_text(json.dumps(link))
+        def new_episode(t,reason,pid):
+            ident=time.time_ns()
+            group=out/"incidents"
+            episode={"start":t,"path":group/("snapshot-"+str(ident)),"opt":None,"sources":set()}
+            jobs.append((episode,group,reason,pid,ident))
+            return episode
+        while not STOP.is_set() or jobs or waiting:
+            for request in sorted(campaign.glob("freeze-events/event-*/request.json")):
+                if request in seen:continue
+                try: payload=json.loads(request.read_text())
+                except (OSError,ValueError):continue
+                seen.add(request);t=payload.get("monotonic",time.monotonic())
+                if not active or active["opt"] is not None or abs(t-active["start"])>15:
+                    active=new_episode(t,"optical_stall",None)
+                active["opt"]=request
+                publish(active,"optical",request)
+            with queue_lock:
+                waiting.extend(pending);pending.clear()
+            keep=[]
+            for t,reason,pid in waiting:
+                opt=active["opt"] if active else None
+                same_active=False
+                if opt:
+                    done=opt.parent/"recovery.json"
+                    if not done.exists():same_active=True
+                    else:
+                        try:
+                            j=json.loads(done.read_text())
+                            end=active["start"]+float(j["motion_return_s"])-float(j["detection_s"])
+                            same_active=t<=end+1
+                        except (OSError,KeyError,ValueError):same_active=abs(t-active["start"])<15
+                if active and (same_active or abs(t-active["start"])<=12):
+                    if reason not in active["sources"]:publish(active,reason);active["sources"].add(reason)
+                    continue
+                if not STOP.is_set() and time.monotonic()-t<3.5:
+                    keep.append((t,reason,pid));continue
+                active=new_episode(t,reason,pid);active["sources"].add(reason)
+                publish(active,reason)
                 (campaign/"freeze-trigger").touch()
-                dest=request.parent/"android"
-                threading.Thread(target=snapshot,args=(bridge,dest,str(payload.get("reason","external_detector")),None),daemon=False).start()
-            STOP.wait(.2)
-    threading.Thread(target=external_triggers,daemon=True).start()
+            waiting=keep
+            # Process queued episodes serially; interrupted ADB actions cannot
+            # make a second reader take the first request away from its event.
+            if future and future.done():
+                try:future.result()
+                except Exception as ex:log_object(out/"capture-failures.jsonl",{"error":str(ex)})
+                future=None
+            if jobs and future is None:
+                _,group,reason,pid,ident=jobs.pop(0)
+                future=pool.submit(snapshot,bridge,group,reason,pid,ident,campaign)
+            if not STOP.is_set():STOP.wait(.2)
+            elif jobs and future:time.sleep(.2)
+        pool.shutdown(wait=True)
+    dispatcher=threading.Thread(target=dispatch,daemon=False); dispatcher.start()
+    armed_since=None
     started=time.monotonic(); last_pid=None; last_snap=0.; snapshots=0; last_dump=0.
     fired=False
     while not STOP.is_set() and time.monotonic()-started<duration:
         loop=time.monotonic()
         armed=armfile is None or armfile.exists()
+        if armed and armed_since is None:
+            # Source timestamps in this monitor are host monotonic. An error
+            # during onboarding must never trigger a diagnostic after arming.
+            armed_since=loop
+            if armfile:
+                try:armed_since=float(json.loads(armfile.read_text())["monotonic"])
+                except (ValueError,KeyError,OSError):pass
+            last_pid=None
         pids=bridge.processes(); pid=pids[0] if pids else None
         reason=None
         if pid:
@@ -250,7 +318,10 @@ def watch(bridge, out, duration, armfile, stall, campaign):
         else:
             rc,raw,err=1,b"",b"no target PID"
         log_object(out/"heartbeat.jsonl",{"pids":pids,"rc":rc,"state":raw.decode(errors="replace"),"stderr":err.decode(errors="replace"),"armed":armed})
-        if loop-last_dump>20:
+        optical_request=next(campaign.glob("freeze-events/event-*/request.json"),None)
+        # Before a verified visual stall retain logcat, frame counters, process
+        # identity and passive OS reads only. Full dumps start at the visual gate.
+        if loop-last_dump>20 and (optical_request or (campaign/"long-result.json").exists()):
             rc,codec,_err=bridge.shell("dumpsys media.codec",timeout=5)
             log_object(out/"codec-periodic.jsonl",{"rc":rc,"state":codec.decode(errors="replace")})
             last_dump=loop
@@ -260,18 +331,16 @@ def watch(bridge, out, duration, armfile, stall, campaign):
             if request.exists():
                 reason=request.read_text().strip() or "external_detector"
                 request.unlink(missing_ok=True)
-            elif s["last_error"] and s["last_error"]>last_snap:
+            elif s["last_error"] and s["last_error"]>=armed_since and s["last_error"]>last_snap:
                 reason="player_error"
             elif last_pid and pid!=last_pid:
                 reason="process_changed_or_unavailable"
-            elif s["last_render"] and loop-s["last_render"]>stall and not fired:
+            elif s["last_render"] and s["last_render"]>=armed_since and s["last_sample"] and loop-s["last_sample"]<4 and loop-s["last_render"]>stall and not fired:
                 reason="no_decoder_output"
             if reason and loop-last_snap>20 and snapshots<6:
                 last_snap=loop;snapshots+=1;fired=True
-                (campaign/"freeze-trigger").touch()
                 log_object(out/"triggers.jsonl",{"reason":reason,"pid":pid})
-                t=threading.Thread(target=snapshot,args=(bridge,out,reason,pid),daemon=False)
-                t.start()
+                # Native warnings are evidence only; optical requests own all heavy captures.
             if s["last_render"] and loop-s["last_render"]<stall:fired=False
         last_pid=pid
         STOP.wait(max(.1,2.0-(time.monotonic()-loop)))
@@ -297,7 +366,7 @@ def main():
     if not re.fullmatch(r"[A-Za-z0-9_.]+",a.package):p.error("invalid package")
     b=Bridge(a.serial,a.package); b.emulator_check()
     signal.signal(signal.SIGTERM,lambda *_:STOP.set())
-    if a.mode=="capture":snapshot(b,a.out,a.reason)
+    if a.mode=="capture":snapshot(b,a.out,a.reason,campaign=a.campaign or a.out.parent)
     else:watch(b,a.out,a.duration,a.arm_file,a.stall,a.campaign or a.out)
 
 if __name__=="__main__":main()

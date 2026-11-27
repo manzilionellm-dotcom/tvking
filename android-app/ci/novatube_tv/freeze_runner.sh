@@ -106,7 +106,7 @@ for i in $(seq 1 40); do
  if [[ -s "$out/guest-tunnel-ready.json" ]]; then break; fi
  sleep 1
 done
-if [[ ! -s "$out/guest-tunnel-ready.json" ]]; then echo "Témoin Android direct non confirmé à l’ouverture" > "$out/temoin-initial.txt"; fi
+if [[ ! -s "$out/guest-tunnel-ready.json" ]]; then echo "Témoin Android direct non confirmé à l’ouverture" > "$out/temoin-initial.txt"; exit 42; fi
 python3 "$work/freeze_benchmark.py" "$out"
 
 python3 "$work/freeze_android.py" capture --out "$out/inspection-finale" --package "$pkg" --reason session_end

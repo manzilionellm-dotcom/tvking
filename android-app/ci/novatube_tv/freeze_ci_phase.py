@@ -21,7 +21,7 @@ checkpoint.mkdir(exist_ok=True)
 for path in base.rglob('*'):
     if not path.is_file():
         continue
-    if path.name in ('last.png','long-end.png','screen.png') or path.suffix in ('.json','.jsonl','.txt','.tsv','.csv','.log'):
+    if (path.name in ('last.png','long-end.png','screen.png') or path.name.startswith('after-')) or path.suffix in ('.json','.jsonl','.txt','.tsv','.csv','.log'):
         dest = checkpoint/path.relative_to(base)
         dest.parent.mkdir(parents=True,exist_ok=True)
         try:

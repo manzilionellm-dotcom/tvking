@@ -153,8 +153,7 @@ def run(args):
 
     def monitor_arm():
         arm_origin = args.out / 'observation-start.json'
-        incident = args.out / 'freeze-trigger'
-        result = args.out / 'long-result.json'
+        visual_dir = args.out / 'freeze-events'
         source = None
         with (args.out/'guest-reverse-arming.jsonl').open('a',buffering=1) as report:
             def write(state, **fields):
@@ -169,10 +168,20 @@ def run(args):
                     except (ValueError,OSError):
                         pass
                 if observed is not None:
-                    if incident.exists():
-                        source = 'visual-or-native-trigger'
-                    elif result.exists():
-                        source = 'observation-finished'
+                    requests=sorted(visual_dir.glob('event-*/request.json'))
+                    optical=None
+                    for request in requests:
+                        try:
+                            event=json.loads(request.read_text())
+                        except (OSError,ValueError):
+                            continue
+                        if (event.get('threshold_s',0)>=6 and
+                            event.get('detection_s',-1)-event.get('last_motion_s',0)>=5.999 and
+                            event.get('monotonic',0)>=observed['monotonic']):
+                            optical=event['id']
+                            break
+                    if optical:
+                        source='optical:'+optical
                     elif time.monotonic() >= observed['monotonic'] + observed['seconds']:
                         source = 'observation-deadline'
                 if source:
