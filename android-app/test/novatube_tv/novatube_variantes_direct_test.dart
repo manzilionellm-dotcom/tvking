@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -144,6 +145,73 @@ void main() {
       await tester.pump(const Duration(seconds: 10));
     }
   });
+  for (final changeFocus in [false, true]) {
+    final scenario =
+        changeFocus ? 'après un changement de chaîne' : 'sur la même chaîne';
+    testWidgets(
+        'deux appuis OK $scenario attendent la libération et ouvrent un seul lecteur',
+        (tester) async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      final release = Completer<void>();
+      final natives = <MethodChannel>[];
+      var releases = 0;
+      messenger.setMockMethodCallHandler(SystemChannels.platform_views,
+          (call) async {
+        if (call.method == 'create') {
+          final id = (call.arguments as Map)['id'] as int;
+          final channel = MethodChannel('native_video_player/$id');
+          natives.add(channel);
+          messenger.setMockMethodCallHandler(channel, (method) async {
+            if (method.method == 'dispose' && channel == natives.first) {
+              releases++;
+              await release.future;
+            }
+            return null;
+          });
+        }
+        return null;
+      });
+      try {
+        await show(tester, const TvLiveScreen());
+        Focus.of(tester.element(find.text(names[0]).first)).requestFocus();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 1600));
+        await tester.pump();
+        expect(natives, hasLength(1));
+        if (changeFocus) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+          await tester.pump(const Duration(milliseconds: 150));
+          expect(releases, 1);
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(releases, 1);
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.byType(TvPlayerScreen, skipOffstage: false), findsNothing);
+        release.complete();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        final screens = find.byType(TvPlayerScreen, skipOffstage: false);
+        expect(screens, findsOneWidget);
+        final opened = tester.widget<TvPlayerScreen>(screens);
+        expect(opened.channels[opened.startIndex].name,
+            names[changeFocus ? 1 : 0]);
+      } finally {
+        if (!release.isCompleted) release.complete();
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 10));
+        messenger.setMockMethodCallHandler(SystemChannels.platform_views, null);
+        for (final channel in natives) {
+          messenger.setMockMethodCallHandler(channel, null);
+        }
+      }
+    },
+        variant: TargetPlatformVariant.only(TargetPlatform.android),
+        skip: !kNovatubeTv);
+  }
+
   testWidgets(
       'la recherche de la chaîne conserve chaque variante dans NovaTube',
       (tester) async {

@@ -67,6 +67,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   /// Non-null ⇔ la vue native est dans l'arbre (lecteur vivant).
   NativeVideoController? _ctrl;
   Timer? _timer;
+  Future<void>? _nativeRelease;
 
   @override
   void initState() {
@@ -96,7 +97,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     final NativeVideoController? c = _ctrl;
     if (c == null) return;
     _ctrl = null;
-    unawaited(c.releaseNative());
+    _nativeRelease = c.releaseNative();
     if (mounted) setState(() {});
     // Le notifier est disposé APRÈS la frame : ListenableBuilder retire
     // son écouteur avant. Le faire avant lève en debug.
@@ -108,23 +109,24 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     // Même si l'aperçu n'a pas encore démarré : on annule le délai, sinon
     // il créerait un 2e lecteur pendant que le plein écran s'ouvre.
     _timer?.cancel();
-    final NativeVideoController? c = _ctrl;
-    if (c == null) return;
-    _ctrl = null;
-    final Future<void> done = c.releaseNative();
-    if (mounted) setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) => c.dispose());
-    await done;
+    _timer = null;
+    _stop();
+    // Le focus a pu détacher la vue avant OK. Le codec reste occupé
+    // jusqu’à l’accusé natif, même lorsque _ctrl est déjà nul.
+    await _nativeRelease;
   }
 
   /// Focus immobile depuis [debounce] : on crée UN lecteur pour cette chaîne.
   /// Pas pendant un plein écran : ce second lecteur est la cause du
   /// double son (l'ancien n'était pas encore libéré).
-  void _start() {
+  Future<void> _start() async {
     if (!mounted || ForegroundPlayback.locked) return;
+    final timer = _timer;
+    _stop();
+    if (_nativeRelease != null) await _nativeRelease;
+    if (!mounted || timer != _timer || ForegroundPlayback.locked) return;
     final String url = widget.channel.streamUrl;
     if (url.isEmpty) return;
-    _stop();
     final NativeVideoController created = NativeVideoController(
       initialUrl: url,
     );

@@ -146,17 +146,20 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
   /// rend d'abord le décodeur de l'aperçu : la recherche peut lancer une
   /// chaîne, et un abonnement « 1 connexion » refuserait deux flux.
   Future<void> _openSearch() async {
+    if (_playerOpen) return;
     _catDebounce?.cancel();
-    await TvLivePreview.releaseActive();
-    if (!mounted) return;
     setState(() => _playerOpen = true);
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => const TvShell(child: TvSearchScreen()),
-      ),
-    );
-    if (!mounted) return;
-    setState(() => _playerOpen = false);
+    try {
+      await TvLivePreview.releaseActive();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const TvShell(child: TvSearchScreen()),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _playerOpen = false);
+    }
   }
 
   Future<void> _openVipCountries() async {
@@ -588,7 +591,7 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     int index, {
     required bool fromRail,
   }) async {
-    if (index < 0 || index >= list.length) return;
+    if (_playerOpen || index < 0 || index >= list.length) return;
     final String chId = list[index].id;
     // On REND le décodeur de l'aperçu AVANT le plein écran, et on attend.
     // Un simple setState laissait les deux lecteurs vivants une frame :
@@ -596,23 +599,29 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // abonnement « 1 connexion » refusait la chaîne (logo sans fin).
     final transition = const bool.fromEnvironment('NOVATUBE_QA_METRICS')
         ? (Stopwatch()..start()) : null;
-    await TvLivePreview.releaseActive();
-    if (transition != null) {
-      debugPrint('[NovaTubeQA] phase=preview_release elapsed_us=${transition.elapsedMicroseconds}');
-    }
-    if (!mounted) return;
+    // Réserver l’ouverture avant le premier await. Un second OK peut être
+    // reçu pendant que le décodeur de l’aperçu se libère sur Android.
     setState(() => _playerOpen = true);
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index, transitionClock: transition),
-      ),
-    );
-    if (!mounted) return;
-    setState(() {
-      _playerOpen = false;
-      _restoreFocusId = chId;
-      _restoreFromRail = fromRail;
-    });
+    try {
+      await TvLivePreview.releaseActive();
+      if (transition != null) {
+        debugPrint('[NovaTubeQA] phase=preview_release elapsed_us=${transition.elapsedMicroseconds}');
+      }
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TvPlayerScreen(channels: list, startIndex: index, transitionClock: transition),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _playerOpen = false;
+          _restoreFocusId = chId;
+          _restoreFromRail = fromRail;
+        });
+      }
+    }
   }
 
   Future<void> _openPlayer(int index) =>
