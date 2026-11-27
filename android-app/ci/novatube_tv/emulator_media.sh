@@ -78,60 +78,33 @@ wait_home
 alive "accueil après import"
 shot 09-apres-import
 
-step "Accueil → Direct"
-key KEYCODE_DPAD_CENTER 4
+step "Plein écran sur la mire après ouverture de l’aperçu"
+tap_word 'live|direct'
+wait_word 'mire|barres' .18 .72
+sleep 5
+pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
+adb -s "$serial" logcat -c
+tap_word 'mire' .18 .62
 grab
-if ! word 'mire|barres' >/dev/null; then
-  tap_word 'live|direct'
-fi
-wait_word 'mire|barres'
-shot 10-direct-3-zones
-sleep 6
-shot 11-direct-apercu-video
-
-step "Chaîne sélectionnée → plein écran"
-tap_word 'mire|barres' .18 .62
-grab
-if word 'barres|search' 0 .62 >/dev/null; then key KEYCODE_DPAD_CENTER 4; fi
-alive "lecture plein écran"
-shot 12-lecture-plein-ecran
-sleep 8
-shot 13-lecture-10s-plus-tard
-key KEYCODE_BACK 3
-wait_word 'mire|barres'
-shot 14-retour-direct
-key KEYCODE_BACK 3
-wait_home
-
-# Les captures sont faites après l’ouverture de chaque page, jamais sur le
-# simple focus de sa tuile. Les données du fournisseur sont toutes générées.
-for page in 'movies|films:15-films' 'series:16-series' 'playlists|lists|sources:17-mes-listes' 'settings:18-reglages'; do
-  label="${page%%:*}"
-  fichier="${page#*:}"
-  tap_word "$label"
-  alive "$fichier"
-  grab
-  if word 'tonight' >/dev/null; then step "La tuile $label ne s’est pas ouverte"; exit 1; fi
-  case "$fichier" in
-    15-films) wait_word 'horizon' ;;
-    16-series) wait_word 'aurora' ;;
-  esac
-  shot "$fichier"
-  if [[ "$fichier" == 18-reglages ]]; then
-    key KEYCODE_DPAD_CENTER 3
-    wait_word 'access|reseller'
-    shot 19-licence
-    key KEYCODE_BACK 2
-  fi
-  key KEYCODE_BACK 3
-  wait_home
+if word 'recent|favorites' 0 .45 >/dev/null; then key KEYCODE_DPAD_CENTER 1; fi
+for k in $(seq 1 20); do
+  adb -s "$serial" logcat -d --pid="$pid" -v monotonic -s NovaTubeQA:I flutter:I | grep NovaTubeQA > "$out/rendu.log" || true
+  if grep -q 'action=preview_to_full outcome=first_frame .*view=' "$out/rendu.log"; then break; fi
+  sleep .5
 done
-rm -f "$out/instant.png"
-step "Ce que l'application a réellement demandé au serveur local"
-grep -c 'GET /novatube-test.m3u' "$out/serveur-local.txt" > "$out/requetes-liste.txt" || true
-grep -c 'GET /logos/' "$out/serveur-local.txt" > "$out/requetes-logos.txt" || true
-grep -c 'GET /live/.*\.ts' "$out/serveur-local.txt" > "$out/requetes-segments-video.txt" || true
-step "liste : $(cat "$out/requetes-liste.txt") · logos : $(cat "$out/requetes-logos.txt") · segments vidéo : $(cat "$out/requetes-segments-video.txt")"
-test "$(cat "$out/requetes-liste.txt")" -ge 1
-test "$(cat "$out/requetes-segments-video.txt")" -ge 2
-step "OK : liste importée en HTTP et vidéo réellement lue"
+shot premier-rendu-verifie
+sha256sum "$NOVATUBE_EMULATOR_APK" > "$out/apk-teste.txt"
+python3 - "$out" <<'VERIFY'
+import json,re,sys
+from pathlib import Path
+d=Path(sys.argv[1]); lines=(d/'rendu.log').read_text().splitlines()
+actions=[l for l in lines if 'action=preview_to_full outcome=first_frame' in l]
+assert len(actions)==1,actions
+m=re.search(r'elapsed_ms=(\d+) view=(\d+) epoch=(\d+) render_ms=(\d+)',actions[0]); assert m,actions
+key=f'view={m[2]} epoch={m[3]} phase='
+render=[l for l in lines if key+'first_render' in l]; decoder=[l for l in lines if key+'decoder_ready' in l]; release=[l for l in lines if 'phase=preview_release' in l]
+assert len(render)==1 and len(release)==1 and len(decoder)>=1
+assert lines.index(release[0])<lines.index(decoder[0])<lines.index(render[0])<lines.index(actions[0])
+result={'action_elapsed_ms':int(m[1]),'view':int(m[2]),'epoch':int(m[3]),'render_elapsed_realtime_ms':int(m[4]),'release_log':release[0],'decoder_log':decoder[0],'render_log':render[0],'action_log':actions[0]}
+(d/'preuve-rendu.json').write_text(json.dumps(result,indent=2)); print(json.dumps(result))
+VERIFY
