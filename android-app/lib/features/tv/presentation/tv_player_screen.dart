@@ -228,14 +228,17 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     if (clock == null) return;
     _startClock = null;
     clock.stop();
+    final frame = outcome == 'first_frame' ? _controller.qaRenderedFrame : null;
+    final source = frame == null ? ''
+        : ' view=${frame.view} epoch=${frame.epoch} render_ms=${frame.timeMs}';
     if (_startAction == 'open_screen') {
       final transition = widget.transitionClock;
       if (transition != null && transition.isRunning) {
         transition.stop();
-        debugPrint('[NovaTubeQA] action=preview_to_full outcome=$outcome elapsed_ms=${transition.elapsedMilliseconds}');
+        debugPrint('[NovaTubeQA] action=preview_to_full outcome=$outcome elapsed_ms=${transition.elapsedMilliseconds}$source');
       }
     }
-    debugPrint('[NovaTubeQA] action=$_startAction outcome=$outcome elapsed_ms=${clock.elapsedMilliseconds}');
+    debugPrint('[NovaTubeQA] action=$_startAction outcome=$outcome elapsed_ms=${clock.elapsedMilliseconds}$source');
   }
   Duration _lastPos = Duration.zero;
   // App au premier plan ? (Home / multitâche → lecture en pause : le chien de
@@ -508,7 +511,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // reconnexion inutile.
     if (_zapHolding) return;
     if (_measure && !_casting && _appActive && !_catchup) {
-      if (_controller.firstFrame && !_controller.holdFrame) {
+      if (_controller.qaRenderedFrame != null && !_controller.holdFrame) {
         _traceEnd('first_frame');
       }
       final cadence = _controller.videoQuality.cadence;

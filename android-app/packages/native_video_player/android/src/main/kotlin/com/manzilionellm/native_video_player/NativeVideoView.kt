@@ -2022,7 +2022,11 @@ class NativeVideoView(
         emit("reconnecting", false)
         emit("buffering", false)
         unmuteIfThisSession()
-        emit("firstFrame", null)
+        // Le banc relie la première image à la vue et à la source exactes.
+        val renderProof = if (qaPhases) mapOf(
+            "view" to qaViewId, "epoch" to dartEpoch, "timeMs" to renderTimeMs
+        ) else null
+        emit("firstFrame", renderProof)
         emitNativeAiStatus()
         // Une copie tôt : si la coupure arrive dans les secondes qui
         // suivent, on a déjà une image à montrer.

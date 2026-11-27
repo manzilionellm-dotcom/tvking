@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:native_video_player/native_video_player.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -198,6 +199,22 @@ void main() {
         final opened = tester.widget<TvPlayerScreen>(screens);
         expect(opened.channels[opened.startIndex].name,
             names[changeFocus ? 1 : 0]);
+        if (const bool.fromEnvironment('NOVATUBE_QA_METRICS')) {
+          final clock = opened.transitionClock!;
+          await tester.pump(const Duration(milliseconds: 350));
+          await tester.pump();
+          final native = tester.widget<NativeVideoView>(find.descendant(
+            of: screens,
+            matching: find.byType(NativeVideoView, skipOffstage: false),
+            skipOffstage: false,
+          )).controller;
+          native.applyBackendEvent('playing', true);
+          native.applyBackendEvent('position', 800);
+          expect(native.firstFrame, isTrue);
+          expect(clock.isRunning, isTrue, reason: 'position seule');
+          native.applyBackendEvent('firstFrame', {'view': 7, 'epoch': 0, 'timeMs': 3400});
+          expect(clock.isRunning, isFalse, reason: 'première image de la source');
+        }
       } finally {
         if (!release.isCompleted) release.complete();
         await tester.pumpWidget(const SizedBox());
