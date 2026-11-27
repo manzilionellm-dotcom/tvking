@@ -130,11 +130,16 @@ cycle() {
 }
 # Le profil porte uniquement sur l'application et les mires du banc.
 # Le tampon de sched est purgé dans le fichier à intervalles courts.
-adb -s "$serial" shell 'getprop ro.build.type; getenforce; perfetto --version' > "$out/instrument-android.txt"
-adb -s "$serial" push "$qa_dir/memory.pbtxt" /data/local/tmp/novatube-memory.pbtxt >/dev/null
-adb -s "$serial" shell perfetto --txt --background -c /data/local/tmp/novatube-memory.pbtxt -o /data/misc/perfetto-traces/novatube-memory.pftrace > "$out/perfetto-start.txt"
-trace_pid="$(adb -s "$serial" shell pidof perfetto | tr -d '\r')"
-[[ "$trace_pid" =~ ^[0-9]+$ ]]
+adb -s "$serial" shell 'getprop ro.build.type; getenforce; getprop ro.build.version.sdk' > "$out/instrument-android.txt"
+trace_pid=""
+if adb -s "$serial" shell perfetto --txt --background -c - -o /data/misc/perfetto-traces/novatube-memory.pftrace < "$qa_dir/memory.pbtxt" > "$out/perfetto-start.txt" 2>&1; then
+  for _ in $(seq 1 5); do
+    trace_pid="$(adb -s "$serial" shell pidof perfetto | tr -d '\r' || true)"
+    [[ "$trace_pid" =~ ^[0-9]+$ ]] && break
+    sleep 1
+  done
+fi
+# Un diagnostic indisponible ne supprime pas les relevés FD, threads et codecs.
 snapshot() {
   local label="$1"
   adb -s "$serial" shell cat /proc/uptime > "$out/uptime-$label.txt"
@@ -153,7 +158,7 @@ for k in sorted(v):print(k,v[k])' > "$out/fd-classes-$label.txt"
   adb -s "$serial" shell dumpsys media.codec > "$out/codecs-$label.txt"
 }
 finish_profile() {
-  adb -s "$serial" shell kill -INT "$trace_pid" 2>/dev/null || true
+  if [[ "$trace_pid" =~ ^[0-9]+$ ]]; then adb -s "$serial" shell kill -INT "$trace_pid" 2>/dev/null || true; fi
   for _ in $(seq 1 15); do
     [[ -z "$(adb -s "$serial" shell pidof perfetto 2>/dev/null | tr -d '\r')" ]] && break
     sleep 1
