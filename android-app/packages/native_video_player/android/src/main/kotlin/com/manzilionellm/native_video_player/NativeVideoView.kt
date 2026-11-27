@@ -7,7 +7,6 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Point
-import android.graphics.Rect
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
@@ -123,6 +122,7 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+import kotlin.math.roundToInt
 
 /**
  * LE cœur du correctif « son OK / image noire » + le moteur « qui ne s'arrête
@@ -233,7 +233,8 @@ class NativeVideoView(
      */
     private val holdView = ImageView(context).apply {
         visibility = View.GONE
-        scaleType = ImageView.ScaleType.CENTER_CROP
+        // Le bitmap représente déjà le rectangle entier de la SurfaceView.
+        scaleType = ImageView.ScaleType.FIT_XY
         isFocusable = false
         isFocusableInTouchMode = false
     }
@@ -2621,6 +2622,14 @@ class NativeVideoView(
     private fun showHeldFrame() {
         val bmp = heldBitmap ?: return
         if (bmp.isRecycled) return
+        if (qaPhases && holdView.visibility != View.VISIBLE) {
+            android.util.Log.i(
+                "NovaTubeQA",
+                "view=$qaViewId epoch=$dartEpoch phase=held_shown bitmap=${bmp.width}x${bmp.height}" +
+                    " view_px=${surfaceView.width}x${surfaceView.height}" +
+                    " video_px=${player.videoSize.width}x${player.videoSize.height}",
+            )
+        }
         holdView.setImageBitmap(bmp)
         holdView.visibility = View.VISIBLE
         holdView.bringToFront()
@@ -2651,6 +2660,9 @@ class NativeVideoView(
 
     /** Cache la copie sans la jeter : la prochaine coupure la réutilise. */
     private fun hideHeldFrame() {
+        if (qaPhases && holdView.visibility == View.VISIBLE) {
+            android.util.Log.i("NovaTubeQA", "view=$qaViewId epoch=$dartEpoch phase=held_hidden")
+        }
         holdView.visibility = View.GONE
         holdView.setImageDrawable(null)
     }
@@ -2696,12 +2708,13 @@ class NativeVideoView(
         val w = surfaceView.width
         val h = surfaceView.height
         if (w < 16 || h < 16) return
-        val rw = minOf(w, 1280)
-        val rh = minOf(h, 720)
-        val left = (w - rw) / 2
-        val top = (h - rh) / 2
-        val rect = Rect(left, top, left + rw, top + rh)
-        val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.RGB_565)
+        // Ces dimensions bornent la mémoire de destination. Le tampon du décodeur
+        // peut être bien plus grand que la vue (par exemple une vidéo 1080p).
+        // Un rectangle source exprimé en pixels de vue en découperait une partie.
+        val reduction = maxOf(1.0, w / 1280.0, h / 720.0)
+        val copyWidth = (w / reduction).roundToInt().coerceAtLeast(1)
+        val copyHeight = (h / reduction).roundToInt().coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(copyWidth, copyHeight, Bitmap.Config.RGB_565)
         val ticket = frameCopies.begin(sessions.generation, currentUrl)
         if (ticket == null) {
             bmp.recycle()
@@ -2709,7 +2722,7 @@ class NativeVideoView(
         }
         lastCopyAt = now
         try {
-            PixelCopy.request(surfaceView, rect, bmp, { code ->
+            PixelCopy.request(surfaceView, bmp, { code ->
                 val completion = frameCopies.finish(
                     ticket, sessions.generation, currentUrl, canCopyCurrentFrame(),
                 )
