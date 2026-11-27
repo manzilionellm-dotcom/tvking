@@ -22,7 +22,7 @@ mkdir -p "$dir/live/mire1" "$dir/live/mire2" "$dir/logos" "$dir/movie" "$dir/ser
 hls() { # $1 = source vidéo lavfi, $2 = dossier de sortie
   ffmpeg -hide_banner -loglevel error -y \
     -f lavfi -i "$1" -f lavfi -i "sine=frequency=440:sample_rate=48000" \
-    -t 180 -map 0:v -map 1:a \
+    -vf "$(python3 "$(dirname "$0")/fixture_counter.py")" -t 180 -map 0:v -map 1:a \
     -c:v libx264 -preset veryfast -profile:v high -pix_fmt yuv420p -g 50 -keyint_min 50 \
     -c:a aac -b:a 128k -ac 2 \
     -f hls -hls_time 2 -hls_playlist_type vod \

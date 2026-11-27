@@ -78,81 +78,67 @@ wait_home
 alive "accueil après import"
 shot 09-apres-import
 
-step "Accueil → Direct"
-key KEYCODE_DPAD_CENTER 4
-grab
-if ! word 'mire|barres' >/dev/null; then
-  tap_word 'live|direct'
-fi
-wait_word 'mire|barres'
-shot 10-direct-3-zones
-sleep 6
-shot 11-direct-apercu-video
-
-step "Chaîne sélectionnée → plein écran"
-tap_word 'mire|barres' .18 .62
-grab
-if word 'barres|search' 0 .62 >/dev/null; then key KEYCODE_DPAD_CENTER 4; fi
-alive "lecture plein écran"
-shot 12-lecture-plein-ecran
-sleep 8
-shot 13-lecture-10s-plus-tard
-# Relever le CPU de l'application, la mémoire du processus et les événements QA.
-meter() {
-  local pid
-  pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r' | cut -d' ' -f1)"
-  test -n "$pid"
-  adb -s "$serial" shell "cat /proc/uptime; cat /proc/$pid/stat; getconf CLK_TCK 2>/dev/null || echo unknown" > "$out/proc-$1.txt"
-  adb -s "$serial" shell dumpsys meminfo "$pkg" > "$out/memoire-$1.txt"
+# Appelé depuis la phase média, sur l'accueil NovaTube après l'import.
+qa_dir="$(dirname "$(readlink -f "$0")")"
+sha256sum "$NOVATUBE_EMULATOR_APK" > "$out/apk-mesure-sha256.txt"
+adb -s "$serial" shell cat /proc/meminfo | head -1 > "$out/memoire-appareil.txt"
+fixed_pid="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
+same_pid() {
+  local current
+  current="$(adb -s "$serial" shell pidof "$pkg" | tr -d '\r')"
+  [[ "$current" == "$fixed_pid" ]]
 }
-meter direct-avant
-sleep 20
-meter direct-apres
-for iteration in $(seq 1 10); do key KEYCODE_CHANNEL_DOWN 6; done
-meter zaps-apres
-adb -s "$serial" logcat -d -s flutter:I | grep -F '[NovaTubeQA]' > "$out/qa-lecteur.txt" || true
-key KEYCODE_BACK 3
-wait_word 'mire|barres'
-shot 14-retour-direct
-key KEYCODE_BACK 3
-wait_home
-
-# Mémoire après fermeture du plein écran ET de l'aperçu, à PID constant.
-meter ferme-0
-for interval in 30 30 60 180; do
-  elapsed=$(( ${elapsed:-0} + interval ))
-  sleep "$interval"
-  meter "ferme-$elapsed"
-done
-# Les captures sont faites après l’ouverture de chaque page, jamais sur le
-# simple focus de sa tuile. Les données du fournisseur sont toutes générées.
-for page in 'movies|films:15-films' 'series:16-series' 'playlists|lists|sources:17-mes-listes' 'settings:18-reglages'; do
-  label="${page%%:*}"
-  fichier="${page#*:}"
-  tap_word "$label"
-  alive "$fichier"
+measure_pss() {
+  same_pid
+  adb -s "$serial" shell dumpsys meminfo "$pkg" > "$out/pss-$1.txt"
+  echo "$1 $(date -u +%T) $(awk '/TOTAL PSS:/ {print $3}' "$out/pss-$1.txt")" | tee -a "$out/pss-kib.txt"
+}
+log_trial() {
+  adb -s "$serial" logcat -d --pid="$fixed_pid" -v monotonic -s flutter:I NovaTubeQA:I | grep 'NovaTubeQA' > "$out/$1.txt" || true
+}
+cycle() {
+  local tag="$1" cut="$2"
+  same_pid
+  tap_word 'live|direct'
+  wait_word 'mire|barres'
+  # Même chaîne animée sur chaque passage. Le délai d'attente laisse démarrer l'aperçu.
+  sleep 4
+  # Les marqueurs Telecommande et Media3 proviennent du même essai.
+  adb -s "$serial" logcat -c
+  tap_word 'mire|barres' .18 .62
   grab
-  if word 'tonight' >/dev/null; then step "La tuile $label ne s’est pas ouverte"; exit 1; fi
-  case "$fichier" in
-    15-films) wait_word 'horizon' ;;
-    16-series) wait_word 'aurora' ;;
-  esac
-  shot "$fichier"
-  if [[ "$fichier" == 18-reglages ]]; then
-    key KEYCODE_DPAD_CENTER 3
-    wait_word 'access|reseller'
-    shot 19-licence
-    key KEYCODE_BACK 2
+  if word 'barres|search' 0 .62 >/dev/null; then key KEYCODE_DPAD_CENTER 1; fi
+  for attempt in $(seq 1 16); do
+    log_trial "$tag"
+    if grep -q 'action=open_screen outcome=first_frame' "$out/$tag.txt"; then break; fi
+    sleep .5
+  done
+  if grep -q 'action=open_screen outcome=first_frame' "$out/$tag.txt"; then
+    echo "$tag first_frame" | tee -a "$out/ouvertures.txt"
+  else
+    echo "$tag sans_confirmation" | tee -a "$out/ouvertures.txt"
   fi
-  key KEYCODE_BACK 3
+  if ((cut > 0)); then
+    sleep 3
+    python3 "$qa_dir/outage_probe.py" "$serial" "$out" "$cut"
+  fi
+  log_trial "$tag"
+  key KEYCODE_BACK 1
+  wait_word 'mire|barres'
+  key KEYCODE_BACK 1
   wait_home
+}
+for cut in 5 15 60; do cycle "coupure-$cut" "$cut"; done
+sleep 7
+measure_pss depart
+for iteration in $(seq 1 30); do
+  cycle "cycle-$iteration" 0
+  sleep 7
+  measure_pss "cycle-$iteration"
 done
-rm -f "$out/instant.png"
-step "Ce que l'application a réellement demandé au serveur local"
-grep -c 'GET /novatube-test.m3u' "$out/serveur-local.txt" > "$out/requetes-liste.txt" || true
-grep -c 'GET /logos/' "$out/serveur-local.txt" > "$out/requetes-logos.txt" || true
-grep -c 'GET /live/.*\.ts' "$out/serveur-local.txt" > "$out/requetes-segments-video.txt" || true
-step "liste : $(cat "$out/requetes-liste.txt") · logos : $(cat "$out/requetes-logos.txt") · segments vidéo : $(cat "$out/requetes-segments-video.txt")"
-test "$(cat "$out/requetes-liste.txt")" -ge 1
-test "$(cat "$out/requetes-segments-video.txt")" -ge 2
-step "OK : liste importée en HTTP et vidéo réellement lue"
+start="$SECONDS"
+for deadline in 30 60 120 300 600 900; do
+  delay=$((start + deadline - SECONDS))
+  if ((delay > 0)); then sleep "$delay"; fi
+  measure_pss "repos-$deadline"
+done
