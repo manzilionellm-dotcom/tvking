@@ -872,6 +872,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   Future<void> _startRecording() async {
     if (_isRecording || _startingRecording) return;
+    if (LocalStreamRelay.isHlsPlaylist(_playingUrl)) {
+      _flash(context.l10n.tvRecordingError);
+      return;
+    }
     _startingRecording = true;
     final channel = _current;
     final realUrl = _playingUrl;
@@ -915,7 +919,13 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       unawaited(closed.then((_) async {
         if (!mounted || !identical(_activeRecording, rec)) return;
         setState(() => _activeRecording = null);
-        if (_relayPlayUrl == localUrl) _relayPlayUrl = null;
+        if (_relayPlayUrl == localUrl) {
+          _relayPlayUrl = null;
+          if (current() && _appActive && !_casting && !_zapHolding &&
+              !(_livePausedAt != null && _canTimeshift)) {
+            _controller.setUrl(realUrl);
+          }
+        }
         _flash(context.l10n.tvRecordingError);
         await repo.finishRecording(rec);
       }).catchError((Object error) {

@@ -98,6 +98,13 @@ class LocalStreamRelay {
     return 'http://127.0.0.1:$_port/s?u=$token';
   }
 
+  /// Le relais du direct enregistre des octets média continus. Un manifeste
+  /// doit être lu directement par le lecteur afin de résoudre ses segments.
+  static bool isHlsPlaylist(String url) {
+    final path = Uri.tryParse(url)?.path.toLowerCase() ?? '';
+    return path.endsWith('.m3u8') || path.endsWith('.m3u');
+  }
+
   /// Démarre l'écriture du flux EN COURS vers `filePath`, en se branchant
   /// sur la connexion DÉJÀ ouverte pour la lecture (aucune 2e connexion).
   /// Si aucune session n'existe encore pour cette URL (cas limite), on
@@ -106,7 +113,9 @@ class LocalStreamRelay {
     required String realUrl,
     required String filePath,
   }) {
+    if (isHlsPlaylist(realUrl)) return Future.value(false);
     final session = _ensureSession(realUrl);
+    if (session.manifestResponse) return Future.value(false);
     if (session.recordSink != null) return Future.value(true);
     return session.openingRecording ??= _openRecording(session, filePath)
         .whenComplete(() {
@@ -131,6 +140,10 @@ class LocalStreamRelay {
         }
       }));
       await sink.addStream(const Stream<List<int>>.empty());
+      if (session.manifestResponse || session.closed) {
+        await sink.close();
+        return false;
+      }
       session.recordSink = sink;
       session.recordPath = filePath;
       session.recordBytes = 0;
@@ -331,6 +344,19 @@ class LocalStreamRelay {
     _RelaySession session,
     HttpClientResponse resp,
   ) {
+    // Les URL sans extension peuvent répondre avec un manifeste HLS.
+    // Empêcher sa copie en tant que vidéo même si le fichier est déjà ouvert.
+    session.manifestResponse =
+        resp.headers[HttpHeaders.contentTypeHeader]?.any(
+          (value) => value.toLowerCase().split(';').first.trim().endsWith('mpegurl'),
+        ) ?? false;
+    if (session.manifestResponse && session.recordSink != null) {
+      final sink = session.recordSink!;
+      session.recordSink = null;
+      unawaited(sink.close().then<void>((_) {}, onError: (Object _, StackTrace __) {}));
+      _maybeCloseSession(session);
+      if (session.closed) return;
+    }
     // idleTimeout de HttpClient concerne les connexions inactives du pool.
     // Borner aussi le silence du corps d'une réponse déjà ouverte.
     session.sub = resp.timeout(const Duration(seconds: 30)).listen(
@@ -518,6 +544,7 @@ class _RelaySession {
   int reconnectFailures = 0;
   int emptyStarts = 0;
   bool receivedData = false;
+  bool manifestResponse = false;
 
   /// Lecteurs branchés (mpv). En pratique 0 ou 1, mais on supporte
   /// plusieurs (mpv ouvre parfois une connexion de sonde + une de
