@@ -8,9 +8,11 @@ from pilot_observer import frame, sparse_hour
 
 out=Path(sys.argv[1])
 adb=['adb','-s','emulator-5554']
-def screenshot(name=None):
+def screenshot(name=None, proof=None):
     start=time.monotonic()
     image,raw=frame(adb,out,start)
+    if proof is not None and len(proof) < 10:
+        proof.append(raw if image is not None else None)
     if image is None:return None,None,start,time.monotonic()
     if name: (out/(name+'.png')).write_bytes(raw)
     image=image.convert('L')
@@ -24,15 +26,29 @@ def screenshot(name=None):
         ch,n=decode(values)
         if ch:return ch,n,start,time.monotonic()
     return None,None,start,time.monotonic()
-def motion(seconds, target=None):
+def motion(seconds, target=None, proof=None):
     deadline=time.monotonic()+seconds;prev=None;raw=[]
     while time.monotonic()<deadline:
-        ch,n,t,e=screenshot()
+        ch,n,t,e=screenshot(proof=proof)
         raw.append([ch,n,round(t-zero,3),round(e-zero,3)])
         if ch and (target is None or target==ch) and prev and prev[0]==ch and 0<(n-prev[1])%(1<<20)<(1<<19):
             return ch,e,raw
         prev=(ch,n) if ch else None
     return None,None,raw
+def record_calibration(index, target, raw_frames, observations):
+    # L'écriture des captures de preuve a lieu après la calibration et
+    # avant les 50 zaps chronométrés. Le parcours mesuré reste identique.
+    folder = out / "calibration"
+    folder.mkdir(exist_ok=True)
+    entries = []
+    for n, (png, sample) in enumerate(zip(raw_frames, observations)):
+        if png is None:
+            continue
+        name = f"{index}-{target}-{n:02d}.png"
+        (folder / name).write_bytes(png)
+        entries.append({"file":name, "target":target, "sample":sample})
+    (folder / f"{index}-{target}.json").write_text(json.dumps(entries))
+
 def key(code):
     subprocess.run(adb+['shell','input','keyevent',code],check=True,timeout=5)
 def persist():
@@ -53,7 +69,8 @@ else:
     selected=None
     for keycode in ['KEYCODE_CHANNEL_DOWN','KEYCODE_DPAD_DOWN','KEYCODE_CHANNEL_UP','KEYCODE_DPAD_UP']:
         target='B' if current=='A' else 'A'
-        key(keycode);ch,end,raw=motion(8,target)
+        key(keycode);proof=[];ch,end,raw=motion(8,target,proof)
+        record_calibration(keycode,target,proof,raw)
         result['probe'].append({'key':keycode,'expected':target,'seen':ch,'samples':raw})
         if ch: selected=keycode;current=ch;break
         current,_,_=motion(4)
@@ -70,7 +87,8 @@ else:
         backwards=end_keys[selected]
         target='B' if current=='A' else 'A'
         key(backwards)
-        returned,end,raw=motion(10,target)
+        proof=[];returned,end,raw=motion(10,target,proof)
+        record_calibration("return",target,proof,raw)
         result['probe'].append({'key':backwards,'expected':target,'seen':returned,'samples':raw})
         if returned:
             current=returned

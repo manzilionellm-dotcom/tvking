@@ -57,7 +57,9 @@ for app in "$first" "$second"; do
         test "$(cat "$root/app-commit")" = "$EXPECTED_CANDIDAT"
         cp "$root/app-commit" "$version_out/app-commit"
         apk="$root/NovaTube-TV-emulateur.apk"
-        digest=907b00d95eb3b05c9b1b64f9944194bed23e67db8c2ba81539cfc5da70d83145
+        digest=$(cut -d" " -f1 "$root/SHA256SUMS")
+        cp "$root/build-flags.txt" "$version_out/"
+        grep -Fxq "NOVATUBE_COMPACT_ZAP=true" "$version_out/build-flags.txt"
         pkg=com.sevenmotion.novatube.tv
         ;;
       televizo)
@@ -90,5 +92,16 @@ for app in "$first" "$second"; do
     python3 "$work/${app}_pilot.py" "$version_out"
     python3 "$work/benchmark.py" "$version_out"
     adb logcat -d -s NovaTubeQA:I flutter:I > "$version_out/player.log"
+    # Contrôle visuel supplémentaire après les 50 chronométrages. L'enregistrement
+    # de la transition ne concurrence aucune des observations optiques classées.
+    adb shell rm -f /sdcard/novatube-qa-visual.mp4
+    adb shell screenrecord --bit-rate 6000000 --time-limit 6 /sdcard/novatube-qa-visual.mp4 > "$version_out/record.log" 2>&1 &
+    recorder=$!
+    sleep 1.2
+    adb shell input keyevent KEYCODE_CHANNEL_DOWN
+    if wait "$recorder"; then
+      adb pull /sdcard/novatube-qa-visual.mp4 "$version_out/post-zap.mp4" > "$version_out/pull.log" 2>&1 || true
+    fi
+    adb shell rm -f /sdcard/novatube-qa-visual.mp4
     adb uninstall "$pkg"
 done
