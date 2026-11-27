@@ -21,7 +21,7 @@ name: NovaTube TV — APK de test
 
 on:
   push:
-    branches: ['ccr-b67ba221-20h8wo-novatube-tv']
+    branches: ['qa/novatube-apk-tv-manuel-20261127']
     paths:
       - 'android-app/**'
       - '.github/workflows/novatube-tv-test.yml'
@@ -543,3 +543,63 @@ jobs:
               --title "NovaTube TV — APK de TEST ${GITHUB_SHA:0:8}" --notes-file notes.md
           fi
           echo "Lien direct : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${APK_NAME}"
+
+  manual_fixed_download:
+    name: APK de TEST pour Downloader (adresse fixe)
+    needs: [build, emulator, prerelease]
+    if: needs.prerelease.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: novatube-tv-domaine
+      cancel-in-progress: false
+    steps:
+      - name: Relire le résultat du contrôle Android
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: novatube-tv-emulateur-${{ github.sha }}
+          path: checked
+      - name: Vérifier et relier le nouvel APK de test (rollback automatique)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE: ${{ needs.emulator.outputs.source-sha }}
+          APK_SHA: ${{ needs.emulator.outputs.apk-sha }}
+          APK_NAME: ${{ needs.emulator.outputs.apk-name }}
+        run: |
+          set -euo pipefail
+          test "$(cat checked/phase-media.txt)" = ok
+          tag="novatube-tv-test-${SOURCE:0:8}"
+          fixed="novatube-tv-download"
+          test "$(gh release view "$tag" --json isPrerelease,isDraft --jq '.isPrerelease and (.isDraft|not)')" = true
+          test "$(gh release view "$fixed" --json isPrerelease --jq '.isPrerelease')" = true
+          mkdir source backup out
+          gh release download "$tag" --pattern "$APK_NAME" --dir source
+          printf '%s  %s\n' "$APK_SHA" "source/$APK_NAME" | sha256sum -c -
+          gh release download "$fixed" --pattern NovaTube-TV.apk --pattern SHA256SUMS.txt --dir backup
+          (cd backup && sha256sum -c SHA256SUMS.txt)
+          cp "source/$APK_NAME" out/NovaTube-TV.apk
+          printf '%s  NovaTube-TV.apk\n' "$APK_SHA" > out/SHA256SUMS.txt
+          restore() {
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              gh release upload "$fixed" backup/NovaTube-TV.apk backup/SHA256SUMS.txt --clobber
+            fi
+            exit "$rc"
+          }
+          trap restore EXIT
+          gh release upload "$fixed" out/NovaTube-TV.apk out/SHA256SUMS.txt --clobber
+          ok=false
+          for i in $(seq 1 12); do
+            if curl -fsSL --retry 2 --max-time 60 https://novatube.zuno8k.com/novatube.apk -o live.apk && printf '%s  live.apk\n' "$APK_SHA" | sha256sum -c -; then
+              ok=true
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" = true
+          trap - EXIT
+          echo "APK de test vérifié : https://novatube.zuno8k.com/novatube.apk" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256 : $APK_SHA" >> "$GITHUB_STEP_SUMMARY"
