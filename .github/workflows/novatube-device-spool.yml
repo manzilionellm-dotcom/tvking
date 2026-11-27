@@ -1,0 +1,65 @@
+name: NovaTube · journal indépendant dans Android
+on:
+  push:
+    branches: ['qa/novatube-spool-5753-20261127']
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Reprendre un journal ayant continué sans observateur hôte
+        env:
+          FREEZE_SCENARIO: preuve-spool
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -euo pipefail
+          out="$PWD/spool-result"; mkdir -p "$out"
+          image='system-images;android-36;android-tv;x86_64'
+          sdkmanager platform-tools emulator "$image" > "$out/sdk.txt"
+          echo no | avdmanager create avd -f -n spool-tv -k "$image" > "$out/avd.txt"
+          sudo chmod a+rw /dev/kvm
+          mkdir -p "$HOME/.android"; test -f "$HOME/.android/adbkey" || adb keygen "$HOME/.android/adbkey"
+          adb start-server
+          "$ANDROID_HOME/emulator/emulator" -avd spool-tv -port 5554 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 1536 -cores 2 > "$out/emulator.txt" 2>&1 &
+          ep=$!; trap 'adb emu kill >/dev/null 2>&1 || true; kill "$ep" 2>/dev/null || true' EXIT
+          for i in $(seq 1 140); do
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then break; fi
+            sleep 2
+          done
+          timeout 20 adb wait-for-device
+          adb shell 'getprop ro.build.fingerprint; id; getprop ro.debuggable' > "$out/android.txt"
+          observe=android-app/ci/novatube_tv/inspect_device_spool.py
+          python3 "$observe" watch "$out" --interval 2 --seconds 7 &
+          hostpid=$!
+          sleep 3
+          adb shell log -t NovaTubeFreeze QA_SPOOL_BEFORE
+          wait "$hostpid"
+          # The remote watchdog emits these after its shell has returned. No host logger is active.
+          adb shell "setsid sh -c 'sleep 2; log -t NovaTubeFreeze QA_SPOOL_WITHOUT_HOST; sleep 2; log -t NovaTubeFreeze QA_SPOOL_WITHOUT_HOST_END' </dev/null >/dev/null 2>&1 &"
+          sleep 7
+          adb shell log -t NovaTubeFreeze QA_SPOOL_AFTER
+          sleep 1
+          python3 "$observe" collect "$out"
+          python3 "$observe" collect "$out"
+          python3 - <<'CHECK'
+          import json
+          from pathlib import Path
+          root=Path('spool-result/device-logcat')
+          text='\n'.join(x.read_text(errors='replace') for x in root.glob('inode-*.txt'))
+          for marker in ['QA_SPOOL_BEFORE','QA_SPOOL_WITHOUT_HOST','QA_SPOOL_WITHOUT_HOST_END','QA_SPOOL_AFTER']:
+              entries=[s for s in text.splitlines() if s.rstrip().endswith(marker)]
+              assert len(entries)==1,(marker,len(entries))
+          print('All four markers written in the emulator recovered exactly once after the host collector exited')
+          CHECK
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: android-spool-${{ github.run_id }}
+          path: spool-result
+          retention-days: 14
