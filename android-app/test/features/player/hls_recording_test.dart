@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/player/data/local_stream_relay.dart';
@@ -64,6 +65,42 @@ void main() {
     } finally {
       if (!allowFirst.isCompleted) allowFirst.complete();
       http.close(force: true);
+      await relay.stopRecording(url);
+      await server.close(force: true);
+      await dir.delete(recursive: true);
+    }
+  });
+  test('un manifeste gzip sert les octets MPEG-TS sans les décompresser',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final dir = await Directory.systemTemp.createTemp('hls-gzip-');
+    final relay = LocalStreamRelay.instance;
+    final url = 'http://127.0.0.1:${server.port}/direct.m3u8';
+    final file = File('${dir.path}/capture.ts');
+    final packet = [0x47, ...List.filled(187, 0x2a)];
+    final requests = <String>[];
+    server.listen((req) async {
+      requests.add(req.uri.path);
+      if (req.uri.path == '/direct.m3u8') {
+        req.response.headers.set(HttpHeaders.contentEncodingHeader, 'gzip');
+        req.response.add(gzip.encode(utf8.encode(
+            '#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:0.05,\npart.ts\n#EXT-X-ENDLIST\n')));
+      } else {
+        req.response.add(packet);
+      }
+      await req.response.close();
+    });
+    try {
+      expect(await relay.startRecording(realUrl: url, filePath: file.path),
+          isTrue);
+      expect(
+          await relay
+              .recordingFinished(url)
+              .timeout(const Duration(seconds: 5)),
+          isTrue);
+      expect(await file.readAsBytes(), packet);
+      expect(requests, ['/direct.m3u8', '/part.ts']);
+    } finally {
       await relay.stopRecording(url);
       await server.close(force: true);
       await dir.delete(recursive: true);

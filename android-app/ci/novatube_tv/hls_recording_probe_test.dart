@@ -1,5 +1,6 @@
 // Banc Linux. Exécuter avec NOVATUBE_HLS_FIXTURE pointant sur le dossier
 // contenant media.m3u8 et ses segments TS ; la capture est écrite à côté.
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tv_king/features/player/data/local_stream_relay.dart';
@@ -9,8 +10,16 @@ void main() {
   test('capturer la mire HLS et vérifier les images décodées', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final reads = <String, int>{};
+    final ports = <int>{};
+    final firstRequest = Completer<void>();
+    final recordReady = Completer<void>();
+    final player = HttpClient();
+    final temp = await Directory.systemTemp.createTemp('novatube-player-');
     server.listen((r) async {
+      ports.add(r.connectionInfo!.remotePort);
       final name = r.uri.pathSegments.last;
+      if (!firstRequest.isCompleted) firstRequest.complete();
+      await recordReady.future;
       if (!RegExp(r'^(media\.m3u8|p\d+\.ts)$').hasMatch(name)) {
         r.response.statusCode = 404;
       } else {
@@ -22,13 +31,22 @@ void main() {
     final relay = LocalStreamRelay.instance;
     final url = 'http://127.0.0.1:${server.port}/media.m3u8';
     final path = '$root/capture.ts';
+    final playerPath = '${temp.path}/recu.ts';
     try {
+      final local = await relay.playUrlFor(url);
+      final request = await player.getUrl(Uri.parse(local));
+      final playback = request
+          .close()
+          .then((response) => response.pipe(File(playerPath).openWrite()));
+      await firstRequest.future.timeout(const Duration(seconds: 5));
       expect(await relay.startRecording(realUrl: url, filePath: path), isTrue);
+      recordReady.complete();
       expect(
           await relay
               .recordingFinished(url)
               .timeout(const Duration(seconds: 20)),
           isTrue);
+      await playback.timeout(const Duration(seconds: 5));
       Future<List<String>> hashes(String input, String map) async {
         final cmd = await Process.run('ffmpeg',
             ['-v', 'error', '-i', input, '-map', map, '-f', 'framemd5', '-']);
@@ -45,13 +63,19 @@ void main() {
         final original = await hashes('$root/media.m3u8', track);
         expect(original, isNotEmpty);
         expect(await hashes(path, track), original);
+        expect(await hashes(playerPath, track), original);
         print('P0_HLS track=$track unites=${original.length}');
       }
       expect(reads.values.every((n) => n == 1), isTrue);
-      print('P0_HLS requetes=$reads octets=${await File(path).length()}');
+      expect(ports, hasLength(1));
+      print(
+          'P0_HLS connexions=${ports.length} requetes=$reads octets=${await File(path).length()}');
     } finally {
+      if (!recordReady.isCompleted) recordReady.complete();
+      player.close(force: true);
       await relay.stopRecording(url);
       await server.close(force: true);
+      await temp.delete(recursive: true);
     }
   }, skip: root == null);
 }

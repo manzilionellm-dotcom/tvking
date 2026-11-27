@@ -41,12 +41,20 @@ class HlsSegmentReader {
       response.redirects
           .fold(base, (uri, redirect) => uri.resolveUri(redirect.location));
 
-  static Future<Uint8List> _bytes(
-      HttpClientResponse response, int limit) async {
+  static Future<Uint8List> _bytes(HttpClientResponse response, int limit,
+      {bool manifest = false}) async {
     if (response.contentLength > limit)
       throw const FormatException('Ressource HLS trop grande');
     final data = BytesBuilder(copy: false);
-    await for (final chunk in response.timeout(const Duration(seconds: 15))) {
+    // Le client conserve les octets TS. Pour les manifestes compressés, la
+    // limite porte aussi sur le texte décompressé avant sa lecture en UTF-8.
+    final gzipManifest = manifest &&
+        response.headers
+                .value(HttpHeaders.contentEncodingHeader)
+                ?.toLowerCase() ==
+            'gzip';
+    final body = gzipManifest ? gzip.decoder.bind(response) : response;
+    await for (final chunk in body.timeout(const Duration(seconds: 15))) {
       if (data.length + chunk.length > limit)
         throw const FormatException('Ressource HLS trop grande');
       data.add(chunk);
@@ -74,7 +82,8 @@ class HlsSegmentReader {
       ..start();
     while (!_closed) {
       uri = _effectiveUri(uri, response);
-      final body = utf8.decode(await _bytes(response, 1024 * 1024));
+      final body =
+          utf8.decode(await _bytes(response, 1024 * 1024, manifest: true));
       final lines = const LineSplitter()
           .convert(body)
           .map((line) => line.trim())
