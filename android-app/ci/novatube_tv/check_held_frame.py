@@ -26,9 +26,10 @@ def inspect(data):
     w, h = image.size
     bars = []
     for i in range(6):
-        # Échantillonner le centre de chaque barre, au-dessus du texte et du compteur.
-        x, y = round((i + .5) * w / 6), round(h * .09)
-        patch = [image.getpixel((x+dx, y+dy)) for dx in range(-2, 3) for dy in range(-2, 3)]
+        # La mire testsrc2 anime des formes par-dessus les barres. Échantillonner
+        # la moitié centrale de chaque barre sur cinq lignes distinctes.
+        patch = [image.getpixel((round((i + x) * w / 6), round(y * h)))
+                 for x in (.25, .375, .5, .625, .75) for y in (.055, .075, .095, .115, .135)]
         rgb = [median(values) for values in zip(*patch)]
         bars.append(''.join(ch for ch, value in zip('RGB', rgb) if value > 156))
     gray = image.convert('L')
