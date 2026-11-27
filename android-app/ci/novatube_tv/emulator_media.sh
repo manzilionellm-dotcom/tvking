@@ -128,17 +128,50 @@ cycle() {
   key KEYCODE_BACK 1
   wait_home
 }
-for cut in 5 15 60; do cycle "coupure-$cut" "$cut"; done
-sleep 7
-measure_pss depart
-for iteration in $(seq 1 30); do
-  cycle "cycle-$iteration" 0
+# Le profil porte uniquement sur l'application et les mires du banc.
+# Le tampon de sched est purgé dans le fichier à intervalles courts.
+adb -s "$serial" shell 'getprop ro.build.type; getenforce; perfetto --version' > "$out/instrument-android.txt"
+adb -s "$serial" push "$qa_dir/memory.pbtxt" /data/local/tmp/novatube-memory.pbtxt >/dev/null
+adb -s "$serial" shell perfetto --txt --background -c /data/local/tmp/novatube-memory.pbtxt -o /data/misc/perfetto-traces/novatube-memory.pftrace > "$out/perfetto-start.txt"
+trace_pid="$(adb -s "$serial" shell pidof perfetto | tr -d '\r')"
+[[ "$trace_pid" =~ ^[0-9]+$ ]]
+snapshot() {
+  local label="$1"
+  adb -s "$serial" shell cat /proc/uptime > "$out/uptime-$label.txt"
+  measure_pss "$label"
+  # Le système de test reste en mode enforcing; on écrit uniquement les
+  # classes de FD. Les noms individuels des fichiers ne sont pas publiés.
+  adb -s "$serial" shell "wc -l < /proc/$fixed_pid/maps; ls /proc/$fixed_pid/fd | wc -l; ls /proc/$fixed_pid/task | wc -l" > "$out/resources-$label.txt"
+  adb -s "$serial" shell "for t in /proc/$fixed_pid/task/*; do cat \$t/comm; done" | tr -d '\r' | sort | uniq -c > "$out/threads-$label.txt"
+  adb -s "$serial" shell "ls -l /proc/$fixed_pid/fd" | python3 -c 'import collections,sys; v=collections.Counter()
+for l in sys.stdin:
+ if " -> " in l:
+  p=l.split(" -> ",1)[1].strip()
+  k=next((x for x in ("socket:","pipe:","anon_inode:","/dev/ashmem","/memfd:","/dev/","/data/","/system/","/apex/") if p.startswith(x)),"other")
+  v[k]+=1
+for k in sorted(v):print(k,v[k])' > "$out/fd-classes-$label.txt"
+  adb -s "$serial" shell dumpsys media.codec > "$out/codecs-$label.txt"
+}
+finish_profile() {
+  adb -s "$serial" shell kill -INT "$trace_pid" 2>/dev/null || true
+  for _ in $(seq 1 15); do
+    [[ -z "$(adb -s "$serial" shell pidof perfetto 2>/dev/null | tr -d '\r')" ]] && break
+    sleep 1
+  done
+  adb -s "$serial" pull /data/misc/perfetto-traces/novatube-memory.pftrace "$out/android.pftrace" || true
+  stop_server
+}
+trap finish_profile EXIT
+sleep 18
+snapshot initial
+for n in $(seq 1 8); do
+  cycle "cycle-$n" 0
   sleep 7
-  measure_pss "cycle-$iteration"
+  snapshot "cycle-$n"
 done
-start="$SECONDS"
-for deadline in 30 60 120 300 600 900; do
+start=$SECONDS
+for deadline in 30 60 120; do
   delay=$((start + deadline - SECONDS))
   if ((delay > 0)); then sleep "$delay"; fi
-  measure_pss "repos-$deadline"
+  snapshot "repos-$deadline"
 done

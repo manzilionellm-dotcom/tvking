@@ -2,7 +2,7 @@ name: NovaTube audit Android 11 (mires uniquement)
 
 on:
   push:
-    branches: ['qa/novatube-cycles-reprise-20261127']
+    branches: ['qa/novatube-profil-natif-20261127']
 
 permissions:
   contents: read
@@ -24,15 +24,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - variante: avant
-            sha: b475f0b35f45448bab70d5ec6f22f07f63b19007
-            run: '45998784741'
-          - variante: apres
+          - variante: avant-garde
             sha: b53eb8f56de3515987aae7d99f3e50735167c121
             run: '45998775045'
+          - variante: apres
+            sha: 2e018b0ffe4bd41f53995ec5e336f9e0ed113221
+            run: '46002079321'
 
     runs-on: ubuntu-24.04
-    timeout-minutes: 85
+    timeout-minutes: 38
     permissions:
       actions: read
       contents: read
@@ -132,7 +132,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: novatube-cycles-${{ matrix.variante }}-${{ github.sha }}
+          name: novatube-profil-${{ matrix.variante }}-${{ github.sha }}
           path: artifacts/emulateur/
           if-no-files-found: warn
           retention-days: 14
