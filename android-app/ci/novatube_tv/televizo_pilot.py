@@ -168,10 +168,13 @@ for i in range(46):
     texts=[desc(n) for n in nodes if desc(n)]
     (OUT / f'televizo-{i:02}-labels.txt').write_text('\n'.join(texts))
     # Respect optional choices: no trial, subscription, account, or ad opt-in.
-    button=find(nodes,r'do not consent|do not allow|don.t allow|reject all|not now|skip|got it')
+    button=find(nodes,r'do not consent|do not allow|don.t allow|reject all|not now|skip')
     if button is not None:
         tap(button,'dismiss optional prompt')
         continue
+    if any(re.search(r'terms (?:and conditions|of (?:service|use))|end.user licen[sc]e|licen[sc]e agreement|by (?:continuing|using).+agree', text, re.I) for text in texts):
+        screenshot('conditions-inattendues')
+        raise SystemExit("Une nouvelle acceptation est demandée. Essai arrêté.")
     warning = find(nodes,r'warning')
     confirm_save = find(nodes,r'save')
     if warning is not None and confirm_save is not None and any(
@@ -220,11 +223,6 @@ for i in range(46):
                 break
         else: button=None
         if button is not None: continue
-    # Basic application information and acknowledgement dialogs.
-    button=find(nodes,r'continue|okay|ok|next|done|close')
-    if button is not None:
-        tap(button,'continue through informational screen')
-        continue
     screenshot('stopped')
     log('waiting for a recognized standard UI action')
 screenshot('blocked')
