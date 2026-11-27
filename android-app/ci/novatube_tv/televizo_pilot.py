@@ -10,6 +10,7 @@ from pathlib import Path
 
 from PIL import Image
 from read_display_capture import decode
+from pilot_observer import frame
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -127,8 +128,13 @@ def open_fullscreen():
     deadline=time.monotonic()+45
     last_tap=0
     while time.monotonic()<deadline:
-        raw=run('exec-out','screencap','-p',binary=True)
-        image=Image.open(io.BytesIO(raw)).convert('L')
+        # Un screencap PNG incomplet peut avoir un statut ADB nul. Le même
+        # observateur vérifié que pour les zaps relit l’image via la console.
+        picture,raw=frame(ADB,OUT,time.monotonic())
+        if picture is None:
+            time.sleep(.3)
+            continue
+        image=picture.convert('L')
         w,h=image.size
         for t,b in ((0,0),(0,24),(0,48),(24,0),(24,24),(48,0),(48,48)):
             vh=min(h-t-b,w*9/16);vw=vh*16/9
