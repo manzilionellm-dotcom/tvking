@@ -22,11 +22,22 @@ def adb(*args, output=False, timeout=18):
     return result.stdout if output else None
 
 
-def words(path):
+class PortraitPreview(Exception):
+    """Miniature de démarrage, inutilisable pour cliquer dans l’écran TV."""
+
+
+def words(path, timeout):
     with Image.open(path) as im:
         w, h = im.size
-    data = subprocess.check_output(["tesseract", str(path), "stdout", "--psm", "11", "tsv"],
-                                   stderr=subprocess.DEVNULL, text=True, timeout=18)
+    # La console peut renvoyer une miniature portrait avant la première vraie
+    # capture TV. Ses coordonnées ne correspondent pas à celles de la télécommande.
+    if w <= h:
+        raise PortraitPreview
+    data = subprocess.check_output(
+        ["tesseract", str(path), "stdout", "--psm", "11", "tsv"],
+        stderr=subprocess.DEVNULL, text=True, timeout=timeout,
+        env={**os.environ, "OMP_THREAD_LIMIT": "1"},
+    )
     result = []
     for row in csv.DictReader(io.StringIO(data), delimiter="\t"):
         text = re.sub("[^a-z0-9]", "", row["text"].lower())
@@ -73,13 +84,24 @@ def run(folder):
         raise RuntimeError(name + ": 6 captures du démarrage ont échoué")
     def poll(name, predicate, seconds=28):
         end=time.monotonic()+seconds
-        while True:
-            ts=words(ss(name))
-            if predicate(ts):
-                return ts
-            if time.monotonic() >= end:
-                raise RuntimeError(f"{name}: écran attendu absent. Texte: "+' '.join(t[0] for t in ts)[:400])
-            time.sleep(.65)
+        detail = "aucun texte lisible"
+        while time.monotonic() < end:
+            path = ss(name)
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                ts = words(path, timeout=min(18, remaining))
+            except PortraitPreview:
+                detail = "capture portrait de démarrage"
+            except subprocess.TimeoutExpired:
+                detail = "lecture OCR expirée"
+            else:
+                if predicate(ts):
+                    return ts
+                detail = " ".join(t[0] for t in ts)[:400] or "aucun texte lisible"
+            time.sleep(min(.65, max(0, end - time.monotonic())))
+        raise RuntimeError(f"{name}: écran attendu absent ({detail})")
     def key(name):
         adb("shell", "input", "keyevent", name)
     def tap(t):
@@ -92,7 +114,7 @@ def run(folder):
         ss("nova-03-url")
         key("KEYCODE_ENTER")
         time.sleep(2.5)
-        state=words(ss("nova-04-submit"))
+        state=poll("nova-04-submit", bool)
         if not home(state) and not labels(state) & {"welcome","bienvenue"}:
             # Sur certains IME l'envoi place d'abord le focus sur Valider.
             key("KEYCODE_DPAD_CENTER")
@@ -105,7 +127,7 @@ def run(folder):
     ts=poll("nova-06-grid",lambda t:row_a(t) is not None,35)
     tap(row_a(ts))
     time.sleep(3)
-    ts=words(ss("nova-07-selected"))
+    ts=poll("nova-07-selected", lambda _: True)
     if row_a(ts):
         key("KEYCODE_DPAD_CENTER")
     # Confirmation indépendante de l'écran : le compteur matériel QA de ce
