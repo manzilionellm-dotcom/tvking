@@ -1,18 +1,19 @@
-name: NovaTube — gel après 57 minutes sur Android TV
+name: NovaTube TV · endurance du candidat fe134dd4 sur deux profils mémoire
 on:
   push:
-    branches: ['qa/nt-optical-passive-20261127']
+    branches: ['qa/novatube-fe134dd4-endurance-20261127']
 permissions:
   contents: read
   actions: read
 jobs:
   longue:
+    name: Lecture directe 80 minutes (${{ matrix.ram_mib }} Mio)
     runs-on: ubuntu-24.04
     timeout-minutes: 135
     strategy:
       fail-fast: false
       matrix:
-        scenario: [temoin-passif]
+        ram_mib: [1024, 1536]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -27,19 +28,19 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '22'
-      - name: APK historique pour le témoin sans interrogation du tunnel
-        if: matrix.scenario == 'temoin-passif'
+      - name: Récupérer le binaire exact du banc de zapping
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
-          run-id: 46002079321
-          name: novatube-emulateur-apk-2e018b0ffe4bd41f53995ec5e336f9e0ed113221
+          run-id: 46052117945
+          name: apk-candidat
           path: qa-apks
       - name: Démarrer le banc et ses témoins dans le même job
         env:
           APP: novatube
-          FREEZE_SCENARIO: ${{ matrix.scenario }}
-          FREEZE_DURATION: '4320'
+          FREEZE_SCENARIO: direct-${{ matrix.ram_mib }}
+          RAM_MIB: ${{ matrix.ram_mib }}
+          FREEZE_DURATION: '4800'
         run: |
           nohup bash -c 'bash android-app/ci/novatube_tv/freeze_runner.sh; printf "%s" "$?" > freeze-run.exit.tmp; mv freeze-run.exit.tmp freeze-run.exit' < /dev/null > "$RUNNER_TEMP/freeze-run.log" 2>&1 &
       - name: Observer les treize premières minutes de lecture
@@ -48,10 +49,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: passif-optique-early-${{ matrix.scenario }}-${{ github.run_id }}
+          name: endurance-fe134dd4-early-direct-${{ matrix.ram_mib }}-${{ github.run_id }}
           path: freeze-checkpoint
           retention-days: 14
-      - name: Attendre la fin des 72 minutes et vérifier le résultat du banc
+      - name: Attendre la fin des 80 minutes et vérifier le résultat du banc
         run: |
           python3 android-app/ci/novatube_tv/freeze_ci_phase.py wait-final || { tail -40 "$RUNNER_TEMP/freeze-run.log"; exit 1; }
           tail -8 "$RUNNER_TEMP/freeze-run.log"
@@ -59,6 +60,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: passif-optique-final-${{ matrix.scenario }}-${{ github.run_id }}
+          name: endurance-fe134dd4-final-direct-${{ matrix.ram_mib }}-${{ github.run_id }}
           path: pilot-results
           retention-days: 14

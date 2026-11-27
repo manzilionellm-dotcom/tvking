@@ -49,7 +49,9 @@ def observe(out, screenshot, channel, seconds):
                 rows += 1
                 if ok:
                     valid += 1
-                moved = ok and previous_id is not None and number != previous_id
+                # The encoded 25 Hz, 120 s fixture repeats at frame 3000.
+                # Only a forward change across consecutive valid reads counts.
+                moved = ok and previous_id is not None and 0 < (number - previous_id) % 3000 < 1500
                 if moved:
                     moving_pairs += 1
                     max_gap = max(max_gap, end-last_move)
@@ -58,8 +60,8 @@ def observe(out, screenshot, channel, seconds):
                         newest_event["motion_return_s"] = round(end-start,3)
                         dump(events_dir / newest_event["id"] / "recovery.json", newest_event)
                         newest_event = None
+                previous_id = number if ok else None
                 if ok:
-                    previous_id = number
                     last_valid = row
                 if end-last_move >= 6 and newest_event is None:
                     event_id = f"event-{len(events)+1:03d}"

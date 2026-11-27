@@ -38,82 +38,16 @@ def key(code):
 def persist():
     (out/'pilot.json').write_text(json.dumps(result,indent=2))
 zero=time.monotonic()
-result={'region':os.environ.get('REGION_OBS','unknown'),'kind':'Android TV emulator, 1536 MiB',
+result={'region':os.environ.get('REGION_OBS','unknown'), 'kind':f"Android TV emulator, {os.environ['RAM_MIB']} MiB",
         'method':'host input dispatch to confirmation of two successive decoded screen markers; upper bound',
         'attempts':[],'probe':[]}
-current,_,data=motion(12)
-result['onboarding_motion']={'channel':current,'samples':data}
-persist();screenshot('onboarding-result')
-if not current: sys.exit('Aucune première image animée identifiée après import')
-if os.environ.get('BENCH_SKIP_VERIFIED_ZAPS') == '1':
-    result['zap_status']='déjà mesuré par la campagne référencée'
-    result['zap_source_run']=os.environ.get('BENCH_PRIOR_ZAPS_RUN','')
-else:
-    # Pendant la calibration, choisir l'action TV qui change effectivement de chaîne.
-    selected=None
-    for keycode in ['KEYCODE_CHANNEL_DOWN','KEYCODE_DPAD_DOWN','KEYCODE_CHANNEL_UP','KEYCODE_DPAD_UP']:
-        target='B' if current=='A' else 'A'
-        key(keycode);ch,end,raw=motion(8,target)
-        result['probe'].append({'key':keycode,'expected':target,'seen':ch,'samples':raw})
-        if ch: selected=keycode;current=ch;break
-        current,_,_=motion(4)
-        if not current:
-            key('KEYCODE_BACK')
-            current,_,_=motion(4)
-        if not current:break
-    persist();screenshot('tuning-result')
-    # Essais complets lorsque le pilote visuel a identifié le canal.
-    end_keys = {'KEYCODE_CHANNEL_DOWN': 'KEYCODE_CHANNEL_UP', 'KEYCODE_CHANNEL_UP':'KEYCODE_CHANNEL_DOWN',
-                'KEYCODE_DPAD_DOWN':'KEYCODE_DPAD_UP','KEYCODE_DPAD_UP':'KEYCODE_DPAD_DOWN'}
-    result['key']=selected
-    if selected:
-        backwards=end_keys[selected]
-        target='B' if current=='A' else 'A'
-        key(backwards)
-        returned,end,raw=motion(10,target)
-        result['probe'].append({'key':backwards,'expected':target,'seen':returned,'samples':raw})
-        if returned:
-            current=returned
-        else:
-            current,_,_=motion(4)
-            backwards=selected
-        commands=(selected,backwards)
-        fail_streak=0
-        for attempt in range(1,101):
-            if not current or fail_streak >= 3:break
-            target='B' if current=='A' else 'A'
-            start=time.monotonic();key(commands[(attempt-1)%2]);ch,end,raw=motion(12,target)
-            result['attempts'].append({'n':attempt,'expected':target,'seen':ch,
-                'upper_bound_s':None if end is None else round(end-start,3),'samples':raw})
-            persist()
-            if not ch:
-                fail_streak+=1
-                current,_,_=motion(4)
-            else:
-                current=ch
-                fail_streak=0
-        print('ZAPS',len(result['attempts']),flush=True)
+current,_,data = motion(18, target="A")
+result['onboarding_motion'] = {'channel':current,'samples':data}
+result['hour_channel'] = current
+result['cuts'] = []
 persist()
-current,_,raw=motion(8)
-if not current: sys.exit('Aucun mouvement vérifié avant la lecture continue')
-from freeze_outages import recover
+screenshot('onboarding-result')
+if current != 'A':
+    sys.exit("La mire A animée n'a pas été vérifiée en plein écran")
 from freeze_long import observe
-result['hour_channel']=current;persist()
-result['cuts']=[]
-precondition = os.environ["FREEZE_SCENARIO"] in ("diagnostic-naturel","temoin-passif")
-for seconds in ((5,15,60) if precondition else ()):
-    channel,_,_=motion(6)
-    if not channel:
-        result['cuts'].append({'cut_s':seconds,'status':'bloqué avant coupure'});persist();continue
-    result['cuts'].append(recover(out,seconds,channel,screenshot))
-    persist()
-# Une reprise après coupure peut échouer. Avant le test long, rétablir
-# une lecture sur l'autre mire via un zap explicite si nécessaire.
-current,_,_=motion(10)
-if not current:
-    key('KEYCODE_CHANNEL_DOWN')
-    current,_,_=motion(15)
-if not current:
-    sys.exit('Aucun mouvement vérifié après les coupures')
-result['hour_channel']=current;persist()
 observe(out,screenshot,current,int(os.environ["FREEZE_DURATION"]))

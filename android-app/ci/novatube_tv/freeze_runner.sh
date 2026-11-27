@@ -7,13 +7,14 @@ export ANDROID_SERIAL=emulator-5554
 sudo apt-get update -qq
 sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
 cp qa-apks/NovaTube-TV-emulateur.apk "$RUNNER_TEMP/pilot.apk"
-expected=9239c20e5bbb77b7d9636eccef7511c41f5319dbb7a8e72aceb4633d1fc650af
-ram=1536
-if [[ "$FREEZE_SCENARIO" == temoin-passif ]]; then expected=d8d4a1b316f4b407342181c17e8cfc1cb73130d13b6a92ec95cd48be117cb145; fi
-if [[ "$FREEZE_SCENARIO" == candidat ]]; then expected=3dc5440dd3edd2ab057dc355ac0d35ea5ac8fbd6435546f9991233c201493dd5; fi
-if [[ "$FREEZE_SCENARIO" == memoire ]]; then ram=1024; fi
-export FREEZE_ROUTE=127.0.0.1
-if [[ "$FREEZE_SCENARIO" == direct ]]; then export FREEZE_ROUTE=10.0.2.2; fi
+expected=aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34
+ram="${RAM_MIB:?}"
+case "$ram" in 1024|1536) ;; *) exit 64 ;; esac
+export FREEZE_ROUTE=10.0.2.2
+test "$(cat qa-apks/app-commit)" = fe134dd4c580c4f7c007ca2b9026fb6a17c2e081
+(cd qa-apks && sha256sum -c SHA256SUMS)
+cp qa-apks/{app-commit,build-flags.txt,SHA256SUMS} "$out/"
+printf '%s\n' "$ram" > "$out/ram-requested-mib.txt"
 echo "$expected  $RUNNER_TEMP/pilot.apk" | sha256sum -c -
 sha256sum "$RUNNER_TEMP/pilot.apk" | cut -d' ' -f1 > "$out/apk.sha256"
 if [[ "$APP" == novatube ]]; then
@@ -79,9 +80,18 @@ for attempt in 1 2 3; do
 done
 test "$installed" = 1
 timeout 35 adb wait-for-device
-adb reverse tcp:18471 tcp:18471
+base_apk=$(adb shell pm path "$pkg" | tr -d '\r' | sed -n 's/^package://p' | head -1)
+test -n "$base_apk"
+timeout 80 adb exec-out cat "$base_apk" | sha256sum | cut -d' ' -f1 > "$out/installed-apk.sha256"
+test "$(cat "$out/installed-apk.sha256")" = "$expected"
+# Only the separately embedded Atlas endpoint uses a loopback redirection.
 adb reverse tcp:8788 tcp:8788
 adb reverse --list > "$out/ports-before-playback.txt"
+if grep -Fq 'tcp:18471' "$out/ports-before-playback.txt"; then exit 43; fi
+curl -fsS http://127.0.0.1:18471/channels.m3u > "$out/catalog-before.m3u"
+grep -Fxq 'http://10.0.2.2:18471/A/index.m3u8' "$out/catalog-before.m3u"
+grep -Fxq 'http://10.0.2.2:18471/B/index.m3u8' "$out/catalog-before.m3u"
+printf '%s\n' 'http://10.0.2.2:18471/channels.m3u' > "$out/catalog-android-url.txt"
 adb shell am start -W -n "$pkg/$pkgactivity" | tee "$out/launch.txt"
 sleep 20
 adb shell cat /proc/meminfo | head -1 > "$out/client-memory.txt"
@@ -91,15 +101,10 @@ export REGION_OBS="${REGION_OBS:-unknown}"
 printf '%s\n' "$REGION_OBS" > "$out/runner-region.txt"
 curl -fsS --max-time 6 https://www.cloudflare.com/cdn-cgi/trace | sed -nE '/^(loc|colo)=/p' > "$out/egress-country.txt" || true
 export BENCH_PACKAGE="$pkg"
-if [[ "$APP" == novatube ]]; then
-  export BENCH_SKIP_VERIFIED_ZAPS=1 BENCH_PRIOR_ZAPS_RUN=46004506404
-fi
 python3 "$work/freeze_onboard.py" "$out"
 python3 "$work/freeze_android.py" "$out" "$pkg" --duration 6500 --arm-file "$out/observation-start.json" > "$out/android-observer.log" 2>&1 &
 workers+=("$!")
-tunnel_args=()
-if [[ "$FREEZE_SCENARIO" == temoin-passif ]]; then tunnel_args+=(--passive-reverse); fi
-python3 "$work/freeze_tunnel.py" "$out" "${tunnel_args[@]}" --seconds 6300 --interval 6 > "$out/tunnel-witness.log" 2>&1 &
+python3 "$work/freeze_tunnel.py" "$out" --seconds 6300 --interval 6 > "$out/tunnel-witness.log" 2>&1 &
 workers+=("$!")
 
 for i in $(seq 1 40); do

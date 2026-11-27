@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import time
+import tempfile
 from pathlib import Path
 
 from PIL import Image
@@ -33,11 +34,14 @@ def words(path, timeout):
     # capture TV. Ses coordonnées ne correspondent pas à celles de la télécommande.
     if w <= h:
         raise PortraitPreview
-    data = subprocess.check_output(
-        ["tesseract", str(path), "stdout", "--psm", "11", "tsv"],
-        stderr=subprocess.DEVNULL, text=True, timeout=timeout,
-        env={**os.environ, "OMP_THREAD_LIMIT": "1"},
-    )
+    # Android can return transparent RGBA pixels with valid color channels.
+    with Image.open(path) as im, tempfile.NamedTemporaryFile(suffix=".png") as opaque:
+        im.convert("RGB").save(opaque.name)
+        data = subprocess.check_output(
+            ["tesseract", opaque.name, "stdout", "--psm", "11", "tsv"],
+            stderr=subprocess.DEVNULL, text=True, timeout=timeout,
+            env={**os.environ, "OMP_THREAD_LIMIT": "1"},
+        )
     result = []
     for row in csv.DictReader(io.StringIO(data), delimiter="\t"):
         text = re.sub("[^a-z0-9]", "", row["text"].lower())
@@ -56,6 +60,18 @@ def labels(tokens):
 def home(tokens):
     ts = labels(tokens)
     return "tonight" in ts or (bool(ts & {"live", "direct"}) and bool(ts & {"movies", "films", "series"}) and bool(ts & {"playlists", "settings", "reglages"}))
+
+
+def m3u_button(tokens):
+    for t in tokens:
+        if .25 < t[4] < .75 and t[0] == "m3u":
+            return t
+    for t in tokens:
+        if t[0] == "playlist" and .35 < t[4] < .75 and t[3] < .5:
+            if any(other[0] == "add" and .01 < t[3] - other[3] < .25
+                   and abs(other[4] - t[4]) < .02 for other in tokens):
+                return t
+    return None
 
 
 def row_a(tokens):
@@ -108,7 +124,8 @@ def run(folder):
         adb("shell", "input", "tap", str(t[1]), str(t[2]))
     ts=poll("nova-01-start",lambda t:home(t) or bool(labels(t) & {"welcome","bienvenue","xtream"}),45)
     if not home(ts):
-        key("KEYCODE_DPAD_CENTER")
+        ts = poll("nova-01-welcome", lambda t: m3u_button(t) is not None, 50)
+        tap(m3u_button(ts))
         poll("nova-02-form",lambda t:bool(labels(t) & {"source","url","http","file","fichier","link","m3u8"}))
         adb("shell","input","text", URL)
         ss("nova-03-url")

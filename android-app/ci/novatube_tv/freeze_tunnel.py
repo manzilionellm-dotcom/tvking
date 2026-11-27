@@ -64,41 +64,9 @@ while [ ! -e "$base/stop" ]; do
     clock=$(now)
     if [ "$(( ${clock%.*} - born ))" -ge "$seconds" ]; then break; fi
     index=$((index+1))
-    reverse_allowed=1
-    if [ "$passive" = 1 ] && [ ! -e "$base/arm-reverse" ]; then
-        reverse_allowed=0
-        # Read the gate through emulator NAT only. The host can still arm this
-        # resident after a loss of the ADB control transport.
-        request nat 10.0.2.2 control '/qa-reverse-gate.txt' "$index"
-        if grep -Fxq "ARM $token" "$base/nat-control.http"; then
-            touch "$base/arm-reverse"
-            reverse_allowed=1
-        fi
-    fi
-    if [ "$passive" = 1 ] && [ -e "$base/arm-reverse" ]; then
-        reverse_allowed=1
-        if [ ! -f "$base/armed-guest.txt" ]; then
-            printf '%s %s %s\n' "$index" "$(now)" "$(date -u +%s)" > "$base/armed-guest.txt"
-        fi
-    fi
-    if [ "$reverse_allowed" = 1 ]; then
-        request reverse 127.0.0.1 playlist "/$channel/index.m3u8" "$index" &
-        first_pid=$!
-    fi
-    request nat 10.0.2.2 playlist "/$channel/index.m3u8" "$index" &
-    second_pid=$!
-    if [ "$reverse_allowed" = 1 ]; then wait "$first_pid"; fi
-    wait "$second_pid"
-    if [ "$((index % 6))" -eq 1 ] || { [ "$passive" = 1 ] && [ "$reverse_allowed" = 1 ] && [ ! -f "$base/first-reverse-static" ]; }; then
-        if [ "$reverse_allowed" = 1 ]; then
-            request reverse 127.0.0.1 static '/channels.m3u' "$index" &
-            first_pid=$!
-            touch "$base/first-reverse-static"
-        fi
-        request nat 10.0.2.2 static '/channels.m3u' "$index" &
-        second_pid=$!
-        if [ "$reverse_allowed" = 1 ]; then wait "$first_pid"; fi
-        wait "$second_pid"
+    request nat 10.0.2.2 playlist "/$channel/index.m3u8" "$index"
+    if [ "$((index % 6))" -eq 1 ]; then
+        request nat 10.0.2.2 static '/channels.m3u' "$index"
     fi
     sleep "$interval"
 done
