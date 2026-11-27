@@ -26,6 +26,8 @@ def observe(out, screenshot, channel, seconds):
                                    "--every", "30", "--seconds", str(seconds)])
     if phase in ("tunnel-direct", "tunnel-reverse"):
         faults = subprocess.Popen([sys.executable, str(work / "freeze_reverse_control.py"), str(out)])
+    if phase in ("validation-reverse", "validation-direct"):
+        faults = subprocess.Popen([sys.executable, str(work / "freeze_relay_faults.py"), str(out)])
     events_dir = out / "freeze-events"
     events_dir.mkdir(exist_ok=True)
     last_move = start

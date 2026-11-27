@@ -27,6 +27,15 @@ passive="$5"
 token="$6"
 trap '' HUP
 now() { cut -d' ' -f1 /proc/uptime; }
+{
+    date -u
+    id
+    command -v toybox
+    command -v mkfifo
+    toybox nc --help 2>&1 | head -3
+    toybox timeout --help 2>&1 | head -3
+    toybox readlink /proc/self/exe
+} > "$base/runtime.txt" 2>&1
 started=$(now)
 born=${started%.*}
 printf 'iteration\tutc_s\tguest_boot_start\tguest_boot_end\troute\tdocument\tnc_exit\thttp_status\tbytes\tmedia_sequence\tlatest_segment\n' > "$base/results.tsv"
@@ -36,17 +45,14 @@ request() {
     name="$1"; address="$2"; document="$3"; path="$4"; n="$5"
     a=$(now); epoch=$(date -u +%s)
     response="$base/$name-$document.http"
-    # Keep the client write half open until the HTTP/1.0 server closes. An
-    # immediate stdin EOF on netcat can tear down an adb-forwarded connection
-    # before its bytes have been handed to the host transport.
-    fifo="$base/$name-$document.stdin"
-    if [ ! -p "$fifo" ]; then mkfifo "$fifo" || return 1; fi
-    exec 3<> "$fifo"
-    toybox timeout 4 toybox nc "$address" 18471 <&3 3>&- > "$response" 2>"$base/$name-$document.stderr" &
-    nc_pid=$!
-    printf 'GET %s?probe=guest-%s-%s HTTP/1.0\r\nHost: 127.0.0.1:18471\r\nUser-Agent: novatube-guest-witness/1\r\nConnection: close\r\n\r\n' "$path" "$name" "$document" >&3
-    wait "$nc_pid"; rc=$?; b=$(now)
-    exec 3>&-
+    # Retain stdin while the HTTP/1.0 server responds through adbd. Do not
+    # create a FIFO: Android SELinux policy and available applets vary by image.
+    # elapsed_seconds includes up to one second of local pipe linger.
+    {
+        printf 'GET %s?probe=guest-%s-%s HTTP/1.0\r\nHost: 127.0.0.1:18471\r\nUser-Agent: novatube-guest-witness/1\r\nConnection: close\r\n\r\n' "$path" "$name" "$document"
+        sleep 1
+    } | toybox timeout 4 toybox nc "$address" 18471 > "$response" 2>"$base/$name-$document.stderr"
+    rc=$?; b=$(now)
     code=$(head -n 1 "$response" | awk '{ print $2 }')
     seq=$(tr -d '\r' < "$response" | sed -n 's/^#EXT-X-MEDIA-SEQUENCE://p' | head -n 1)
     last=$(tr -d '\r' < "$response" | sed -n '/^seg[0-9]*\.ts$/p' | tail -n 1)
@@ -206,6 +212,16 @@ def run(args):
                 if key not in pending:
                     live.write(line+'\n')
                     pending.add(key)
+                    # The launch controller may wait for a verified, production-guest
+                    # sample; no probe writes through the reverse path in passive mode.
+                    if cells[4:6]==['nat','playlist'] and cells[7]=='200' and cells[9].isdigit():
+                        ready=args.out/'guest-tunnel-ready.json'
+                        if not ready.exists():
+                            obj={'host_monotonic':time.monotonic(),'utc':datetime.now(timezone.utc).isoformat(),
+                                 'route':cells[4],'data':'manifest','http':200,'latest_segment':cells[10]}
+                            tn=ready.with_suffix('.tmp')
+                            tn.write_text(json.dumps(obj)+'\n')
+                            tn.replace(ready)
 
         record('start', guest_directory=temp, launcher=launched[1], duration_s=args.seconds,
                fixture_channel=args.channel, passive_reverse=args.passive_reverse)
@@ -217,6 +233,10 @@ def run(args):
                    fixture_reverse_lines=[x for x in reverse[1].splitlines() if 'tcp:18471' in x],
                    reverse_error=reverse[2], read_exit=rows[0], read_error=rows[2],
                    unique_rows=len(pending))
+            if not pending:
+                runtime=call(['exec-out','cat',temp+'/runtime.txt'],timeout=3)
+                console=call(['exec-out','tail','-20',temp+'/console'],timeout=3)
+                (args.out/'guest-preflight.txt').write_text(str(runtime)+'\n'+str(console)+'\n')
             until=time.monotonic()+6
             while not finished and time.monotonic()<until:
                 time.sleep(min(.4, max(0, until-time.monotonic())))
@@ -224,6 +244,16 @@ def run(args):
         if armer:
             armer.join(6)
         stopped = call(['shell', 'touch', temp+'/stop'])
+        # Pull targeted diagnostics even if the first request or resident failed.
+        for local, remote in [
+                ('guest-runtime.txt','runtime.txt'), ('guest-resident-console.txt','console'),
+                ('guest-reverse-playlist.stderr','reverse-playlist.stderr'),
+                ('guest-reverse-static.stderr','reverse-static.stderr'),
+                ('guest-nat-control.stderr','nat-control.stderr'),
+                ('guest-nat-playlist.stderr','nat-playlist.stderr'),
+                ('guest-nat-static.stderr','nat-static.stderr')]:
+            _rc, data, err = call(['exec-out','cat',temp+'/'+remote],timeout=3)
+            if data or err:(args.out/local).write_text(data+'\n'+err+'\n')
         if args.passive_reverse:
             rc, armed_at, _ = call(['exec-out', 'cat', temp+'/armed-guest.txt'])
             record('guest-arm-record', rc=rc, guest_times=armed_at)

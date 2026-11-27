@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from PIL import Image
+from pilot_observer import frame
 
 SERIAL = "emulator-5554"
 URL = "http://" + os.environ.get("FREEZE_ROUTE", "127.0.0.1") + ":18471/channels.m3u"
@@ -62,18 +63,19 @@ def run(folder):
     folder.mkdir(parents=True, exist_ok=True)
     def ss(name):
         path = folder / (name+".png")
-        for attempt in range(2):
-            try:
-                raw=adb("exec-out", "screencap", "-p", output=True, timeout=55)
-                with Image.open(io.BytesIO(raw)) as bitmap:
-                    bitmap.verify()
+        transport = ["adb", "-s", SERIAL]
+        for attempt in range(6):
+            image, raw = frame(transport, folder, time.monotonic())
+            if image is not None:
                 path.write_bytes(raw)
-                break
-            except (subprocess.TimeoutExpired, OSError) as exc:
-                if attempt:
-                    raise RuntimeError("La capture Android ne répond pas après deux essais") from exc
-                time.sleep(.5)
-        return path
+                return path
+            if attempt == 2:
+                subprocess.run(["adb", "reconnect", "offline"], timeout=12, capture_output=True, check=False)
+                subprocess.run(transport+["wait-for-device"], timeout=28, capture_output=True, check=False)
+                adb("reverse", "tcp:18471", "tcp:18472")
+                adb("reverse", "tcp:8788", "tcp:8788")
+            time.sleep(.8)
+        raise RuntimeError(name + ": 6 captures du démarrage ont échoué")
     def poll(name, predicate, seconds=28):
         end=time.monotonic()+seconds
         while True:
@@ -87,7 +89,6 @@ def run(folder):
         adb("shell", "input", "keyevent", name)
     def tap(t):
         adb("shell", "input", "tap", str(t[1]), str(t[2]))
-    adb("reverse","tcp:18471","tcp:18471")
     ts=poll("nova-01-start",lambda t:home(t) or bool(labels(t) & {"welcome","bienvenue","xtream"}),45)
     if not home(ts):
         key("KEYCODE_DPAD_CENTER")

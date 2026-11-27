@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import shutil
+import subprocess
 import sys
 import time
 
@@ -17,6 +18,8 @@ while not finished.exists():
     if origin.exists() and time.monotonic() - json.loads(origin.read_text())['monotonic'] >= 820:
         break
     time.sleep(5)
+if (base / "device-logcat").is_dir():
+    subprocess.run([sys.executable, str(Path(__file__).with_name("freeze_device_log.py")), "collect", str(base)])
 checkpoint.mkdir(exist_ok=True)
 for path in base.rglob('*'):
     if not path.is_file():
