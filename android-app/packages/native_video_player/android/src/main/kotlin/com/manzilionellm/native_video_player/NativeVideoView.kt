@@ -7,7 +7,6 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Point
-import android.graphics.Rect
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
@@ -122,6 +121,7 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+import kotlin.math.roundToInt
 
 /**
  * LE cœur du correctif « son OK / image noire » + le moteur « qui ne s'arrête
@@ -232,7 +232,8 @@ class NativeVideoView(
      */
     private val holdView = ImageView(context).apply {
         visibility = View.GONE
-        scaleType = ImageView.ScaleType.CENTER_CROP
+        // La vue de maintien recouvre exactement la SurfaceView du même conteneur.
+        scaleType = ImageView.ScaleType.FIT_XY
         isFocusable = false
         isFocusableInTouchMode = false
     }
@@ -2661,12 +2662,13 @@ class NativeVideoView(
         val w = surfaceView.width
         val h = surfaceView.height
         if (w < 16 || h < 16) return
-        val rw = minOf(w, 1280)
-        val rh = minOf(h, 720)
-        val left = (w - rw) / 2
-        val top = (h - rh) / 2
-        val rect = Rect(left, top, left + rw, top + rh)
-        val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.RGB_565)
+        // Borner la mémoire de destination en gardant le rapport de la vue.
+        // PixelCopy reçoit toute la surface du décodeur, même si ce tampon
+        // est plus grand que la vue ou le bitmap (cas courant en HD et UHD).
+        val reduction = maxOf(1.0, w / 1280.0, h / 720.0)
+        val copyWidth = (w / reduction).roundToInt().coerceAtLeast(1)
+        val copyHeight = (h / reduction).roundToInt().coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(copyWidth, copyHeight, Bitmap.Config.RGB_565)
         val ticket = frameCopies.begin(sessions.generation, currentUrl)
         if (ticket == null) {
             bmp.recycle()
@@ -2674,7 +2676,7 @@ class NativeVideoView(
         }
         lastCopyAt = now
         try {
-            PixelCopy.request(surfaceView, rect, bmp, { code ->
+            PixelCopy.request(surfaceView, bmp, { code ->
                 val completion = frameCopies.finish(
                     ticket, sessions.generation, currentUrl, canCopyCurrentFrame(),
                 )
