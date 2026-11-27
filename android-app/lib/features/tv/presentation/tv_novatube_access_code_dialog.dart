@@ -101,7 +101,7 @@ class _TvNovatubeAccessCodeDialogState
                     decoration: InputDecoration(
                       labelText: l10n.novatubeAccessCode,
                       labelStyle: t.ui(TvDimens.label, color: t.muted),
-                      hintText: 'NVMAX-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX',
+                      hintText: NovatubeAtlas.accessCodeMask,
                       hintStyle: t.mono(TvDimens.caption, color: t.mutedDim),
                       errorMaxLines: 3,
                     ),
