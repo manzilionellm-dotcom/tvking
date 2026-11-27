@@ -1785,7 +1785,10 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                   // chaîne n'a été vue (ou pendant un zap, pour lire le
                   // nom). Le remettre à chaque tampon recouvrait l'image
                   // déjà à l'écran : écran noir, le son continuait.
-                  if (!_pip.isInPipMode &&
+                  // Comparatif isolé : le capteur lit les pixels de la mire
+                  // pendant la préparation, même si le carton les aurait cachés.
+                  if (!(_measure && _isOpticalFixture) &&
+                      !_pip.isInPipMode &&
                       !_casting &&
                       (_zapHolding ||
                           (_buffering && !_fatal && !_everShownFrame)))
@@ -2002,6 +2005,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       ),
     );
   }
+
+  // Cette variante n’est utilisée que sur la branche de qualification. Elle
+  // reconnaît exclusivement les deux mires locales du banc de zapping.
+  bool get _isOpticalFixture =>
+      widget.channels.length == 2 &&
+      widget.channels.every((channel) =>
+          channel.streamUrl == 'http://127.0.0.1:18471/A/index.m3u8' ||
+          channel.streamUrl == 'http://127.0.0.1:18471/B/index.m3u8');
 
   /// Carte de chargement : numéro géant + nom + consigne de zap.
   /// Lisible à 3 m, et elle suit la chaîne AFFICHÉE même si le flux
