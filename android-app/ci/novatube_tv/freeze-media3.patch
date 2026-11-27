@@ -1,0 +1,142 @@
+diff --git a/android-app/lib/features/tv/presentation/tv_player_screen.dart b/android-app/lib/features/tv/presentation/tv_player_screen.dart
+index 7c4b97a..36b395d 100644
+--- a/android-app/lib/features/tv/presentation/tv_player_screen.dart
++++ b/android-app/lib/features/tv/presentation/tv_player_screen.dart
+@@ -538,6 +538,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
+       _sinceProgress.reset();
+     }
+     if (_controller.engineExhausted) {
++      if (_measure && !_fatal) debugPrint('[NovaTubeFreeze] kind=engine_exhausted');
+       _traceEnd('engine_exhausted');
+       if (!_fatal && mounted) {
+         setState(() {
+@@ -745,6 +746,11 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
+   }
+ 
+   void _showFatal() {
++    if (_measure) {
++      debugPrint('[NovaTubeFreeze] kind=flutter_fatal attempts=$_recoverAttempts '
++          'engine_exhausted=${_controller.engineExhausted} '
++          'error=${_controller.hasError} ended=${_controller.isEnded}');
++    }
+     _traceEnd('failed');
+     PlaybackHealth.instance.mark(stalled: true);
+     _cancelRecover();
+@@ -783,6 +789,12 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
+     }
+     final int next = _recoverAttempts + 1;
+     final int delay = ReconnectPlan.delayMs(next);
++    if (_measure) {
++      debugPrint('[NovaTubeFreeze] kind=flutter_retry attempt=$next '
++          'delay_ms=$delay since_progress_ms=${_sinceProgress.elapsedMilliseconds} '
++          'pos_ms=${_controller.position.inMilliseconds} '
++          'ended=${_controller.isEnded} error=${_controller.hasError}');
++    }
+     _recoverAttempts = next;
+     _recoverArmed = true;
+     _sinceProgress.reset();
+diff --git a/android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt b/android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt
+index 0eafedd..09aee8e 100644
+--- a/android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt
++++ b/android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt
+@@ -53,6 +53,8 @@ import androidx.media3.exoplayer.ExoPlaybackException
+ import androidx.media3.exoplayer.ExoPlayer
+ import androidx.media3.exoplayer.Renderer
+ import androidx.media3.exoplayer.analytics.AnalyticsListener
++import androidx.media3.exoplayer.source.LoadEventInfo
++import androidx.media3.exoplayer.source.MediaLoadData
+ import androidx.media3.exoplayer.audio.AudioRendererEventListener
+ import androidx.media3.exoplayer.audio.AudioCapabilities
+ import androidx.media3.exoplayer.audio.AudioSink
+@@ -406,6 +408,7 @@ class NativeVideoView(
+     private var dartEpoch: Int? = null
+     private val qaViewId = id
+     private var qaPhases = false
++    private var qaLastFreezeClock = 0L
+     private var qaDecoderReadyAt = 0L
+     private var qaFirstFrameSeen = false
+ 
+@@ -681,7 +684,44 @@ class NativeVideoView(
+     }
+ 
+     /** Mesure passive : aucune modification du flux, des pistes ou du rendu. */
++    // Diagnostic opt-in du banc. Les événements de chargement et ce battement
++    // continuent lorsque le tampon est vide ou qu'aucune image n'est rendue.
++    private fun freezeEvent(kind: String, details: String) {
++        android.util.Log.i("NovaTubeFreeze", "view=$qaViewId epoch=$dartEpoch kind=$kind $details")
++    }
++
++    private fun freezeCause(error: Throwable): String =
++        generateSequence(error) { it.cause }.take(6).joinToString("/") {
++            if (it is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)
++                "HTTP_${it.responseCode}" else it.javaClass.simpleName
++        }
++
++    private fun freezeLoad(event: AnalyticsListener.EventTime, info: LoadEventInfo, data: MediaLoadData, kind: String, extra: String = "") {
++        if (!qaPhases) return
++        // Le banc utilise « index.m3u8 » et « segNNNNNNNN.ts ». Ne jamais
++        // publier d'hôte, de jeton, d'en-têtes ou de chemin fournisseur.
++        val leaf = info.uri.lastPathSegment.orEmpty()
++        val resource = if (leaf == "index.m3u8" || (leaf.startsWith("seg") && leaf.endsWith(".ts") && leaf.drop(3).dropLast(3).all { it.isDigit() })) leaf else "other"
++        freezeEvent(kind, "event_ms=${event.realtimeMs} task=${info.loadTaskId} resource=$resource type=${data.dataType} bytes=${info.bytesLoaded} elapsed_ms=${info.loadDurationMs} $extra")
++    }
++
++    override fun onLoadStarted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) =
++        freezeLoad(eventTime, loadEventInfo, mediaLoadData, "load_started")
++    override fun onLoadCompleted(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) =
++        freezeLoad(eventTime, loadEventInfo, mediaLoadData, "load_completed")
++    override fun onLoadCanceled(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData) =
++        freezeLoad(eventTime, loadEventInfo, mediaLoadData, "load_canceled")
++    override fun onLoadError(eventTime: AnalyticsListener.EventTime, loadEventInfo: LoadEventInfo, mediaLoadData: MediaLoadData, error: java.io.IOException, wasCanceled: Boolean) {
++        if (qaPhases) freezeLoad(eventTime, loadEventInfo, mediaLoadData, "load_error", "cause=${freezeCause(error)} canceled=$wasCanceled")
++    }
++
+     private fun sampleVideoCadence() {
++        if (qaPhases && SystemClock.elapsedRealtime() - qaLastFreezeClock >= 2_000L) {
++            qaLastFreezeClock = SystemClock.elapsedRealtime()
++            val counter = player.videoDecoderCounters
++            counter?.ensureUpdated()
++            freezeEvent("heartbeat", "mono_ms=$qaLastFreezeClock state=${player.playbackState} play=${player.playWhenReady} playing=${player.isPlaying} loading=${player.isLoading} pos_ms=${player.currentPosition} buffered_ms=${player.totalBufferedDuration} buffer_end_ms=${player.bufferedPosition} rendered=${counter?.renderedOutputBufferCount} dropped=${counter?.droppedBufferCount} skipped=${counter?.skippedOutputBufferCount} queued_input=${counter?.queuedInputBufferCount} native_retry=${reconnect.retryPending}")
++        }
+         if (!player.isPlaying || player.playbackState != Player.STATE_READY ||
+             !AppForeground.allowsReopen()
+         ) {
+@@ -1857,6 +1897,7 @@ class NativeVideoView(
+     }
+ 
+     override fun onPlaybackStateChanged(eventTime: AnalyticsListener.EventTime, state: Int) {
++        if (qaPhases) freezeEvent("state", "event_ms=${eventTime.realtimeMs} state=$state")
+         if (!fresh(eventTime)) return
+         when (state) {
+             Player.STATE_BUFFERING -> emit("buffering", true)
+@@ -2141,12 +2182,14 @@ class NativeVideoView(
+         eventTime: AnalyticsListener.EventTime,
+         videoCodecError: Exception,
+     ) {
++        if (qaPhases) freezeEvent("codec_error", "event_ms=${eventTime.realtimeMs} cause=${freezeCause(videoCodecError)}")
+         // Media3 : cet appel n'est PAS un échec de lecture. Le lecteur
+         // peut s'en remettre. Changer de moteur ici couperait une image
+         // qui va revenir. L'échec réel arrive par onPlayerError.
+     }
+ 
+     override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
++        if (qaPhases) freezeEvent("player_error", "event_ms=${eventTime.realtimeMs} code=${error.errorCodeName} cause=${freezeCause(error)}")
+         if (!fresh(eventTime)) return
+         // Surface déjà partie : une erreur ne doit pas repréparer le flux.
+         if (refuseReopen()) return
+@@ -2302,6 +2345,7 @@ class NativeVideoView(
+         preserveFocusPause: Boolean = false,
+     ) {
+         if (currentUrl == null || released || disposeStarted) return
++        if (qaPhases) freezeEvent("open_current", "generation=${sessions.generation} requested_play=$preparePlayRequested")
+         // Dehors : pas de nouveau décodeur, pas de nouvel AudioTrack.
+         if (refuseReopen()) return
+         // Un repli peut avoir été décidé juste avant Home/Cast. Son callback
+@@ -2554,6 +2598,7 @@ class NativeVideoView(
+     }
+ 
+     private fun scheduleRetry(delayMs: Long, token: Int) {
++        if (qaPhases) freezeEvent("retry_scheduled", "delay_ms=$delayMs generation=$token")
+         // On retire l'ancien délai SANS effacer le verrou que
+         // [ReconnectGate.onFailure] vient de poser : le runnable
+         // ci-dessous doit être le seul à pouvoir repartir.
