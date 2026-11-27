@@ -1,4 +1,5 @@
 """Exercise the normal free playlist and channel UI of the official Televizo APK."""
+import io
 import json
 import re
 import subprocess
@@ -6,6 +7,9 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+from PIL import Image
+from read_display_capture import decode
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -17,7 +21,7 @@ history = []
 
 def run(*args, check=True, binary=False):
     return subprocess.run([*ADB, *args], check=check, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, timeout=25, text=not binary).stdout
+                          stderr=subprocess.PIPE, timeout=50, text=not binary).stdout
 
 def shell(*args, **kwargs):
     return run('shell', *args, **kwargs).strip()
@@ -87,14 +91,46 @@ def save(nodes):
     tap(max(candidates,key=lambda n:point(n)[0]),'confirm using playlist toolbar')
     return True
 
+def open_fullscreen():
+    # This free version opens in a split-screen preview. Android's accessibility
+    # dump can wait forever for an idle view while a live video is rendering.
+    # The official player's expand button was measured on the recorded preview
+    # UI. Only press it once the exact channel marker is visible in that pane.
+    deadline=time.monotonic()+45
+    last_tap=0
+    while time.monotonic()<deadline:
+        raw=run('exec-out','screencap','-p',binary=True)
+        image=Image.open(io.BytesIO(raw)).convert('L')
+        w,h=image.size
+        for t,b in ((0,0),(0,24),(0,48),(24,0),(24,24),(48,0),(48,48)):
+            vh=min(h-t-b,w*9/16);vw=vh*16/9
+            x=(w-vw)/2;y=t+(h-t-b-vh)/2
+            ch,num=decode([image.getpixel((round(x+vw*(496+32*i)/1920),
+                        round(y+vh*650/1080))) for i in range(30)])
+            if ch=='A':
+                (OUT/'televizo-player-fullscreen.png').write_bytes(raw)
+                log(f'full-screen marker verified A {num}')
+                return
+        xs=[round(w*.5*(496+32*i)/1920) for i in range(30)]
+        for y in range(round(h*.40),round(h*.57),2):
+            ch,num=decode([image.getpixel((x,y)) for x in xs])
+            if ch=='A':
+                (OUT/'televizo-player-preview.png').write_bytes(raw)
+                if time.monotonic()-last_tap>5:
+                    log(f'expand left preview with confirmed marker A {num}')
+                    shell('input','tap',str(round(w*765/1920)),str(round(h*1062/1080)))
+                    last_tap=time.monotonic()
+                break
+        time.sleep(.5)
+    screenshot('player-unconfirmed')
+    raise SystemExit('Mire A sélectionnée, passage en plein écran non vérifié.')
+
 component=shell('cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN',
                 '-c','android.intent.category.LEANBACK_LAUNCHER',PKG).splitlines()[-1]
 if not component.startswith(PKG+'/'):
     component=PKG+'/.MainActivity'
 shell('am','start','-W','-n',component)
 log('launch official Televizo')
-selected=False
-selection_step=None
 imported=False
 for i in range(46):
     time.sleep(.45)
@@ -115,24 +151,11 @@ for i in range(46):
         tap(confirm_save,'confirm saving the supplied fixture playlist')
         imported=True
         continue
-    if selected:
-        fullscreen=find(nodes,r'full[ -]?screen(?: mode)?|enter full[ -]?screen')
-        if fullscreen is not None and i<=selection_step+2:
-            tap(fullscreen,'switch selected channel to full screen')
-        elif i>=selection_step+2:
-            if find(nodes,r'Mire A') is not None and find(nodes,r'Mire B') is not None:
-                if i==selection_step+2:
-                    tap(find(nodes,r'Mire A'),'expand selected channel from its preview')
-                    continue
-            screenshot('player-candidate')
-            log('selected fixture channel; common marker capture adjudicates playback')
-            sys.exit(0)
-        continue
     chan=find(nodes,r'Mire A(?:\s.*)?')
     if chan is not None:
         tap(chan,'play Mire A')
-        selected=True; selection_step=i
-        continue
+        open_fullscreen()
+        sys.exit(0)
     button=find(nodes,r'all channels|all broadcasts|all videos|all groups')
     if button is not None:
         tap(button,'open all channels')
