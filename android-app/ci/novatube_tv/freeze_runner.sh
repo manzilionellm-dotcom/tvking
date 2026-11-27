@@ -12,7 +12,7 @@ ram=1536
 if [[ "$FREEZE_SCENARIO" == candidat ]]; then expected=3dc5440dd3edd2ab057dc355ac0d35ea5ac8fbd6435546f9991233c201493dd5; fi
 if [[ "$FREEZE_SCENARIO" == memoire ]]; then ram=1024; fi
 export FREEZE_ROUTE=127.0.0.1
-if [[ "$FREEZE_SCENARIO" == direct ]]; then export FREEZE_ROUTE=10.0.2.2; fi
+if [[ "$FREEZE_SCENARIO" == direct || "$FREEZE_SCENARIO" == tunnel-direct ]]; then export FREEZE_ROUTE=10.0.2.2; fi
 echo "$expected  $RUNNER_TEMP/pilot.apk" | sha256sum -c -
 sha256sum "$RUNNER_TEMP/pilot.apk" | cut -d' ' -f1 > "$out/apk.sha256"
 if [[ "$APP" == novatube ]]; then

@@ -1,7 +1,7 @@
-name: NovaTube — gel après 57 minutes sur Android TV
+name: NovaTube — contre-épreuve du tunnel Android TV
 on:
   push:
-    branches: ['qa/novatube-gel-5753-*']
+    branches: ['qa/novatube-tunnel-5753-20261127']
 permissions:
   contents: read
   actions: read
@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [historique-a, historique-b, stable, loss, memoire, direct, candidat]
+        scenario: [tunnel-reverse, tunnel-direct]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -28,26 +28,17 @@ jobs:
         with:
           node-version: '22'
       - name: APK historique du gel, SHA contrôlé avant installation
-        if: matrix.scenario != 'candidat'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
           run-id: 46002079321
           name: novatube-emulateur-apk-2e018b0ffe4bd41f53995ec5e336f9e0ed113221
           path: qa-apks
-      - name: APK final de la PR, SHA contrôlé avant installation
-        if: matrix.scenario == 'candidat'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          github-token: ${{ github.token }}
-          run-id: 46010144518
-          name: novatube-emulateur-apk-52e2b794383e097607c0d5b12dd722b5cdbcf370
-          path: qa-apks
-      - name: Lire 70 minutes et conserver les observations indépendantes
+      - name: Observer 80 minutes, deux suppressions du reverse de test
         env:
           APP: novatube
           FREEZE_SCENARIO: ${{ matrix.scenario }}
-          FREEZE_DURATION: '4200'
+          FREEZE_DURATION: '4800'
         run: bash android-app/ci/novatube_tv/freeze_runner.sh
       - name: Conserver les traces, y compris après incident
         if: always()
