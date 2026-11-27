@@ -127,7 +127,7 @@ for app in "$first" "$second"; do
         # Retain the interrupted series separately; never pool it with the fresh series.
         previous="$out/interrupted-$app"
         mkdir -p "$previous"
-        for item in pilot.json capture-events.jsonl setup-status.txt calibration; do
+        for item in device-keys.txt device-clock-calibration.json clocked-video.mp4 recording-status.txt setup-status.txt; do
             if [[ -e "$version_out/$item" ]]; then mv "$version_out/$item" "$previous/"; fi
         done
         if [[ "$app" == televizo ]]; then
@@ -153,7 +153,7 @@ STATUS
         cat "$version_out/setup-status.txt"
         continue
     fi
-    if ! python3 "$work/benchmark.py" "$version_out"; then
+    if ! python3 "$work/clocked_record.py" "$version_out"; then
         continue
     fi
     series_ok=1
@@ -164,18 +164,6 @@ STATUS
         adb uninstall "$pkg" >/dev/null 2>&1 || true
         continue
     fi
-    adb logcat -d -s NovaTubeQA:I flutter:I > "$version_out/player.log"
-    # Contrôle visuel supplémentaire après les 50 chronométrages. L'enregistrement
-    # de la transition ne concurrence aucune des observations optiques classées.
-    adb shell rm -f /sdcard/novatube-qa-visual.mp4
-    adb shell screenrecord --bit-rate 6000000 --time-limit 6 /sdcard/novatube-qa-visual.mp4 > "$version_out/record.log" 2>&1 &
-    recorder=$!
-    sleep 1.2
-    adb shell input keyevent KEYCODE_CHANNEL_DOWN
-    if wait "$recorder"; then
-      adb pull /sdcard/novatube-qa-visual.mp4 "$version_out/post-zap.mp4" > "$version_out/pull.log" 2>&1 || true
-    fi
-    adb shell rm -f /sdcard/novatube-qa-visual.mp4
     adb uninstall "$pkg" >/dev/null 2>&1 || true
 done
 exit "$overall_status"
