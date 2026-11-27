@@ -4,8 +4,6 @@
 
 [Données par essai](mesures.json)
 
-La série de lecture longue et de coupures de Televizo est en cours de dépouillement. Les 100 zaps comparatifs des deux lecteurs sont vérifiés.
-
 ## Décision de publication
 
 NovaTube Max TV · paquet com.sevenmotion.novatube.tv
@@ -18,7 +16,7 @@ La PR #275 corrige l’enregistrement HLS et deux ouvertures concurrentes du lec
 | Atlas, 5 000 chaînes HTTP | 2 APK sur 2 ont persisté la révision 1 et les 5 000 adresses distinctes après redémarrage. | P0 reproduit, expliqué et validé sur Android émulé. |
 | Capture HLS | 6 segments sur 6 reçus une fois. Vidéo et audio identiques à la source pour le lecteur et le fichier. | Validé pour le HLS MPEG-TS multiplexé en clair. |
 | Mémoire après fermeture | La mémoire augmente pendant les fermetures. Après 15 min, le tas natif alloué du candidat reste plus haut qu’au début. | Évaluer la dérive à durée de repos et PID identiques. |
-| Lecture continue, émulateur américain | Sur 44be9e25, dernier mouvement à 57 min 53 s, puis écran d’erreur en fin d’heure. | Incident à reproduire sur e322cceb avec un témoin indépendant de la source. |
+| Lecture continue, émulateur américain | NovaTube 44be9e25 se fige à 57 min 53 s. Televizo avance entre les 1 598 paires de captures sur une heure. | Incident à reproduire sur e322cceb avec un témoin indépendant de la source. |
 | Europe et États-Unis | P95 du mouvement visible sur 100 zaps par lecteur, émulation à sortie américaine. Televizo 1,964 s, NovaTube final 3,693 s. | Classement des deux marchés INCERTAIN. |
 
 La PR peut rester en revue avec une diffusion du candidat en test interne. Le score de preuve de la première place reste à 3/10. Il qualifie la preuve disponible pour le classement.
@@ -331,6 +329,25 @@ La première détection atteste que le contenu demandé est visible. La deuxièm
 - [Candidat e322cceb, preuve télécommande et capture](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46018013177/job/140570041755)
 - [Client Televizo et captures](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46007134467/job/140533021307)
 
+## États-Unis · lecture et reprise comparées
+
+Deux lecteurs sur Android TV 36 émulé. Les deux sessions utilisaient les mêmes mires HLS locales à 25 images par seconde.
+
+| Observation | NovaTube 44be9e25 | Televizo 1.9.9.44-d |
+| --- | --- | --- |
+| Lecture, session de 60 minutes | Dernier changement de numéro à 57 min 52,926 s. Écran d’erreur en fin de session. | 1 599 captures lisibles. Le numéro avance entre les 1 598 paires successives. |
+| Coupure demandée de 5 s | ≤ 2,546 s | ≤ 2,431 s |
+| Coupure demandée de 15 s | ≤ 3,187 s | ≤ 1,217 s |
+| Coupure demandée de 60 s | ≤ 4,106 s | ≤ 2,440 s |
+| Images perdues par le décodeur sur l’heure complète | INCERTAIN. Media3 a compté 86 759 rendues et zéro perdue dans 3 470,367 s de fenêtres. | INCERTAIN. Les captures espacées ne dénombrent pas toutes les images. |
+
+Les délais de reprise sont des bornes supérieures entre le rétablissement du réseau et deux images numérotées en mouvement. Chaque durée de coupure a été testée une fois par lecteur. Pour 5 s, les deux lecteurs affichaient encore du mouvement en fin de coupure. Les données disponibles ne permettent ni de calculer un P95 de reprise ni de classer la perte totale d’images.
+
+Les sessions de lecture prolongée utilisaient des instances différentes de même configuration, avec sorties réseau US via PDX pour NovaTube et MSP pour Televizo. Un intervalle entre deux captures peut masquer une brève interruption.
+
+- [Traces NovaTube, vidéo de sortie et trafic HTTP](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46010491329/artifacts/15207672921)
+- [Traces Televizo et compteurs réseau](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46014984876/artifacts/15212171566)
+
 ## États-Unis · version 44be9e25
 
 Televizo précède NovaTube sur les deux mesures visuelles du zapping. Chaque application a affiché la bonne chaîne sur 100 commandes sur 100.
@@ -441,6 +458,28 @@ La dernière progression du numéro de trame a été observée à 57 min 52,926 
 Pour reproduire cet arrêt sur le binaire final, enregistrer en parallèle la progression du manifeste depuis un second client, les requêtes du lecteur, les erreurs Media3 et la vidéo de sortie. Ces quatre traces permettront d’attribuer l’interruption au serveur, au chemin réseau ou au lecteur.
 
 - [Capture finale et journal HTTP originaux](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46010491329/artifacts/15207672921)
+
+## Televizo · Coupures et lecture prolongée
+
+Televizo 1.9.9.44-d. Android TV 36 émulé, mémoire annoncée de 1503188 Kio. Sortie réseau US via MSP (centralus). Mire HLS 1080p25 hébergée sur le banc.
+
+### Reprise après interruption de la source
+
+| Coupure demandée | Durée observée | Paquets rejetés | Mouvement après retour¹ | Observation |
+| --- | --- | --- | --- | --- |
+| 5 s | 5,98 s | 8 | 2,43 s | Mouvement maintenu en fin de coupure |
+| 15 s | 15,14 s | 16 | 1,22 s | Mouvement retrouvé après rétablissement |
+| 60 s | 61,02 s | 61 | 2,44 s | Mouvement retrouvé après rétablissement |
+
+¹ Borne supérieure du délai entre le rétablissement du réseau et deux numéros d’image successifs. Le lecteur peut continuer à diffuser les données déjà en mémoire.
+
+### Lecture sur une heure
+
+Durée chronométrée 3600,0 s. 1599 captures sur 1599 montrent la mire A. La première et la dernière capture lisible sont espacées de 3599,4 s. 1598 paires successives montrent une progression du numéro d’image.
+
+Intervalle maximal sans nouvelle capture identifiée 2,45 s. Paires successives ayant conservé le même numéro 0. Le pas de capture ne permet pas de compter toutes les images perdues entre deux observations.
+
+- [Journaux, repères vidéo, échantillons et compteurs réseau](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46014984876/job/140559707464)
 
 ## Coupures du chemin média
 

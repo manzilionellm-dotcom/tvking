@@ -39702,5 +39702,68 @@
         ]
       ]
     }
+  },
+  "televizo_us_hour_recovery_sparse": {
+    "workflow_run": 46014984876,
+    "source": "https://github.com/manzilionellm-dotcom/tvking/actions/runs/46014984876/job/140559707464",
+    "apk_sha256": "df570857cebbe7576c0619e18b390cb4171854f1b1c8677e0cb757d5fcdc18ef",
+    "app": "Televizo 1.9.9.44-d (635)",
+    "runner_region": "centralus",
+    "egress": {
+      "colo": "MSP",
+      "loc": "US"
+    },
+    "device": "Android TV 36 émulé, mémoire annoncée de 1503188 Kio",
+    "hour_summary": {
+      "method": "sampled_composited_video_and_native_cadence",
+      "wall_s": 3600.049,
+      "target": "A",
+      "screens": 1599,
+      "identified": 1599,
+      "unobserved_or_wrong_channel": 0,
+      "moving_pairs": 1598,
+      "max_gap_between_identified_s": 2.454,
+      "pids": [
+        "2829"
+      ],
+      "pid_checks": 179,
+      "pid_unavailable": 0,
+      "native_windows": 0,
+      "native_window_ms": 0,
+      "native_rendered": null,
+      "native_dropped": null
+    },
+    "dropped_frames_full_hour": null,
+    "drop_measurement": "No shared native decoder counter. Sparse screen observations cannot enumerate missing source frames.",
+    "coverage_first_to_last_identified_s": 3599.377,
+    "sampled_equal_pairs": 0,
+    "events": {},
+    "cuts": [
+      {
+        "cut_s": 5,
+        "actual_duration_s": 5.98,
+        "rejected_packets": 8,
+        "motion_before_restore": true,
+        "upper_after_restore_s": 2.431029897000002,
+        "verdict": "Mouvement maintenu en fin de coupure"
+      },
+      {
+        "cut_s": 15,
+        "actual_duration_s": 15.143,
+        "rejected_packets": 16,
+        "motion_before_restore": false,
+        "upper_after_restore_s": 1.2174632539999948,
+        "verdict": "Mouvement retrouvé après rétablissement"
+      },
+      {
+        "cut_s": 60,
+        "actual_duration_s": 61.018,
+        "rejected_packets": 61,
+        "motion_before_restore": false,
+        "upper_after_restore_s": 2.440013650000026,
+        "verdict": "Mouvement retrouvé après rétablissement"
+      }
+    ],
+    "partial_raw_hour_samples": 1599
   }
 }
