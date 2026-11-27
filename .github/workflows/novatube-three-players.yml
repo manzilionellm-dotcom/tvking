@@ -1,7 +1,7 @@
-name: NovaTube · comparaison optique croisée du zapping
+name: NovaTube · mesure du coût de dessin du chargement
 on:
   push:
-    branches: ['qa/novatube-guide-zap-optique-20261127']
+    branches: ['qa/novatube-chargement-zap-optique-20261127']
 permissions:
   contents: read
   actions: read
@@ -19,10 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - version: temoin
-            ref: e79928e400084db6319d0ae4fbd6d04d7ce21552
           - version: candidat
-            ref: 1fb894399d943fd8ab900c709e0ea4ab08aa1d58
+            ref: a6a5ba5ad3c5fa326b3226f7d4f13f78ba675f90
     defaults:
       run:
         working-directory: android-app
@@ -195,13 +193,20 @@ jobs:
           node-version: '22'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          pattern: apk-*
-          path: qa-apks
+          name: apk-candidat
+          path: qa-apks/apk-candidat
+      - name: Télécharger l’APK EPG déjà compilé
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46045175781
+          name: apk-candidat
+          path: qa-apks/apk-temoin
       - name: Tester les deux versions sur le même émulateur
         env:
           ORDER: ${{ matrix.order }}
-          EXPECTED_TEMOIN: e79928e400084db6319d0ae4fbd6d04d7ce21552
-          EXPECTED_CANDIDAT: 1fb894399d943fd8ab900c709e0ea4ab08aa1d58
+          EXPECTED_TEMOIN: 1fb894399d943fd8ab900c709e0ea4ab08aa1d58
+          EXPECTED_CANDIDAT: a6a5ba5ad3c5fa326b3226f7d4f13f78ba675f90
         run: bash android-app/ci/novatube_tv/official_pilot.sh
       - name: Conserver les traces et les 50 observations de chaque version
         if: always()
