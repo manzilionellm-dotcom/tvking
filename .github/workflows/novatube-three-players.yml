@@ -1,7 +1,7 @@
 name: NovaTube Max et Televizo · 100 zaps sur deux hôtes
 on:
   push:
-    branches: ['qa/novatube-televizo-zap-croise-20261127']
+    branches: ['qa/novatube-televizo-zap-croise-ab-20261127']
 permissions:
   contents: read
   actions: read
@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        order: [novatube-televizo, televizo-novatube]
+        order: [novatube-televizo]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

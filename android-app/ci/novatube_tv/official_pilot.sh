@@ -31,13 +31,19 @@ for n in $(seq 1 180); do
  sleep 2
 done
 test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
-adb shell pm list features | grep -E 'leanback|television' > "$out/leanback.txt"
+# Au premier démarrage, sys.boot_completed peut précéder la disponibilité de PackageManager.
+for n in $(seq 1 60); do
+    adb shell pm list features > "$out/features.txt" 2> "$out/features-error.txt" || true
+    if grep -E 'android.software.leanback|android.hardware.type.television' "$out/features.txt" > "$out/leanback.txt"; then break; fi
+    sleep 2
+done
+test -s "$out/leanback.txt"
 adb shell wm size 1920x1080
 adb shell svc power stayon true
 adb shell input keyevent 82
 adb reverse tcp:18471 tcp:18471
 adb reverse tcp:8788 tcp:8788
-adb shell cat /proc/meminfo | head -1 > "$out/client-memory.txt"
+adb shell cat /proc/meminfo | sed -n '1p' > "$out/client-memory.txt"
 curl -fsS --max-time 6 https://www.cloudflare.com/cdn-cgi/trace | sed -nE '/^(loc|colo)=/p' > "$out/egress-country.txt" || true
 export BENCH_ZAPS_ONLY=1 OMP_THREAD_LIMIT=1
 IFS=- read -r first second <<< "$ORDER"
