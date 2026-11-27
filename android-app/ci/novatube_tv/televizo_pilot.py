@@ -20,8 +20,36 @@ ADB = ['adb', '-s', 'emulator-5554']
 history = []
 
 def run(*args, check=True, binary=False):
-    return subprocess.run([*ADB, *args], check=check, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, timeout=50, text=not binary).stdout
+    cmd = [*ADB, *args]
+    for attempt in range(3):
+        try:
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    timeout=50, text=not binary)
+        except subprocess.TimeoutExpired:
+            message = 'adb timeout'
+            result = None
+        else:
+            if result.returncode == 0:
+                return result.stdout
+            err = result.stderr.decode(errors='replace') if binary else result.stderr
+            message = err.strip()
+        with (OUT/'televizo-adb-diagnostics.txt').open('a') as log_file:
+            log_file.write(f'attempt={attempt+1} command={args[:2]} error={message[-350:]}\n')
+        # A transport error can affect the transient shell, IME, or one
+        # screenshot. Give adbd time to reconnect without relaunching the app.
+        transient = result is None or re.search(
+            r'offline|not found|closed|transport|protocol fault|broken pipe|device.*disconnect',
+            message, re.I)
+        if not transient or attempt == 2:
+            if not check:
+                return b'' if binary else ''
+            raise RuntimeError(f'ADB {args[:2]} failed: {message[-250:]}')
+        subprocess.run([*ADB,'get-state'],capture_output=True,timeout=7,check=False)
+        try:
+            subprocess.run([*ADB,'wait-for-device'],capture_output=True,timeout=20,check=False)
+        except subprocess.TimeoutExpired:
+            pass
+        time.sleep(1)
 
 def shell(*args, **kwargs):
     return run('shell', *args, **kwargs).strip()
@@ -69,7 +97,7 @@ def fill(n,value,reason):
     shell('input','text',value.replace(' ','%s'))
     ime = shell('dumpsys','input_method',check=False)
     if 'mInputShown=true' in ime or 'isInputViewShown=true' in ime:
-        shell('input','keyevent','KEYCODE_BACK')
+        shell('input','keyevent','KEYCODE_BACK',check=False)
 
 def save(nodes):
     for n in nodes:
