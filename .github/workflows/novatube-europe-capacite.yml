@@ -1,0 +1,70 @@
+name: Localiser les hôtes de test Android TV disponibles
+on:
+  push:
+    branches: ['qa/novatube-europe-runner-20261127']
+    paths: ['.github/workflows/novatube-europe-capacite.yml']
+permissions:
+  contents: read
+jobs:
+  experience:
+    name: "Localisation • ${{ matrix.os }}"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        os: [ubuntu-22.04, ubuntu-26.04, ubuntu-24.04-arm, windows-2025, macos-15-intel, macos-15]
+    steps:
+      - name: Relever le pays du trafic et les capacités du poste
+        id: site
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(curl -fsS --max-time 12 --retry 2 https://www.cloudflare.com/cdn-cgi/trace | tr -d '\r' | awk -F= '$1=="colo" || $1=="loc"')"
+          echo "$result"
+          country="$(echo "$result" | sed -n 's/^loc=//p')"
+          arch="$(uname -m)"
+          echo "architecture=$arch / OS=$RUNNER_OS"
+          kvm=false
+          if test -c /dev/kvm; then kvm=true; fi
+          echo "KVM=$kvm"
+          eligible=false
+          case "$country" in
+            SE|DE|FR|GB|IE|NL|BE|NO|FI|DK|PL|CH|AT|IT|ES|PT|LV|LT|EE|CZ|SK|HU|RO|BG|HR|SI|GR|IS|LU)
+              if test "$RUNNER_OS" = Linux && test "$arch" = x86_64 && test "$kvm" = true; then eligible=true; fi ;;
+          esac
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.site.outputs.eligible == 'true'
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        if: steps.site.outputs.eligible == 'true'
+        with:
+          accept-android-sdk-licenses: false
+      - name: Mesurer les deux APK publics si un hôte européen compatible est disponible
+        if: steps.site.outputs.eligible == 'true'
+        shell: bash
+        env:
+          ORDER: novatube-televizo
+        run: bash android-app/ci/novatube_tv/official_pilot.sh
+      - name: Conserver les résultats des mires européennes
+        if: always() && steps.site.outputs.eligible == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: zaps-europe-${{ matrix.os }}
+          path: |
+            pilot-results/egress-country.txt
+            pilot-results/runner-region.txt
+            pilot-results/system-image.txt
+            pilot-results/client-memory.txt
+            pilot-results/*/SHA256SUMS
+            pilot-results/*/badging.txt
+            pilot-results/*/installed.sha256
+            pilot-results/*/pilot.json
+            pilot-results/*/cut-*.csv
+            pilot-results/*/cut-*-counter.txt
+            pilot-results/*/setup-status.txt
+          if-no-files-found: warn
+          retention-days: 14
