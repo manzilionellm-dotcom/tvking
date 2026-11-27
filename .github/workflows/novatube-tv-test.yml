@@ -544,8 +544,8 @@ jobs:
           fi
           echo "Lien direct : https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/${APK_NAME}"
 
-  manual_fixed_download:
-    name: APK de TEST pour Downloader (adresse fixe)
+  manual_lab_download:
+    name: APK de laboratoire (lien séparé)
     needs: [build, emulator, prerelease]
     if: needs.prerelease.result == 'success'
     runs-on: ubuntu-latest
@@ -554,7 +554,7 @@ jobs:
       contents: write
       actions: read
     concurrency:
-      group: novatube-tv-domaine
+      group: novatube-tv-lab-download
       cancel-in-progress: false
     steps:
       - name: Relire le résultat du contrôle Android
@@ -562,7 +562,7 @@ jobs:
         with:
           name: novatube-tv-emulateur-${{ github.sha }}
           path: checked
-      - name: Vérifier et relier le nouvel APK de test (rollback automatique)
+      - name: Publier uniquement dans le canal laboratoire
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -573,34 +573,31 @@ jobs:
           set -euo pipefail
           test "$(cat checked/phase-media.txt)" = ok
           tag="novatube-tv-test-${SOURCE:0:8}"
-          fixed="novatube-tv-download"
+          lab="novatube-tv-lab"
           test "$(gh release view "$tag" --json isPrerelease,isDraft --jq '.isPrerelease and (.isDraft|not)')" = true
-          test "$(gh release view "$fixed" --json isPrerelease --jq '.isPrerelease')" = true
-          mkdir source backup out
+          mkdir source out backup
           gh release download "$tag" --pattern "$APK_NAME" --dir source
           printf '%s  %s\n' "$APK_SHA" "source/$APK_NAME" | sha256sum -c -
-          gh release download "$fixed" --pattern NovaTube-TV.apk --pattern SHA256SUMS.txt --dir backup
-          (cd backup && sha256sum -c SHA256SUMS.txt)
-          cp "source/$APK_NAME" out/NovaTube-TV.apk
-          printf '%s  NovaTube-TV.apk\n' "$APK_SHA" > out/SHA256SUMS.txt
+          cp "source/$APK_NAME" out/NovaTube-LAB.apk
+          printf '%s  NovaTube-LAB.apk\n' "$APK_SHA" > out/SHA256SUMS.txt
+          if gh release view "$lab" >/dev/null 2>&1; then
+            test "$(gh release view "$lab" --json isPrerelease --jq .isPrerelease)" = true
+            gh release download "$lab" --pattern NovaTube-LAB.apk --pattern SHA256SUMS.txt --dir backup
+            (cd backup && sha256sum -c SHA256SUMS.txt)
+          else
+            gh release create "$lab" --target "$GITHUB_SHA" --prerelease --title "NovaTube Max — laboratoire privé de test" --notes "Canal expérimental distinct du téléchargement NovaTube habituel. Ne pas distribuer aux clients."
+          fi
           restore() {
             rc=$?
-            if [ "$rc" -ne 0 ]; then
-              gh release upload "$fixed" backup/NovaTube-TV.apk backup/SHA256SUMS.txt --clobber
+            if [ "$rc" -ne 0 ] && [ -s backup/NovaTube-LAB.apk ]; then
+              gh release upload "$lab" backup/NovaTube-LAB.apk backup/SHA256SUMS.txt --clobber
             fi
             exit "$rc"
           }
           trap restore EXIT
-          gh release upload "$fixed" out/NovaTube-TV.apk out/SHA256SUMS.txt --clobber
-          ok=false
-          for i in $(seq 1 12); do
-            if curl -fsSL --retry 2 --max-time 60 https://novatube.zuno8k.com/novatube.apk -o live.apk && printf '%s  live.apk\n' "$APK_SHA" | sha256sum -c -; then
-              ok=true
-              break
-            fi
-            sleep 5
-          done
-          test "$ok" = true
+          gh release upload "$lab" out/NovaTube-LAB.apk out/SHA256SUMS.txt --clobber
+          gh release download "$lab" --pattern NovaTube-LAB.apk --dir verified
+          printf '%s  verified/NovaTube-LAB.apk\n' "$APK_SHA" | sha256sum -c -
           trap - EXIT
-          echo "APK de test vérifié : https://novatube.zuno8k.com/novatube.apk" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$lab/NovaTube-LAB.apk" >> "$GITHUB_STEP_SUMMARY"
           echo "SHA-256 : $APK_SHA" >> "$GITHUB_STEP_SUMMARY"
