@@ -93,11 +93,13 @@ class TvPlayerScreen extends StatefulWidget {
     required this.channels,
     required this.startIndex,
     this.startAtUrl,
+    this.transitionClock,
   });
 
   /// Liste pour le zap (Haut/Bas) — généralement la catégorie courante.
   final List<Channel> channels;
   final int startIndex;
+  final Stopwatch? transitionClock;
 
   /// Adresse de rattrapage, seulement quand la personne a choisi
   /// « Reprendre depuis le début ». Vide : on ouvre le direct,
@@ -204,6 +206,33 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
 
   // Anti-gel : on suit la progression réelle (position qui avance).
   DateTime _lastProgress = DateTime.now();
+  // QA seulement. Aucun nom de chaîne, identifiant ni adresse dans logcat.
+  static const bool _measure = bool.fromEnvironment('NOVATUBE_QA_METRICS');
+  Stopwatch? _startClock;
+  String _startAction = '';
+  Object? _lastCadence;
+
+  void _traceStart(String action) {
+    if (!_measure) return;
+    _traceEnd('superseded');
+    _startAction = action;
+    _startClock = Stopwatch()..start();
+  }
+
+  void _traceEnd(String outcome) {
+    final clock = _startClock;
+    if (clock == null) return;
+    _startClock = null;
+    clock.stop();
+    if (_startAction == 'open_screen') {
+      final transition = widget.transitionClock;
+      if (transition != null && transition.isRunning) {
+        transition.stop();
+        debugPrint('[NovaTubeQA] action=preview_to_full outcome=$outcome elapsed_ms=${transition.elapsedMilliseconds}');
+      }
+    }
+    debugPrint('[NovaTubeQA] action=$_startAction outcome=$outcome elapsed_ms=${clock.elapsedMilliseconds}');
+  }
   Duration _lastPos = Duration.zero;
   // App au premier plan ? (Home / multitâche → lecture en pause : le chien de
   // garde ne doit PAS « réparer » une pause voulue, sinon le son repartirait
@@ -250,6 +279,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.startAtUrl == null) _traceStart('open_screen');
     TvActivity.enter();
     BlackBox.instance.info('SCREEN', 'Lecteur ouvert');
     // Halo autour de l'image, selon le genre de la chaîne.
@@ -470,6 +500,19 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     // croirait que la mauvaise chaîne est prête et lancerait une
     // reconnexion inutile.
     if (_zapHolding) return;
+    if (_measure && !_casting && _appActive && !_catchup) {
+      if (_controller.firstFrame && !_controller.holdFrame) {
+        _traceEnd('first_frame');
+      }
+      final cadence = _controller.videoQuality.cadence;
+      if (!identical(cadence, _lastCadence)) {
+        _lastCadence = cadence;
+        if (cadence != null) {
+          debugPrint('[NovaTubeQA] window_ms=${cadence.windowMs} rendered=${cadence.renderedFrames} dropped=${cadence.droppedFrames}');
+        }
+      }
+    }
+
     // Replay : l'archive n'a JAMAIS montré d'image et le lecteur est déjà
     // en échec ou en train de réessayer → elle n'existe pas chez le
     // fournisseur. Avant, on attendait la fin de tous les essais (environ
@@ -657,6 +700,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   void _zap(int delta) {
     final int n = widget.channels.length;
     if (n <= 1) return;
+    _traceStart('zap_key');
     // On ne peut enregistrer qu'1 chaîne à la fois (1 connexion) : changer de
     // chaîne clôt et SAUVEGARDE l'enregistrement en cours.
     if (_isRecording) _finalizeRecording(resumeDirect: false);
@@ -693,6 +737,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   void _showFatal() {
+    _traceEnd('failed');
     PlaybackHealth.instance.mark(stalled: true);
     _cancelRecover();
     if (!mounted) return;

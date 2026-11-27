@@ -427,6 +427,7 @@ class NativeVideoController extends ChangeNotifier {
     return <String, dynamic>{
       'url': url,
       'epoch': _epoch,
+      if (const bool.fromEnvironment('NOVATUBE_QA_METRICS')) 'qaPhases': true,
       if (openAsVod) 'vod': true,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,
     };
@@ -709,6 +710,7 @@ class NativeVideoController extends ChangeNotifier {
     final Map<String, dynamic> args = <String, dynamic>{
       'url': url,
       'epoch': _epoch,
+      if (const bool.fromEnvironment('NOVATUBE_QA_METRICS')) 'qaPhases': true,
       if (vod) 'vod': true,
       if (startAt > Duration.zero) 'startMs': startAt.inMilliseconds,
       if (lang != null && lang.isNotEmpty) 'preferredAudio': lang,

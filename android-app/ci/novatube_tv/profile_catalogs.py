@@ -52,6 +52,22 @@ def preparer_demarrage(launcher_package):
         time.sleep(.25)
 
 
+def attendre_demarrage_stable():
+    # Un force-stop avant le signal de stabilité compte comme un crash. Trois
+    # de suite désactivent volontairement l'import Atlas pour ce processus.
+    limit = time.monotonic() + 45
+    while time.monotonic() < limit:
+        pid = adb('shell', 'pidof', PKG).strip()
+        if pid.isdigit():
+            log = adb('logcat', '-d', '--pid', pid, '-s', 'flutter:I')
+            if '[BootGuard] app stable' in log:
+                if 'MODE SANS ÉCHEC' in log:
+                    raise RuntimeError('Démarrage en mode sans échec avant le banc Atlas')
+                return
+        time.sleep(.5)
+    raise RuntimeError('NovaTube ne signale pas un démarrage stable en 45 secondes')
+
+
 def requete(method, path, body=None, token=None):
     headers = {'Content-Type': 'application/json'}
     if token:
@@ -195,76 +211,39 @@ with contextlib.ExitStack() as stack:
     launcher = home.strip().splitlines()[-1].split('/')[0]
     if not re.fullmatch(r'[a-zA-Z][\w.]+', launcher) or launcher == PKG or '/' not in home:
         raise RuntimeError('Le paquet du lanceur Android est introuvable.')
-    for essai in range(1, 6):
+    rejected = []
+    for essai in range(1, 56):
+        if len(cold) == 30:
+            break
         preparer_demarrage(launcher)
         result = adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
         (out / f'demarrage-profil-{essai}.txt').write_text(result)
         tags = dict(line.split(': ', 1) for line in result.splitlines() if ': ' in line)
         if tags.get('Status') != 'ok' or tags.get('LaunchState') != 'COLD' or tags.get('Activity') != COMPONENT:
-            raise RuntimeError(f'Essai {essai} : Android ne confirme pas le démarrage à froid de NovaTube.')
+            rejected.append({'essai': essai, 'status': tags.get('Status'), 'activity': tags.get('Activity')})
+            (out / 'lancements-ecartes.json').write_text(json.dumps(rejected))
+            time.sleep(21)  # Une activité différente a reçu le focus.
+            continue
         cold.append(int(tags['TotalTime']))
-        time.sleep(3)
+        attendre_demarrage_stable()
+    if len(cold) != 30:
+        raise RuntimeError('Trente mesures Android à froid valides sont nécessaires')
     print('Démarrage profil médian (ms)', statistics.median(cold), flush=True)
-    token = requete('POST', '/api/v1/auth/login', {'email': 'admin', 'password': cfg['adminSecret']})['token']
-    for _ in range(30):
-        mac = mk(token)
-        if mac:
-            break
+    # Reprise à chaud : retour au lanceur, le processus doit rester le même.
+    warm = []
+    excluded = []
+    for essai in range(1, 46):
+        if len(warm) == 30: break
+        pid = adb('shell', 'pidof', PKG).strip()
+        adb('shell','input','keyevent','KEYCODE_HOME')
         time.sleep(1)
-    if not mac:
-        raise RuntimeError('Aucune box de test enregistrée.')
-    endpoint = '/api/v1/sources/' + mac
-    measures = {'demarrage_ms': cold, 'mediane_ms': statistics.median(cold), 'catalogues': {}}
-    for rev, (tls, n) in enumerate(catalogues, 1):
-        protocol = 'https' if tls else 'http'
-        label = f'{protocol}-{n}'
-        url = f'{protocol}://127.0.0.1:{9443 if tls else 9080}/{n}.m3u'
-        adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset')
-        start = time.monotonic()
-        requete('PUT', endpoint, {'sources': [{'type': 'm3u', 'label': label,
-                                               'm3u_url': url}]}, token)
-        while not confirme(endpoint, token, rev):
-            if time.monotonic() - start > 100:
-                raise RuntimeError('Pas de confirmation pour ' + label)
-            time.sleep(.12)
-        if requests.get((tls, n), 0) < 1:
-            raise RuntimeError('Aucune requête du profil Android pour ' + label)
-        mesure = {'panel_confirmation_ms': round((time.monotonic()-start)*1000),
-                  'requetes': requests[tls, n], 'import': frames(label + '-import'),
-                  'catalogue_verifie': catalogue_enregistre(url, n)}
-        # La première tuile peut être une recommandation. Ouvrir le Direct
-        # sur le libellé visible, puis confirmer le contenu de la liste.
-        def ecran(fichier):
-            with fichier.open('wb') as image:
-                subprocess.run(['adb', '-s', SERIAL, 'exec-out', 'screencap', '-p'],
-                               stdout=image, check=True)
-        from screen_label import chercher
-        def trouver(motif, fichier):
-            for _ in range(10):
-                ecran(fichier)
-                point = chercher(str(fichier), motif, 0, 1)
-                if point:
-                    return point
-                time.sleep(.5)
-            raise RuntimeError(f'Libellé {motif} absent sur la capture {fichier.name}')
-        accueil = out / (label + '-accueil.png')
-        x, y = trouver('live|direct', accueil)
-        adb('shell', 'input', 'tap', str(x), str(y))
-        direct = out / (label + '-direct.png')
-        trouver('canal|groupe', direct)
-        for colonne, touch in [('chaines',None),('categories','KEYCODE_DPAD_LEFT')]:
-            if touch:
-                adb('shell', 'input', 'keyevent', touch)
-            adb('shell', 'dumpsys', 'gfxinfo', PKG, 'reset')
-            adb('shell', 'for i in $(seq 1 35); do input keyevent KEYCODE_DPAD_DOWN; done')
-            mesure[colonne] = frames(label + '-' + colonne)
-        (out / (label + '-memoire.txt')).write_text(adb('shell','dumpsys','meminfo',PKG))
-        measures['catalogues'][label] = mesure
-        (out / 'mesures-profil.json').write_text(json.dumps(measures, indent=2))
-        print(label, json.dumps(mesure), flush=True)
-        adb('shell','input','keyevent','KEYCODE_BACK')
+        raw = adb('shell','am','start','-W','-n',COMPONENT)
+        tags = dict(l.split(': ',1) for l in raw.splitlines() if ': ' in l)
+        ok = (pid and pid == adb('shell','pidof',PKG).strip() and tags.get('Status') == 'ok'
+              and tags.get('Activity') == COMPONENT and tags.get('LaunchState') in ('HOT','WARM')
+              and 'TotalTime' in tags)
+        if ok: warm.append(int(tags['TotalTime']))
+        else: excluded.append({'essai':essai,'status': tags.get('Status'),'state':tags.get('LaunchState')})
+        (out/'campagne-demarrage.json').write_text(json.dumps({'cold_ms':cold,'warm_ms':warm,
+            'invalid_cold':rejected,'invalid_warm':excluded}))
         time.sleep(1)
-        # Rétablit le focus de départ sur l'accueil avant la prochaine liste.
-        preparer_demarrage(launcher)
-        adb('shell','am','start','-W','-n',COMPONENT)
-        time.sleep(4)

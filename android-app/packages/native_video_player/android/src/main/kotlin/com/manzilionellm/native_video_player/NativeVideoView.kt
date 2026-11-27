@@ -404,6 +404,10 @@ class NativeVideoView(
 
     // Epoch Dart du setUrl en cours (accusé). null = pas un setUrl.
     private var dartEpoch: Int? = null
+    private val qaViewId = id
+    private var qaPhases = false
+    private var qaDecoderReadyAt = 0L
+    private var qaFirstFrameSeen = false
 
     // Langue audio demandée par l'app pour cette lecture.
     private var prefAudio: String? = null
@@ -1418,6 +1422,7 @@ class NativeVideoView(
                 // événement né après le silence porte un horodatage neuf.
                 val epoch = call.argument<Number>("epoch")?.toInt()
                 dartEpoch = epoch
+                qaPhases = call.argument<Boolean>("qaPhases") == true
                 val url = call.argument<String>("url")
                 if (url.isNullOrEmpty()) {
                     result.error("no_url", "setUrl appelé sans url", null)
@@ -2005,6 +2010,11 @@ class NativeVideoView(
         if (!fresh(eventTime)) return
         reconnect.onRecovered()
         behindLiveCount = 0
+        if (qaPhases && !qaFirstFrameSeen) {
+            qaFirstFrameSeen = true
+            val sinceCodec = if (qaDecoderReadyAt > 0) renderTimeMs - qaDecoderReadyAt else null
+            android.util.Log.i("NovaTubeQA", "view=$qaViewId epoch=$dartEpoch phase=first_render open_ms=${renderTimeMs - sessionOpenedAt} codec_to_render_ms=$sinceCodec")
+        }
         sawFrame = true
         // La nouvelle trame est à l'écran : on retire la copie.
         hideHeldFrame()
@@ -2029,6 +2039,10 @@ class NativeVideoView(
     ) {
         if (!fresh(eventTime)) return
         resetVideoCadence()
+        if (qaPhases) {
+            qaDecoderReadyAt = initializedTimestampMs
+            android.util.Log.i("NovaTubeQA", "view=$qaViewId epoch=$dartEpoch phase=decoder_ready open_ms=${initializedTimestampMs - sessionOpenedAt} init_ms=$initializationDurationMs")
+        }
         videoDecoderReady = true
         decoderReadyAtMs = SystemClock.elapsedRealtime()
         emit("videoDecoder", decoderName)
@@ -2235,6 +2249,8 @@ class NativeVideoView(
         aiSessionId = sessions.generation
         contrastFallbackPosted = false
         sessionOpenedAt = SystemClock.elapsedRealtime()
+        qaDecoderReadyAt = 0L
+        qaFirstFrameSeen = false
         audioChosenForSession = false
         videoChosenForSession = false
         readyThisSession = false

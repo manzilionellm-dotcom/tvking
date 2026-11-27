@@ -594,12 +594,17 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     // Un simple setState laissait les deux lecteurs vivants une frame :
     // sur une box à un seul décodeur l'image restait noire, et un
     // abonnement « 1 connexion » refusait la chaîne (logo sans fin).
+    final transition = const bool.fromEnvironment('NOVATUBE_QA_METRICS')
+        ? (Stopwatch()..start()) : null;
     await TvLivePreview.releaseActive();
+    if (transition != null) {
+      debugPrint('[NovaTubeQA] phase=preview_release elapsed_us=${transition.elapsedMicroseconds}');
+    }
     if (!mounted) return;
     setState(() => _playerOpen = true);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
+        builder: (_) => TvPlayerScreen(channels: list, startIndex: index, transitionClock: transition),
       ),
     );
     if (!mounted) return;
