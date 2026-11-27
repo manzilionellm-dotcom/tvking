@@ -55,20 +55,34 @@ for n in $(seq 1 180); do
  sleep 2
 done
 test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
-adb root > "$out/adb-root.txt" 2>&1 || true
+adb shell id > "$out/adb-root.txt" 2>&1 || true
 timeout 30 adb wait-for-device
 adb shell 'id; getprop ro.build.fingerprint; getprop ro.debuggable; getprop ro.build.version.sdk' > "$out/android-runtime.txt"
 adb shell pm list features | grep -E 'leanback|television' > "$out/leanback.txt"
 adb shell wm size 1920x1080
 adb shell svc power stayon true
 adb shell input keyevent 82
+# Bootstrap only. Once observation starts the reverse mapping is never repaired.
+installed=0
+for attempt in 1 2 3; do
+ timeout 50 adb wait-for-device || true
+ for ready in $(seq 1 30); do
+   if timeout 4 adb shell cmd package path android 2>/dev/null | grep -q '^package:'; then break; fi
+   sleep 1
+ done
+ if timeout 65 adb install --no-streaming -r "$RUNNER_TEMP/pilot.apk" >> "$out/install-attempts.txt" 2>&1 || timeout 6 adb shell pm path "$pkg" 2>/dev/null | grep -q '^package:'; then installed=1; break; fi
+ adb reconnect offline >> "$out/install-attempts.txt" 2>&1 || true
+ sleep 3
+done
+test "$installed" = 1
+timeout 35 adb wait-for-device
 adb reverse tcp:18471 tcp:18471
-if [[ "$APP" == novatube ]]; then adb reverse tcp:8788 tcp:8788; fi
+adb reverse tcp:8788 tcp:8788
+adb reverse --list > "$out/ports-before-playback.txt"
 python3 "$work/freeze_android.py" "$out" "$pkg" --duration 6500 --arm-file "$out/observation-start.json" > "$out/android-observer.log" 2>&1 &
 workers+=("$!")
 python3 "$work/freeze_tunnel.py" "$out" --seconds 6300 --interval 6 > "$out/tunnel-witness.log" 2>&1 &
 workers+=("$!")
-adb install -r "$RUNNER_TEMP/pilot.apk"
 adb shell am start -W -n "$pkg/$pkgactivity" | tee "$out/launch.txt"
 sleep 20
 adb shell cat /proc/meminfo | head -1 > "$out/client-memory.txt"
