@@ -1,0 +1,173 @@
+"""Exercise the normal free playlist and channel UI of the official Televizo APK."""
+import json
+import re
+import subprocess
+import sys
+import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+OUT = Path(sys.argv[1])
+OUT.mkdir(parents=True, exist_ok=True)
+PKG = 'com.ottplay.ottplay'
+URL = 'http://127.0.0.1:18471/channels.m3u'
+NAME = 'Nova QA'
+ADB = ['adb', '-s', 'emulator-5554']
+history = []
+
+def run(*args, check=True, binary=False):
+    return subprocess.run([*ADB, *args], check=check, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, timeout=25, text=not binary).stdout
+
+def shell(*args, **kwargs):
+    return run('shell', *args, **kwargs).strip()
+
+def log(action):
+    history.append({'time': time.monotonic(), 'action': action})
+    (OUT / 'televizo-actions.json').write_text(json.dumps(history, indent=2))
+
+def screenshot(label):
+    (OUT / ('televizo-' + label + '.png')).write_bytes(run('exec-out','screencap','-p',binary=True))
+
+def snapshot(i):
+    xml_path = '/sdcard/televizo-pilot-ui.xml'
+    shell('rm', '-f', xml_path)
+    shell('uiautomator', 'dump', xml_path, check=False)
+    xml = shell('cat', xml_path, check=False)
+    if not xml.startswith('<?xml') and '<hierarchy' not in xml:
+        return []
+    (OUT / f'televizo-{i:02}.xml').write_text(xml)
+    root = ET.fromstring(xml)
+    return list(root.iter('node'))
+
+def desc(n):
+    return ' '.join(filter(None, [n.get('text','').strip(),n.get('content-desc','').strip()]))
+
+def point(n):
+    x1,y1,x2,y2 = map(int,re.findall(r'\d+',n.get('bounds','')))
+    return (x1+x2)//2,(y1+y2)//2
+
+def tap(n,reason):
+    x,y = point(n)
+    log(reason)
+    shell('input','tap',str(x),str(y))
+    time.sleep(.65)
+
+def find(nodes,pattern):
+    for n in nodes:
+        if n.get('enabled')!='false' and re.fullmatch(pattern,desc(n),flags=re.I):
+            return n
+    return None
+
+def fill(n,value,reason):
+    tap(n,reason)
+    shell('input','keycombination','113','29',check=False)
+    shell('input','text',value.replace(' ','%s'))
+    ime = shell('dumpsys','input_method',check=False)
+    if 'mInputShown=true' in ime or 'isInputViewShown=true' in ime:
+        shell('input','keyevent','KEYCODE_BACK')
+
+def save(nodes):
+    for n in nodes:
+        rid=n.get('resource-id','').rsplit('/',1)[-1]
+        if n.get('enabled')!='false' and (
+                re.fullmatch(r'save|done|apply|check',desc(n),re.I)
+                or re.fullmatch(r'(?:action|menu|btn|button|iv|ib)?_?(?:save|apply|done|check|confirm)',rid,re.I)):
+            tap(n,'save local fixture playlist')
+            return True
+    # The playlist screen also uses an unlabeled toolbar action. Select the
+    # rightmost clickable toolbar control, constrained to this form only.
+    rectangles=[point(n) for n in nodes if re.fullmatch(r'\[\d+,\d+\]\[\d+,\d+\]',n.get('bounds',''))]
+    if not rectangles: return False
+    right=max(int(re.findall(r'\d+',n.get('bounds',''))[2]) for n in nodes if n.get('bounds'))
+    bottom=max(int(re.findall(r'\d+',n.get('bounds',''))[3]) for n in nodes if n.get('bounds'))
+    candidates=[n for n in nodes if n.get('clickable')=='true' and n.get('enabled')!='false'
+                and point(n)[0] >= right*.76 and point(n)[1] <= bottom*.145]
+    if not candidates:return False
+    tap(max(candidates,key=lambda n:point(n)[0]),'confirm using playlist toolbar')
+    return True
+
+component=shell('cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN',
+                '-c','android.intent.category.LEANBACK_LAUNCHER',PKG).splitlines()[-1]
+if not component.startswith(PKG+'/'):
+    component=PKG+'/.MainActivity'
+shell('am','start','-W','-n',component)
+log('launch official Televizo')
+selected=False
+selection_step=None
+imported=False
+for i in range(46):
+    time.sleep(.45)
+    nodes=snapshot(i)
+    if not nodes: continue
+    if i<3 or i%3==0:screenshot(f'{i:02}')
+    texts=[desc(n) for n in nodes if desc(n)]
+    (OUT / f'televizo-{i:02}-labels.txt').write_text('\n'.join(texts))
+    # Respect optional choices: no trial, subscription, account, or ad opt-in.
+    button=find(nodes,r'do not consent|do not allow|don.t allow|reject all|not now|skip|got it')
+    if button is not None:
+        tap(button,'dismiss optional prompt')
+        continue
+    if selected:
+        fullscreen=find(nodes,r'full[ -]?screen(?: mode)?|enter full[ -]?screen')
+        if fullscreen is not None and i<=selection_step+2:
+            tap(fullscreen,'switch selected channel to full screen')
+        elif i>=selection_step+2:
+            if find(nodes,r'Mire A') is not None and find(nodes,r'Mire B') is not None:
+                if i==selection_step+2:
+                    tap(find(nodes,r'Mire A'),'expand selected channel from its preview')
+                    continue
+            screenshot('player-candidate')
+            log('selected fixture channel; common marker capture adjudicates playback')
+            sys.exit(0)
+        continue
+    chan=find(nodes,r'Mire A(?:\s.*)?')
+    if chan is not None:
+        tap(chan,'play Mire A')
+        selected=True; selection_step=i
+        continue
+    button=find(nodes,r'all channels|all broadcasts|all videos|all groups')
+    if button is not None:
+        tap(button,'open all channels')
+        continue
+    fields=[n for n in nodes if n.get('class','').endswith('EditText') and n.get('enabled')!='false']
+    form=any(re.search(r'playlist name|link to the playlist|new m3u playlist',item,re.I) for item in texts)
+    if not fields:
+        for pattern in (r'new M3U playlist',r'M3U playlist',r'create playlist'):
+            button = find(nodes,pattern)
+            if button is not None:
+                tap(button,'create M3U playlist')
+                break
+        if button is not None:continue
+    if fields and (form or len(fields)>=2):
+        if len(fields)>=2:
+            if fields[0].get('text','')!=NAME:
+                fill(fields[0],NAME,'type fixture name')
+                continue
+            if fields[1].get('text','')!=URL:
+                fill(fields[1],URL,'type fixture URL')
+                continue
+        elif 'playlist name' in ' '.join(texts).lower() and fields[0].get('text','')!=NAME:
+            fill(fields[0],NAME,'type playlist name')
+            continue
+        if save(nodes):
+            imported=True
+            time.sleep(1)
+            continue
+    if imported:
+        for pattern in [r'Nova QA',r'QA',r'Unsorted|Ungrouped|General|Other|Live']:
+            button=find(nodes,pattern)
+            if button is not None:
+                tap(button,'open fixture list or group')
+                break
+        else: button=None
+        if button is not None: continue
+    # Basic application information and acknowledgement dialogs.
+    button=find(nodes,r'continue|okay|ok|next|done|close')
+    if button is not None:
+        tap(button,'continue through informational screen')
+        continue
+    screenshot('stopped')
+    log('waiting for a recognized standard UI action')
+screenshot('blocked')
+raise SystemExit('Televizo onboarding did not reach the controlled channel. See saved UI evidence.')
