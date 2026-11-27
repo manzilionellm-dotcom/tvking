@@ -44,8 +44,34 @@ curl -fsS --max-time 6 https://www.cloudflare.com/cdn-cgi/trace | sed -nE '/^(lo
 curl -sS --max-time 3 -H Metadata:true --noproxy '*' 'http://169.254.169.254/metadata/instance/compute/location?api-version=2021-02-01&format=text' > "$out/runner-region.txt" || true
 export BENCH_ZAPS_ONLY=1 OMP_THREAD_LIMIT=1
 overall_status=0
+ensure_device() {
+    for attempt in 1 2 3 4; do
+        if [[ "$(timeout 8 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
+            if timeout 8 adb reverse tcp:18471 tcp:18471 >/dev/null; then return 0; fi
+        fi
+        adb reconnect offline >/dev/null 2>&1 || true
+        timeout 8 adb wait-for-device || true
+    done
+    # The userdata disk belongs to this same test AVD. Use the same serial,
+    # installation and device identity after a process/ADB failure.
+    adb emu kill >/dev/null 2>&1 || true
+    kill "$emupid" >/dev/null 2>&1 || true
+    wait "$emupid" 2>/dev/null || true
+    "$ANDROID_HOME/emulator/emulator" -avd tvpilot -port 5554 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 1536 -cores 2 >> "$out/emulator.txt" 2>&1 &
+    emupid=$!
+    for i in $(seq 1 90); do
+        if [[ "$(timeout 5 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]] && adb shell pm list features >/dev/null 2>&1; then
+            adb reverse tcp:18471 tcp:18471
+            adb shell svc power stayon true
+            return 0
+        fi
+        sleep 2
+    done
+    return 1
+}
 IFS=- read -r first second <<< "$ORDER"
 for app in "$first" "$second"; do
+    ensure_device
     version_out="$out/$app"
     mkdir -p "$version_out"
     case "$app" in
@@ -94,6 +120,23 @@ for app in "$first" "$second"; do
     test "$match" -eq 1
     
     adb reverse tcp:18471 tcp:18471
+    series_ok=0
+    for series_attempt in 1 2; do
+    ensure_device
+    if [[ "$series_attempt" == 2 ]]; then
+        # Retain the interrupted series separately; never pool it with the fresh series.
+        previous="$out/interrupted-$app"
+        mkdir -p "$previous"
+        for item in pilot.json capture-events.jsonl setup-status.txt calibration; do
+            if [[ -e "$version_out/$item" ]]; then mv "$version_out/$item" "$previous/"; fi
+        done
+        if [[ "$app" == televizo ]]; then
+            # A launcher restart returns some Televizo versions to their last
+            # playlist, where the initial setup menu is no longer available.
+            adb shell pm clear "$pkg" >/dev/null
+        fi
+        adb shell am force-stop "$pkg"
+    fi
     adb logcat -c
     adb shell am start -W -n "$pkg/$activity" > "$version_out/launch.txt"
     sleep 20
@@ -108,13 +151,17 @@ steps = [f.stem for f in root.glob('*.png') if f.stem.startswith(('nova-', 'tel-
 (root/'setup-status.txt').write_text('onboarding incomplete; recorded steps: ' + ', '.join(sorted(steps)))
 STATUS
         cat "$version_out/setup-status.txt"
-        adb uninstall "$pkg"
-        overall_status=1
         continue
     fi
     if ! python3 "$work/benchmark.py" "$version_out"; then
+        continue
+    fi
+    series_ok=1
+    break
+    done
+    if [[ "$series_ok" != 1 ]]; then
         overall_status=1
-        adb uninstall "$pkg"
+        adb uninstall "$pkg" >/dev/null 2>&1 || true
         continue
     fi
     adb logcat -d -s NovaTubeQA:I flutter:I > "$version_out/player.log"
@@ -129,6 +176,6 @@ STATUS
       adb pull /sdcard/novatube-qa-visual.mp4 "$version_out/post-zap.mp4" > "$version_out/pull.log" 2>&1 || true
     fi
     adb shell rm -f /sdcard/novatube-qa-visual.mp4
-    adb uninstall "$pkg"
+    adb uninstall "$pkg" >/dev/null 2>&1 || true
 done
 exit "$overall_status"

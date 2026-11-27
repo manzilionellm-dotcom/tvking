@@ -50,6 +50,7 @@ jobs:
             pilot-results/*/post-zap.mp4
             pilot-results/*/capture-events.jsonl
             pilot-results/*/cut-*.csv
+            pilot-results/*/cut-*-counter.txt
             pilot-results/*/setup-status.txt
             pilot-results/*/nova-start.json
           retention-days: 14

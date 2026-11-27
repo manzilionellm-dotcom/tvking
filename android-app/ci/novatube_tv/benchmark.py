@@ -50,7 +50,8 @@ def record_calibration(index, target, raw_frames, observations):
     (folder / f"{index}-{target}.json").write_text(json.dumps(entries))
 
 def key(code):
-    subprocess.run(adb+['shell','input','keyevent',code],check=True,timeout=5)
+    # An ambiguous delivery invalidates this series and is never repeated in place.
+    subprocess.run(adb+['shell','input','keyevent',code],check=True,timeout=9)
 def persist():
     (out/'pilot.json').write_text(json.dumps(result,indent=2))
 zero=time.monotonic()
