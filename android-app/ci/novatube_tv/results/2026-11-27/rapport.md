@@ -376,6 +376,22 @@ Le P95 de mouvement est de 4,688 s pour NovaTube et 2,893 s pour Televizo sur l�
 - [NovaTube puis Televizo sur MSP](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46049151157/job/140675837083) · [Televizo puis NovaTube sur IAD](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46048554397/job/140673834776)
 - [Les 200 essais horodatés et les identités des exécutables se trouvent dans `same_emulator_televizo_a6a5ba5a`](mesures.json)
 
+## Reprise du candidat fe134dd4 après une interruption du média
+
+Trois émulateurs Android TV 36 ont installé l’APK de la campagne de zapping, après contrôle de son SHA-256. Chaque instance a reçu le flux HLS directement par `10.0.2.2`. Pendant l’interruption, le port du lecteur répondait HTTP 503 et une sonde indépendante continuait de lire les segments sur le port d’origine. Aucune requête média du lecteur n’a obtenu HTTP 200 pendant ces intervalles.
+
+| Coupure | Réponses 503 au lecteur | Image observée | Premier segment HTTP 200 après rétablissement | Deux avancées consécutives visibles après rétablissement |
+| --- | ---: | --- | ---: | ---: |
+| 5 s | 4 | La mire avance sur les 9 paires pendant la coupure. | 2,293 s | ≤ 1,347 s |
+| 15 s | 6 | L’image reste sur la trame 2 549 en fin de coupure et au premier contrôle après rétablissement. | 0,808 s | ≤ 2,123 s |
+| 60 s | 26 | La mire se fige puis l’image conservée apparaît agrandie. | 0,253 s | ≤ 3,020 s |
+
+À 5 s, le tampon explique le mouvement observé avant le transfert du premier nouveau segment. Les marqueurs correspondant à des segments obtenus pour la première fois après rétablissement avancent à nouveau au plus tard à 3,580 s. Sur les trois essais, des captures réalisées environ 40 s après le rétablissement confirment que la lecture se poursuit. Une seule interruption par durée a été mesurée, avec une distribution d’erreurs HTTP propre à ce banc.
+
+Pendant la coupure de 60 s, sur l’image de 1 920 × 1 080 pixels, les deux premières frontières de couleur passent des abscisses 320 et 640 aux abscisses 776 et 1 552. L’agrandissement horizontal atteint **2,425 fois**. La capture prise après environ 43 s de coupure et la première capture après rétablissement sont identiques. Le cadrage retrouve ses dimensions normales lorsque la lecture reprend. La coupure de 15 s conserve le cadrage initial sur les quatre captures enregistrées.
+
+[Mesures individuelles et empreintes des archives](fe134dd4-mesures.json) · [Campagne de coupures](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46060741078) · [Banc prévu pour la SHIELD et la box de 1 à 2 Go](https://github.com/manzilionellm-dotcom/tvking/blob/0bfe571b740095bde94564225cbc1b5e2e9b37e0/android-app/ci/novatube_tv/CAMPAGNE-BOX.md)
+
 ## États-Unis · candidat à indication compacte face à Televizo
 
 Le prototype de la PR #279 conserve le nom de la chaîne demandée dans une pastille de chargement en haut de l’écran. Il dégage la zone vidéo lors des changements de chaîne ordinaires autorisés. Le candidat `fe134dd4` a été compilé avec `NOVATUBE_TV=true`, `NOVATUBE_QA_METRICS=true` et `NOVATUBE_COMPACT_ZAP=true`. L’indication compacte est désactivée par défaut. Le test emploie Televizo officiel 1.9.9.44-d et l’APK NovaTube d’empreinte SHA-256 `aa93b4b959bb93d0e863d338be98445254f3412100302870a6c58a4d52662b34`.
