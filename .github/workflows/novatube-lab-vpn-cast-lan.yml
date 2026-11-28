@@ -1,0 +1,61 @@
+name: NovaTube LAB VPN · lecture Cast sur le réseau local émulé
+on:
+  push:
+    branches: ['qa/novatube-lab-vpn-rapidite']
+    paths: ['.github/workflows/novatube-lab-vpn-cast-lan.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        vpn: ['on', 'off']
+    name: Téléphone et récepteur DLNA · VPN ${{ matrix.vpn }}
+    env:
+      APP_COMMIT: 9b3d6c31d1e45cb310d563ea52e125a478ee35c4
+      NOVATUBE_REVIEW_PACKAGE: com.sevenmotion.novatube.tv.lab.retour.rec.vpn
+      NOVATUBE_REVIEW_VERSION_CODE: '1795833670'
+      NOVATUBE_REVIEW_APK_SHA256: 116734c8196109f010eeffabeb64eb6209a5f843f691b684f46bf5146eb5beba
+      NOVATUBE_PERF_PROFILE: phone
+      NOVATUBE_QA_VPN: ${{ matrix.vpn }}
+      NOVATUBE_VPN_LAN: allow
+      NOVATUBE_QA_CAST_LAN: 'on'
+      NOVATUBE_QA_CAST_ONLY: 'on'
+      NOVATUBE_QA_LOCAL_PLAYLIST: '1'
+      OMP_THREAD_LIMIT: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Télécharger l’APK publié et démarrer la lecture sur le récepteur
+        run: |
+          set -euo pipefail
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/novatube-lab-vpn-${APP_COMMIT:0:8}/NovaTube-LAB-VPN.apk"
+          curl -fsSL --retry 4 --retry-all-errors "$url" -o NovaTube-LAB-VPN.apk
+          echo "$NOVATUBE_REVIEW_APK_SHA256  NovaTube-LAB-VPN.apk" | sha256sum -c -
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y ffmpeg libpulse0 python3-pil tesseract-ocr ripgrep
+          sudo chmod a+rw /dev/kvm
+          bash android-app/ci/novatube_play_review/run_emulator.sh NovaTube-LAB-VPN.apk preuve
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: cast-lan-telephone-vpn-${{ matrix.vpn }}
+          path: |
+            preuve/*.json
+            preuve/*.jsonl
+            preuve/*.txt
+            preuve/*.png
+            preuve/vpn/tunnel.json
+          retention-days: 14
