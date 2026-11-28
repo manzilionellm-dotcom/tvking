@@ -1,0 +1,84 @@
+name: ZUNO LAB — mesures des lecteurs de référence sur TV émulée
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths: ['.github/workflows/zuno-lab-reference-players.yml']
+permissions:
+  contents: read
+jobs:
+  reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 117
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {player: televizo, package: com.ottplay.ottplay, url: 'https://files.televizo.net/televizo-default.apk'}
+          - {player: tivimate, package: ar.tvplayer.tv, url: 'https://tivimate.com/apk'}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: reference-protocol
+          sparse-checkout: android-app/ci/novatube_tv
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Lire l'identité installée puis observer les compteurs de la mire
+        env:
+          PLAYER: ${{ matrix.player }}
+          APK_URL: ${{ matrix.url }}
+          BENCH_PACKAGE: ${{ matrix.package }}
+          OMP_THREAD_LIMIT: '1'
+        run: |
+          set -euo pipefail
+          out="$PWD/observations"
+          mkdir -p "$out" "$RUNNER_TEMP/private"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil libpulse0
+          export PYTHONPATH="$PWD/reference-protocol/android-app/ci/novatube_tv"
+          source android-app/ci/zuno_lab/boot_lab.sh 'system-images;android-36;android-tv;x86_64' "$out"
+          curl -fsSL --proto '=https' --retry 2 "$APK_URL" -o "$RUNNER_TEMP/app.apk"
+          bt="$ANDROID_HOME/build-tools/35.0.0"
+          "$bt/apksigner" verify --print-certs "$RUNNER_TEMP/app.apk" > "$out/certificat.txt"
+          "$bt/aapt" dump badging "$RUNNER_TEMP/app.apk" | sed -n '1p' > "$out/version.txt"
+          grep -F "name='$BENCH_PACKAGE'" "$out/version.txt"
+          digest=$(sha256sum "$RUNNER_TEMP/app.apk"|cut -d' ' -f1)
+          adb install -g "$RUNNER_TEMP/app.apk"
+          path=$(adb shell pm path "$BENCH_PACKAGE"|tr -d '\r'|sed 's/^package://')
+          adb shell sha256sum "$path" | cut -d' ' -f1 > "$out/installed.before"
+          test "$(cat "$out/installed.before")" = "$digest"
+          location=$(curl -fsS --noproxy '*' --max-time 3 -H Metadata:true 'http://169.254.169.254/metadata/instance/compute/location?api-version=2021-02-01&format=text' || true)
+          printf '%s\n' "$location" | tr -cd 'a-zA-Z0-9\n-' > "$out/region-machine.txt"
+          curl -fsS --max-time 6 https://www.cloudflare.com/cdn-cgi/trace | sed -nE '/^(loc|colo)=/p' > "$out/sortie-reseau.txt" || true
+          python3 "$PYTHONPATH/pilot_live_source.py" prepare "$RUNNER_TEMP/fixtures"
+          python3 "$PYTHONPATH/pilot_live_source.py" serve "$RUNNER_TEMP/fixtures" --duration 6500 > "$RUNNER_TEMP/src.log" 2>&1 &
+          adb reverse tcp:18471 tcp:18471
+          curl -fsS --retry 8 --retry-connrefused http://127.0.0.1:18471/channels.m3u >/dev/null
+          comp=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER "$BENCH_PACKAGE" | tr -d '\r' | tail -1)
+          if [[ "$comp" != "$BENCH_PACKAGE/"* ]]; then
+            comp=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$BENCH_PACKAGE" | tr -d '\r' | tail -1)
+          fi
+          adb shell am start -W -n "$comp"
+          sleep 12
+          if ! timeout 260 python3 "$PYTHONPATH/${PLAYER}_pilot.py" "$RUNNER_TEMP/private" > "$RUNNER_TEMP/pilot.txt" 2>&1; then
+            # Les captures et le XML de démarrage peuvent contenir des identifiants.
+            # Seuls les mots de consentement reconnus sont diffusés.
+            if rg -i -l 'privacy policy|terms of use|consent|terms of service' "$RUNNER_TEMP/private" -g '*.xml' > /dev/null; then
+              echo 'Accès à la mire non obtenu ; écran de consentement observé.' > "$out/limite.txt"
+            else
+              echo 'Accès à la mire non obtenu sur cette version.' > "$out/limite.txt"
+            fi
+            exit 1
+          fi
+          export PUBLIC_OBSERVATION_SECONDS=4800 ZUNO_FIXTURE_TRANSPORT='HLS sur boucle de test via adb reverse'
+          python3 android-app/ci/zuno_lab/endurance_display.py "$out"
+          adb shell sha256sum "$path" | cut -d' ' -f1 > "$out/installed.after"
+          cmp "$out/installed.before" "$out/installed.after"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: reference-${{ matrix.player }}
+          path: observations/
