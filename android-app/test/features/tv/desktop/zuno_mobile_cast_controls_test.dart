@@ -188,6 +188,13 @@ void main() {
     expect(CastPlatform.novaTubeMobileCast, lab);
     if (!lab) return;
 
+    const sdk = MethodChannel('com.manzilionellm.tvking/cast');
+    final calls = <String>[];
+    messenger.setMockMethodCallHandler(sdk, (call) async {
+      calls.add(call.method);
+      return call.method == 'hasActiveSession' ? false : null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(sdk, null));
     final manager = CastManager.instance;
     const channel = Channel(id: 'test', name: 'Test', category: 'Test',
         streamUrl: originalUrl, isLive: true);
@@ -214,8 +221,17 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     expect(find.byTooltip('Arrêter le cast'), findsOneWidget);
     expect(find.byType(NativeVideoView), findsNothing);
-    manager.debugNativeSessionEvent(const CastNativeSessionEvent('ended'));
+    manager.debugNativeSessionEvent(const CastNativeSessionEvent('resumed'));
     await tester.pump();
+    await tester.tap(find.byIcon(Icons.pause_rounded));
+    await tester.pump();
+    expect(manager.state, CastState.paused);
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Arrêter le cast'));
+    await tester.pump();
+    expect(calls.where((method) => method != 'hasActiveSession'),
+        ['pause', 'play', 'disconnect']);
     expect(find.byTooltip('Cast vers une TV'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));

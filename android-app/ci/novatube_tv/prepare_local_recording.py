@@ -50,8 +50,8 @@ def main():
 
     manifest = MANIFEST.read_text()
     anchor = "    <application"
-    permission = ('    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n'
-                  '    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />')
+    # open_filex déclare déjà la permission de lecture requise sur les anciens Android.
+    permission = '    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />'
     manifest = add_once(manifest, anchor, permission + "\n" + anchor)
     MANIFEST.write_text(manifest)
 

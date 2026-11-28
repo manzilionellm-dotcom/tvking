@@ -138,6 +138,16 @@ enum CastState {
 class CastManager extends ChangeNotifier {
   CastManager._() {
     _subscribeToNativeEvents();
+    if (CastPlatform.novaTubeMobileCast) {
+      final int revision = _sessionSeq;
+      unawaited(GoogleCastApi.instance.hasActiveSession().then((active) {
+        // La notification du SDK peut précéder l'enregistrement du canal Dart.
+        if (active && _sessionSeq == revision && _state == CastState.idle &&
+            _device == null && !_nativeSessionSuspended) {
+          _onNativeSessionEvent(const CastNativeSessionEvent('resumed_at_boot'));
+        }
+      }));
+    }
   }
   static final CastManager instance = CastManager._();
 
@@ -2065,12 +2075,21 @@ class CastManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Une session Google restaurée peut survivre au processus Flutter :
+  // le SDK détient encore le récepteur, sans transport recréé côté Dart.
+  bool get _restoredGoogleSession => CastPlatform.novaTubeMobileCast &&
+      _device == null && _transport == null && hasActiveSession;
+
   Future<void> pause() async {
     final CastTransport? transport = _transport;
     final int revision = _sessionSeq;
-    if (transport == null) return;
+    if (transport == null && !_restoredGoogleSession) return;
     try {
-      await transport.pause();
+      if (transport == null) {
+        await GoogleCastApi.instance.pause();
+      } else {
+        await transport.pause();
+      }
       if (revision != _sessionSeq || !identical(transport, _transport)) return;
       _state = CastState.paused;
       notifyListeners();
@@ -2080,9 +2099,13 @@ class CastManager extends ChangeNotifier {
   Future<void> resume() async {
     final CastTransport? transport = _transport;
     final int revision = _sessionSeq;
-    if (transport == null) return;
+    if (transport == null && !_restoredGoogleSession) return;
     try {
-      await transport.resume();
+      if (transport == null) {
+        await GoogleCastApi.instance.play();
+      } else {
+        await transport.resume();
+      }
       if (revision != _sessionSeq || !identical(transport, _transport)) return;
       _state = CastState.casting;
       notifyListeners();
@@ -2172,6 +2195,7 @@ class CastManager extends ChangeNotifier {
   }
 
   Future<void> disconnect() async {
+    final bool restoredGoogle = _restoredGoogleSession;
     _nativeSessionSuspended = false;
     ++_sessionSeq;
     final CastTransport? previous = _transport;
@@ -2191,7 +2215,11 @@ class CastManager extends ChangeNotifier {
     _setProgress(CastProgress.idle);
     if (relay != null) LocalCastServer.instance.clearRelay(relay);
     try {
-      await previous?.stop().timeout(const Duration(seconds: 5));
+      if (restoredGoogle) {
+        await GoogleCastApi.instance.disconnect().timeout(const Duration(seconds: 5));
+      } else {
+        await previous?.stop().timeout(const Duration(seconds: 5));
+      }
     } catch (_) { /* TV hors réseau : état local déjà nettoyé. */ }
   }
 
