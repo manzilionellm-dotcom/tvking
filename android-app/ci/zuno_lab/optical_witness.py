@@ -229,7 +229,8 @@ def motion(folder, name, target, timeout, rows, save=False):
 def run(folder, count):
     folder.mkdir(exist_ok=True, parents=True)
     event(folder,"started", package=APK_PACKAGE, source="two synthetic HLS 1080p25; 2 s segments")
-    open_fixture(folder)
+    if not (APK_PACKAGE.endswith(".lab.tracediag") and os.environ.get("ZUNO_DIAG_FULL_SCREEN") == "yes"):
+        open_fixture(folder)
     rows=[]
     cases=[]
     recorder=None
