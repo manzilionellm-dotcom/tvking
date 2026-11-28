@@ -1,0 +1,106 @@
+name: Livrer NovaTube LAB VPN · Direct et Cinéma sur Android TV
+on:
+  push:
+    branches: ['qa/novatube-lab-vpn-rapidite']
+    paths: ['.github/workflows/novatube-lab-vpn-livraison.yml']
+
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: livraison-novatube-lab-vpn-9b3d6c31
+  cancel-in-progress: false
+
+jobs:
+  livraison:
+    if: github.repository == 'manzilionellm-dotcom/tvking'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APP_SHA: 9b3d6c31d1e45cb310d563ea52e125a478ee35c4
+      APK_SHA: 116734c8196109f010eeffabeb64eb6209a5f843f691b684f46bf5146eb5beba
+      BUILD_RUN: '46098954485'
+      QA_SHA: 3ca8d3c15488a4294a4a9be29a7211fcad4de420
+      QA_RUN: '46099124851'
+      QA_JOB: '140837305646'
+      QA_ARTIFACT: '15245093658'
+      APK: NovaTube-LAB-VPN.apk
+      TAG: novatube-lab-vpn-9b3d6c31
+    steps:
+      - name: Authentifier le build signé et le job Android TV sous VPN
+        run: |
+          set -euo pipefail
+          repo="repos/$GITHUB_REPOSITORY"
+          gh api "$repo/actions/runs/$BUILD_RUN" | jq -e --arg sha "$APP_SHA" '
+            .head_sha==$sha and .conclusion=="success" and .path==".github/workflows/novatube-lab-vpn.yml"'
+          gh api "$repo/actions/runs/$QA_RUN" | jq -e --arg sha "$QA_SHA" '
+            .head_sha==$sha and .path==".github/workflows/novatube-lab-vpn-qa.yml"'
+          gh api "$repo/actions/jobs/$QA_JOB" | jq -e --argjson run "$QA_RUN" '
+            .run_id==$run and .name=="candidate · tv · VPN on" and .conclusion=="success"
+            and any(.steps[]; .name=="Mesurer le parcours visible et contrôler le média" and .conclusion=="success")'
+          gh api "$repo/actions/artifacts/$QA_ARTIFACT" | jq -e --argjson run "$QA_RUN" --arg sha "$QA_SHA" '
+            .workflow_run.id==$run and .workflow_run.head_sha==$sha and .name=="preuve-candidate-tv-vpn-on" and .expired==false'
+          gh run download "$BUILD_RUN" -R "$GITHUB_REPOSITORY" -n "novatube-tv-apk-$APP_SHA" -D apk
+          gh api "$repo/actions/artifacts/$QA_ARTIFACT/zip" > preuve.zip
+          unzip -q preuve.zip -d preuve
+          (cd apk && sha256sum -c SHA256SUMS.txt)
+          echo "$APK_SHA  apk/$APK" | sha256sum -c -
+          grep -Fq "name='com.sevenmotion.novatube.tv.lab.retour.rec.vpn' versionCode='1795833670' versionName='1.0.2'" apk/badging.txt
+
+      - name: Valider les douze lectures installées et leurs deux images successives
+        run: |
+          set -euo pipefail
+          jq -en --slurpfile ms preuve/measurements.json --slurpfile vs preuve/vpn/tunnel.json \
+            --arg sha "$APK_SHA" --arg app "$APP_SHA" --arg build "$BUILD_RUN" --arg qa "$QA_RUN" \
+            --arg job "$QA_JOB" --arg artifact "$QA_ARTIFACT" '
+            $ms[0] as $m | $vs[0] as $v | $v.fixture_tcp["18999"] as $traffic |
+            select($m.apk_sha256==$sha and $m.package=="com.sevenmotion.novatube.tv.lab.retour.rec.vpn"
+              and $m.version_code==1795833670 and $m.android_api==36 and $m.profile=="tv"
+              and $m.fixture=="http://192.0.2.1:18999") |
+            select($v.connected==true and $v.android_ip=="192.0.2.2" and $v.source_ip=="192.0.2.1"
+              and $v.tunnel_packets_from_android>0 and $v.tunnel_packets_to_android>0
+              and $traffic.media_get_packets>0 and $traffic.response_bytes>131072) |
+            [$m.trials[] | select(.path=="live" or .path=="movie")] as $trials |
+            select(($trials|length)==12 and all($trials[]; .ok==true and .bars>=5
+              and .changing_pixels>=22 and .first_visible_lower_ms>=0 and .first_visible_upper_ms>0
+              and .first_visible_upper_ms>=.first_visible_lower_ms)) |
+            [("live","movie") as $path | range(1;4) as $n | ("cold","warm") as $t |
+              {id:"\($path)-\($n)-\($t)",path:$path,temperature:$t}] as $expected |
+            select(($trials|map({id,path,temperature})|sort_by(.id))==($expected|sort_by(.id))) |
+            {app_commit:$app,apk_sha256:$sha,build_run:$build,qa_run:$qa,qa_job:$job,qa_artifact:$artifact,
+             package:$m.package,version_code:$m.version_code,android_api:$m.android_api,
+             device:"Android TV émulé",source:$m.fixture,tunnel:$v,trials:$trials}
+          ' > preuve-tv-vpn.json
+          while read -r id; do
+            for img in first motion; do test -s "preuve/$id-$img.png"; done
+            if cmp -s "preuve/$id-first.png" "preuve/$id-motion.png"; then exit 1; fi
+          done < <(jq -r '.trials[].id' preuve-tv-vpn.json)
+
+      - name: Publier la préversion LAB et comparer les octets du téléchargement public
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          base="$GITHUB_SERVER_URL/$repo"
+          cat > notes.txt <<EOF
+          NovaTube LAB VPN 1.0.2. Sur Android TV émulé (API 36), un média synthétique a donné une image animée lors de six ouvertures en Direct et de six ouvertures en Cinéma. La source était accessible par le VPN de test.
+          
+          La caractérisation du Cast et de l’enregistrement est suivie séparément. La vérification sur un appareil Google Cast physique reste à effectuer.
+          
+          [Build signé]($base/actions/runs/$BUILD_RUN) · [Job Android TV avec VPN]($base/actions/runs/$QA_RUN/job/$QA_JOB)
+          EOF
+          if ! gh release view "$TAG" -R "$repo" >/dev/null 2>&1; then
+            gh release create "$TAG" "apk/$APK" apk/SHA256SUMS.txt preuve-tv-vpn.json --target "$APP_SHA" \
+              -R "$repo" --prerelease --latest=false --title 'NovaTube LAB VPN 1.0.2' --notes-file notes.txt \
+              || gh release view "$TAG" -R "$repo" >/dev/null
+          fi
+          [[ "$(gh api "repos/$repo/commits/$TAG" --jq .sha)" == "$APP_SHA" ]]
+          url="$base/releases/download/$TAG"
+          curl -fsSL --retry 6 --retry-all-errors "$url/$APK" -o public.apk
+          cmp "apk/$APK" public.apk
+          if ! gh release view "$TAG" -R "$repo" --json assets | jq -e 'any(.assets[]; .name=="preuve-tv-vpn.json")' >/dev/null; then
+            gh release upload "$TAG" preuve-tv-vpn.json -R "$repo"
+          fi
+          curl -fsSL --retry 6 --retry-all-errors "$url/preuve-tv-vpn.json" -o public.json
+          cmp preuve-tv-vpn.json public.json
+          echo "[APK LAB vérifié]($url/$APK) · [Preuves Direct et Cinéma Android TV sous VPN]($url/preuve-tv-vpn.json)" >> "$GITHUB_STEP_SUMMARY"
