@@ -48,6 +48,7 @@ import '../../../core/app/novatube_tv_edition.dart';
 import 'tv_novatube_welcome_screen.dart';
 import 'tv_sources_screen.dart';
 import 'tv_whatsapp_support_button.dart';
+import 'tv_novatube_support_dialog.dart';
 
 class TvSettingsScreen extends StatefulWidget {
   const TvSettingsScreen({super.key});
@@ -371,6 +372,13 @@ class _TvSettingsScreenState extends State<TvSettingsScreen> {
             '${context.l10n.tvDeviceAddressHelp}  ·  OK = ${context.l10n.tvRefreshStatus}',
         onSelect: kNovatubeTv ? () => open(const TvNovatubeWelcomeScreen(licenseOnly: true)) : (_busy ? () {} : _refresh),
       ),
+      if (kNovatubeTv)
+        _SettingEntry(
+          icon: Icons.help_outline_rounded,
+          title: context.l10n.novatubeSupportTitle,
+          description: context.l10n.novatubeSupportHint,
+          onSelect: () => showNovatubeSupportDialog(context),
+        ),
       if (!kIsPlayBuild && !kNovatubeTv)
         _SettingEntry(
           icon: Icons.local_offer_outlined,

@@ -318,7 +318,7 @@ class _BigEntryButton extends StatelessWidget {
         final TvAppTokens t = TvAppTokens.of(context);
         return AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          constraints: const BoxConstraints(minHeight: 72),
+          constraints: const BoxConstraints(minHeight: 84),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           decoration: BoxDecoration(
             color: focused ? t.sel : t.card,

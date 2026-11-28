@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/app/novatube_tv_edition.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../subscription/data/novatube_atlas.dart';
 import '../core/tv_app_tokens.dart';
 import '../core/tv_dimens.dart';
 import 'tv_components.dart';
+import 'tv_novatube_support_dialog.dart';
 
 /// Saisie volontaire d'un code remis au client. Même parcours pour tous,
 /// au clavier tactile ou à la télécommande ; aucun code n'est fourni ici.
@@ -128,6 +130,24 @@ class _TvNovatubeAccessCodeDialogState
                     label: _busy ? l10n.tvChecking : l10n.novatubeRedeemCode,
                     onSelect: _busy ? null : _redeem,
                   ),
+                  if (kNovatubeTv)
+                    ValueListenableBuilder<String?>(
+                      valueListenable: NovatubeAtlas.instance.recoveryCode,
+                      builder: (context, code, _) {
+                        if (code == null || code.trim().isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        // L'accès aux Réglages peut être fermé avant activation.
+                        // Cette action révèle le même dialogue, uniquement sur OK.
+                        return TextButton(
+                          key: const ValueKey('novatube-open-support'),
+                          onPressed: _busy
+                              ? null
+                              : () => showNovatubeSupportDialog(context),
+                          child: Text(l10n.novatubeSupportTitle),
+                        );
+                      },
+                    ),
                   const SizedBox(height: TvDimens.rowGap),
                   TextButton(
                     onPressed: _busy ? null : () => Navigator.of(context).pop(),
