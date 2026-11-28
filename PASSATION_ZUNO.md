@@ -1,5 +1,11 @@
 # Passation ZUNO LAB — 28 novembre 2026
 
+## État de la remise et du dernier candidat
+
+**Prêt pour test interne, diffusion Play bloquée.** Le constructeur [46095717223](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46095717223) a signé la source `daba06b196754e4fff9dbfd8a454bd804b752be6` en `com.sevenmotion.tv.seven_tv.lab`, version `119-lab` / `1794559152`. Les quatre jobs des octets, du journal et des ouvertures de [46095766247](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46095766247) sont verts. La livraison indépendante [46098199811](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46098199811) a conclu `success` à 02:28:42 UTC. À 02:30:04 UTC l’URL publique de l’APK a été retéléchargée puis comparée ici avec le constructeur et les deux appareils avant/après. Les quatre copies portent le SHA-256 `ef566b3405666f6692feae771652537f6f1ee7bca760244f92bf2594a5ba51ab`, 125 948 180 octets et la signature LAB v2/v3. [Reçu et URL du fichier](android-app/ci/zuno_lab/results/remise-119-lab.json).
+
+La branche demeure `lab/zuno-119-qualification-20261128`, PR #281 en essai. Les chapitres ci-dessous conservent les états successifs, les tentatives abandonnées et leur chronologie. Le parcours final reste en mesure sur deux ordres de zapping, aperçu, PiP et endurance longue. La comparaison de style (46098098681) couvre 12 rendus Flutter 1280×720 : aucune différence hors variabilité du témoin dans les quatre états. Sur le diagnostic de lecture, six expositions complètes de 80 min ont obtenu le succès 46091237910. L’endurance du LAB normal 46098049357 déclenche ses propres sorties et contrôles. Ne pas attribuer les six succès du diagnostic à la préversion utilisateur.
+
 ## Point de départ
 Branche `lab/zuno-119-qualification-20261128`, issue directement de `a096b2f85de082622ec232fa198069bdefbbccab` (branche officielle `ccr-b93e1afd-gwirw0`). Le [run 45710084378](https://github.com/manzilionellm-dotcom/tvking/actions/runs/45710084378) a terminé avec succès. L’AAB signé de l’édition auto a pour SHA-256 `43fcccd171434d18961a2c27aeed8064ab2f08aeffcf7364f0ae439560fa149d`. Version 119, code 1794559152, paquet `com.sevenmotion.tv.seven_tv`, minSdk 24. L’archive Actions a une empreinte différente. Dernier statut Play rapporté le 27 novembre : en cours d’examen. Distribution actuelle INCERTAINE.
 
