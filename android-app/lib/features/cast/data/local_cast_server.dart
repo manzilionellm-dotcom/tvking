@@ -29,6 +29,7 @@ import 'dart:math' show Random;
 import 'package:flutter/foundation.dart';
 
 import '../../../core/observability/structured_logger.dart';
+import 'cast_platform.dart';
 import 'dlna_profiles.dart';
 import 'hls_relay_session.dart';
 
@@ -47,6 +48,47 @@ class _RelayEntry {
   /// Reconnexions upstream effectuées SANS couper la TV (flux live).
   /// Journalisé à la première pour le diagnostic terrain.
   int upstreamReconnects = 0;
+}
+
+/// Adresse que le récepteur peut appeler. Sous VPN, seules les liaisons
+/// Wi-Fi/Ethernet identifiées par Android sont candidates. La requête HTTP
+/// vers le fournisseur et les résolutions DNS utilisent toujours le réseau par défaut.
+String? vpnRelayAddress(String receiverHost, List<List<String>> links) {
+  final receiver = InternetAddress.tryParse(receiverHost);
+  int ipv4Number(InternetAddress ip) {
+    final bytes = ip.rawAddress;
+    return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+  }
+  final target = receiver != null && receiver.type == InternetAddressType.IPv4
+      ? ipv4Number(receiver) : null;
+  String? onlyLinkAddress;
+  String? match;
+  int bestPrefix = -1;
+  int usableLinks = 0;
+  for (final link in links) {
+    String? first;
+    for (final cidr in link) {
+      final parts = cidr.split('/');
+      if (parts.length != 2) continue;
+      final address = InternetAddress.tryParse(parts.first);
+      final prefix = int.tryParse(parts.last);
+      if (address == null || address.type != InternetAddressType.IPv4 ||
+          address.isLoopback || address.address == '0.0.0.0' || prefix == null ||
+          prefix < 0 || prefix > 32) continue;
+      first ??= address.address;
+      if (target == null || prefix <= bestPrefix) continue;
+      final hostBits = 32 - prefix;
+      if ((ipv4Number(address) >> hostBits) == (target >> hostBits)) {
+        bestPrefix = prefix;
+        match = address.address;
+      }
+    }
+    if (first != null) {
+      usableLinks++;
+      onlyLinkAddress = first;
+    }
+  }
+  return match ?? (usableLinks == 1 ? onlyLinkAddress : null);
 }
 
 class LocalCastServer {
@@ -742,6 +784,8 @@ class LocalCastServer {
   /// du récepteur). On préfère une IP du même /24 ; sinon on tombe
   /// sur la première IPv4 non-loopback disponible.
   Future<String?> _lanIpFor(String receiverHost) async {
+    final links = await CastPlatform.vpnLanLinks();
+    if (links != null) return vpnRelayAddress(receiverHost, links);
     try {
       final List<NetworkInterface> ifs = await NetworkInterface.list(
         includeLoopback: false,
@@ -796,6 +840,8 @@ class LocalCastServer {
     required String upstreamUrl,
     String title = '',
   }) async {
+    final String? lanIp = await _lanIpFor('');
+    if (lanIp == null) return null;
     await start();
     // Une seule session navigateur à la fois : on remplace la précédente.
     if (_browserToken != null) _relays.remove(_browserToken);
@@ -809,8 +855,6 @@ class LocalCastServer {
     );
     _browserToken = token;
     _browserTitle = title;
-    final String? lanIp = await _lanIpFor('');
-    if (lanIp == null) return null;
     return 'http://$lanIp:$_port/screen';
   }
 

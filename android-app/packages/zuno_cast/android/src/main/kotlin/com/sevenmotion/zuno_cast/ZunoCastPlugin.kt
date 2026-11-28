@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import java.net.Inet4Address
 import android.os.Build
 import com.manzilionellm.tvking.GoogleCastApi
 import com.manzilionellm.tvking.MulticastLockBridge
@@ -26,6 +29,32 @@ class ZunoCastPlugin : FlutterPlugin, ActivityAware {
     private var cast: GoogleCastApi? = null
     private var multicast: MulticastLockBridge? = null
     private var handset = false
+
+    // Métadonnées du LAN pour l'adresse annoncée au récepteur. Les sockets
+    // du fournisseur, de découverte et de contrôle gardent la route de l'OS.
+    @Suppress("DEPRECATION")
+    private fun vpnLanLinks(context: Context): List<List<String>>? {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val vpn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val active = manager.activeNetwork ?: return emptyList()
+            manager.getNetworkCapabilities(active)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                ?: return emptyList()
+        } else {
+            manager.activeNetworkInfo?.type == ConnectivityManager.TYPE_VPN
+        }
+        if (!vpn) return null
+        return manager.allNetworks.mapNotNull { network ->
+            val caps = manager.getNetworkCapabilities(network) ?: return@mapNotNull null
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                !(caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))) return@mapNotNull null
+            manager.getLinkProperties(network)?.linkAddresses?.mapNotNull { link ->
+                val ip = link.address
+                if (ip is Inet4Address && !ip.isLoopbackAddress && !ip.isAnyLocalAddress)
+                    "${ip.hostAddress}/${link.prefixLength}" else null
+            }?.takeIf { it.isNotEmpty() }
+        }
+    }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         this.binding = binding
@@ -52,7 +81,17 @@ class ZunoCastPlugin : FlutterPlugin, ActivityAware {
         )
         capability = MethodChannel(binding.binaryMessenger, "com.sevenmotion.zuno/cast-capability").apply {
             setMethodCallHandler { call, result ->
-                if (call.method == "isHandset") result.success(handset) else result.notImplemented()
+                when (call.method) {
+                    "isHandset" -> result.success(handset)
+                    "vpnLanLinks" -> {
+                        try {
+                            result.success(vpnLanLinks(context))
+                        } catch (e: SecurityException) {
+                            result.error("NETWORK_ACCESS", "Liaisons locales indisponibles", null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
             }
         }
         if (handset) {

@@ -164,17 +164,22 @@ Future<void> openVod(
   VodPlayItem item, {
   bool fromStart = false,
   SeriesDetails? series,
+  Future<SeriesDetails?> Function()? loadSeries,
   CinemaTitle? seriesTitle,
 }) async {
-  await WatchProgressRepository.instance.load();
+  // Les préférences de reprise et le catalogue SQLite des téléchargements
+  // sont indépendants, y compris lorsque le réseau vient de changer.
+  final (_, local) = await (
+    WatchProgressRepository.instance.load(),
+    offlinePathFor(item.id),
+  ).wait;
+  if (!context.mounted) return;
   final WatchEntry? prev = WatchProgressRepository.instance.get(item.id);
   // Même règle pour la rangée « Reprendre », la fiche, et « Depuis le début ».
   final Duration startAt = ResumeStart.decide(
     entry: prev,
     fromStart: fromStart,
   ).at;
-  final String? local = await offlinePathFor(item.id);
-  if (!context.mounted) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => TvVodPlayerScreen(
@@ -182,6 +187,7 @@ Future<void> openVod(
         startAt: startAt,
         localPath: local,
         series: series,
+        loadSeries: loadSeries,
         seriesTitle: seriesTitle,
       ),
     ),
@@ -197,8 +203,10 @@ abstract final class CinemaTrackPrefs {
   static const String _kText = 'cinema.pref.text';
 
   /// Langue audio choisie par l'utilisateur (null = langue de l'app).
-  static Future<String?> audio() async =>
-      (await SharedPreferences.getInstance()).getString(_kAudio);
+  static Future<({String? audio, String? text})> read() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (audio: prefs.getString(_kAudio), text: prefs.getString(_kText));
+  }
 
   /// Langue de sous-titres (null = aucun choix, 'off' = désactivés).
   static Future<String?> text() async =>

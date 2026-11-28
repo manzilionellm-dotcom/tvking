@@ -60,6 +60,7 @@ class TvVodPlayerScreen extends StatefulWidget {
     this.startAt = Duration.zero,
     this.localPath,
     this.series,
+    this.loadSeries,
     this.seriesTitle,
   });
 
@@ -71,6 +72,7 @@ class TvVodPlayerScreen extends StatefulWidget {
 
   /// Contexte série (épisode suivant, téléchargement intelligent).
   final SeriesDetails? series;
+  final Future<SeriesDetails?> Function()? loadSeries;
   final CinemaTitle? seriesTitle;
 
   @override
@@ -91,6 +93,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       GlobalKey<DesktopCastControlsState>();
   bool _desktopCasting = false;
   String? _playingUrl;
+  String? _localPath;
+  late Duration _entryPosition;
+  SeriesDetails? _series;
+  bool _waitingForSeries = false;
+  Future<SeriesDetails?> Function()? _loadSeries;
   late VodPlayItem _item;
   final FocusNode _focus = FocusNode();
 
@@ -140,6 +147,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     TvActivity.enter();
     ForegroundPlayback.lock();
     _item = widget.item;
+    _localPath = widget.localPath;
+    _entryPosition = widget.startAt;
+    _series = widget.series;
+    _loadSeries = _series == null ? widget.loadSeries : null;
+    _waitingForSeries = _loadSeries != null;
     _c = NativeVideoController()..addListener(_onPlayer);
     _pip = ZunoPipService.instance.acquire(
       onSuspend: (bool forceStop) {
@@ -182,7 +194,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       }),
     );
     _next = _computeNext();
-    unawaited(_start(_item, widget.startAt, local: widget.localPath));
+    unawaited(_start(_item, _entryPosition, local: _localPath));
     _saveTimer = Timer.periodic(
       const Duration(seconds: 10),
       (_) => _saveProgress(),
@@ -296,8 +308,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     bool keepPicture = false,
   }) async {
     final int revision = ++_startRevision;
-    final String? audioPref = await CinemaTrackPrefs.audio();
-    final String? textPref = await CinemaTrackPrefs.text();
+    final prefs = await CinemaTrackPrefs.read();
     if (!mounted || revision != _startRevision) return;
     if (!_appActive) {
       // Préférences lues trop tard après Home : reprendre seulement sur
@@ -320,8 +331,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _playingUrl!,
       vod: true,
       startAt: startAt,
-      preferredAudio: audioPref ?? appLang,
-      preferredText: (textPref == null || textPref == 'off') ? null : textPref,
+      preferredAudio: prefs.audio ?? appLang,
+      preferredText: prefs.text == 'off' ? null : prefs.text,
       keepPicture: keepPicture,
     );
     if (startAt > const Duration(seconds: 10)) {
@@ -329,8 +340,23 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     }
   }
 
+  Future<void> _fetchSeries(Future<SeriesDetails?> Function() load) async {
+    SeriesDetails? result;
+    try {
+      result = await load().timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Un catalogue indisponible laisse la lecture de l'épisode autonome.
+    }
+    if (!mounted) return;
+    _series = result;
+    _next = _computeNext();
+    _waitingForSeries = false;
+    // Le générique a pu commencer pendant la requête.
+    _onPlayer();
+  }
+
   CinemaEpisode? _computeNext() {
-    final SeriesDetails? s = widget.series;
+    final SeriesDetails? s = _series;
     if (s == null || !_item.isEpisode) return null;
     for (final CinemaEpisode e in s.allInOrder) {
       if (e.id == _item.id) return s.nextAfter(e);
@@ -358,6 +384,8 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     }
     setState(() {
       _item = ni;
+      _localPath = local;
+      _entryPosition = prev?.resumeAt ?? Duration.zero;
       _next = _computeNext();
       _nextCard = false;
       _nextDismissed = false;
@@ -369,7 +397,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _zone = _Zone.timeline;
       _tracksOpen = false;
     });
-    await _start(ni, prev?.resumeAt ?? Duration.zero, local: local);
+    await _start(ni, _entryPosition, local: _localPath);
     _showOverlay();
   }
 
@@ -379,6 +407,11 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
 
   void _onPlayer() {
     if (!mounted) return;
+    final load = _loadSeries;
+    if (load != null && (_c.firstFrame || _c.isEnded)) {
+      _loadSeries = null;
+      unawaited(_fetchSeries(load));
+    }
     _updatePip();
     // Moteur épuisé (matériel, logiciel, FFmpeg) : plus de tentative.
     // Une erreur de flux, elle, attend 1 s, 2 s, 4 s, 8 s et garde
@@ -422,7 +455,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         _openNextCard(left);
       }
     }
-    if (_c.isEnded && !_endHandled) {
+    if (_c.isEnded && !_endHandled && !_waitingForSeries) {
       _endHandled = true;
       _saveProgress(flush: true, ended: true);
       if (_next == null || _nextDismissed) {
@@ -447,7 +480,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
     final int delay = ReconnectPlan.delayMs(_vodAttempts);
     final Duration at = _c.position > const Duration(seconds: 1)
         ? _c.position
-        : widget.startAt;
+        : _entryPosition;
     _vodArmed = true;
     _saveProgress();
     BlackBox.instance.warn(
@@ -463,7 +496,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         _start(
           _item,
           at,
-          local: widget.localPath,
+          local: _localPath,
           keepPicture: _c.firstFrame || _c.holdFrame,
         ),
       );
@@ -498,7 +531,7 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
       _item.toEntry(posMs: pos, durMs: dur),
       flushNow: flush,
     );
-    if (stored.finished && !_finishHandled) {
+    if (stored.finished && !_finishHandled && !_waitingForSeries) {
       _finishHandled = true;
       _onFinished();
     }
@@ -822,12 +855,12 @@ class _TvVodPlayerScreenState extends State<TvVodPlayerScreen>
         _vodAttempts = 0;
         final Duration at = _c.position > const Duration(seconds: 1)
             ? _c.position
-            : widget.startAt;
+            : _entryPosition;
         unawaited(
           _start(
             _item,
             at,
-            local: widget.localPath,
+            local: _localPath,
             keepPicture: _c.firstFrame || _c.holdFrame,
           ),
         );

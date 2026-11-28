@@ -951,6 +951,14 @@ class CastManager extends ChangeNotifier {
 
       // (1) Pré-vol : on vérifie l'URL avant de la pousser au récepteur.
       _checkCancelled(mySeq);
+      // L'interrogation du téléviseur est indépendante du GET fournisseur.
+      // Seul le téléphone LAB les chevauche. Si la sonde échoue ou si
+      // l'utilisateur annule le Cast, le résultat tardif reste sans effet.
+      final Future<DlnaSink>? pendingSink = CastPlatform.novaTubeMobileCast &&
+              device.kind == CastDeviceKind.dlna
+          ? DlnaCapabilities.instance.fetchSink(device)
+          : null;
+      pendingSink?.ignore();
       StreamProbeResult probe = await (_testProbe?.call(streamUrl) ?? StreamProbe.instance.probe(streamUrl));
       // CASCADE DE SECOURS (terrain 2026-07-10, panel « /live/ requis ») :
       // certains panels Xtream repondent 404 (page HTML) sur la forme
@@ -1016,6 +1024,7 @@ class CastManager extends ChangeNotifier {
       if (device.kind == CastDeviceKind.dlna) {
         await _castDlnaWithFailover(
           transport: myTransport! as UpnpAvTransport,
+          pendingSink: pendingSink,
           probe: probe,
           title: title,
           diag: diag,
@@ -1283,6 +1292,7 @@ class CastManager extends ChangeNotifier {
   /// pour que l'UI montre clairement ce qui se passe.
   Future<void> _castDlnaWithFailover({
     required UpnpAvTransport transport,
+    required Future<DlnaSink>? pendingSink,
     required StreamProbeResult probe,
     required String title,
     required CastSessionDiagnostic diag,
@@ -1294,7 +1304,8 @@ class CastManager extends ChangeNotifier {
     // Capabilities (Sink) — best-effort, on continue même si vide.
     _setProgress(CastProgress.detecting);
     final DlnaSink sink =
-        await DlnaCapabilities.instance.fetchSink(transport.device);
+        await (pendingSink ?? DlnaCapabilities.instance.fetchSink(transport.device));
+    _checkCancelled(mySeq);
 
     // Snapshot des caps pour le diagnostic (max 12 entries pour rester
     // lisible dans le rapport copié).

@@ -113,6 +113,22 @@ import 'tv_sources_screen.dart';
 /// Les tuiles de l'accueil, de gauche à droite.
 enum _Tile { live, films, series, guide, favorites, server, settings }
 
+IconData tvConnectionIcon(List<ConnectivityResult> transports) {
+  // Certains VPN ne révèlent aucun transport sous-jacent. L'icône
+  // indique le tunnel déclaré, sans prétendre vérifier Internet.
+  if (kNovatubeTv && transports.contains(ConnectivityResult.vpn)) {
+    return Icons.vpn_lock_rounded;
+  }
+  if (transports.contains(ConnectivityResult.ethernet)) {
+    return Icons.settings_ethernet_rounded;
+  }
+  if (transports.contains(ConnectivityResult.wifi)) return Icons.wifi_rounded;
+  if (transports.contains(ConnectivityResult.mobile)) {
+    return Icons.signal_cellular_alt_rounded;
+  }
+  return Icons.wifi_off_rounded;
+}
+
 class TvHubScreen extends StatefulWidget {
   const TvHubScreen({super.key});
   @override
@@ -1196,17 +1212,6 @@ class _TvHubScreenState extends State<TvHubScreen> {
     setState(() => _refreshNotice = TvContentRefresh.notice.value);
   }
 
-  IconData get _netIcon {
-    if (_conn.contains(ConnectivityResult.ethernet)) {
-      return Icons.settings_ethernet_rounded;
-    }
-    if (_conn.contains(ConnectivityResult.wifi)) return Icons.wifi_rounded;
-    if (_conn.contains(ConnectivityResult.mobile)) {
-      return Icons.signal_cellular_alt_rounded;
-    }
-    return Icons.wifi_off_rounded;
-  }
-
   ({String label, Color color}) _license(BuildContext context) {
     switch (SubscriptionState.instance.status) {
       case SubscriptionStatus.paid:
@@ -1516,7 +1521,7 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                 ),
                                 const SizedBox(width: 16),
                                 Icon(
-                                  _netIcon,
+                                  tvConnectionIcon(_conn),
                                   size: 22,
                                   color: TvAppTokens.of(context).muted,
                                 ),

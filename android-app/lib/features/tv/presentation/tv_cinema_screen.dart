@@ -507,19 +507,13 @@ class _TvCinemaScreenState extends State<TvCinemaScreen> {
       await openVod(context, VodPlayItem.entry(e));
       return;
     }
-    // Épisode : on charge la série pour pouvoir enchaîner l'épisode suivant.
+    // L'URL de reprise est connue. Le lecteur chargera la liste des épisodes
+    // après la première image, y compris si l'épisode lu est déjà téléchargé.
     final CinemaTitle series = seriesTitleFromEntry(e);
-    SeriesDetails? d;
-    try {
-      d = await _repo.seriesDetails(series).timeout(const Duration(seconds: 8));
-    } catch (_) {
-      d = null;
-    }
-    if (!mounted) return;
     await openVod(
       context,
       VodPlayItem.entry(e),
-      series: d,
+      loadSeries: () => _repo.seriesDetails(series),
       seriesTitle: series,
     );
   }

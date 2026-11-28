@@ -38,6 +38,20 @@ abstract final class CastPlatform {
     } catch (_) {/* Ancien binaire : on ne présente pas un pont inexistant. */}
   }
 
+  /// null = pas de VPN actif. Une liste vide conserve l'absence de LAN annoncé.
+  static Future<List<List<String>>?> vpnLanLinks() async {
+    if (!novaTubeMobileCast) return null;
+    try {
+      final links = await const MethodChannel('com.sevenmotion.zuno/cast-capability')
+          .invokeListMethod<dynamic>('vpnLanLinks');
+      return links?.map((link) => (link as List<dynamic>).cast<String>()).toList();
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return const <List<String>>[];
+    }
+  }
+
   static bool supports(CastDeviceKind kind) =>
       !isWindows || kind == CastDeviceKind.dlna || kind == CastDeviceKind.roku;
 }
