@@ -13,7 +13,10 @@ phone = Path.cwd()
 commit = "40906981373998a861c14cffaa7f7d88eb063e42"
 expected_tree = "69add11887ee21ceedb335b222fe9d5a4e17345b"
 plugin = "android-app/packages/native_video_player"
-git = ["git", "-C", str(recipe)]
+repo_root = subprocess.check_output(
+    ["git", "-C", str(recipe), "rev-parse", "--show-toplevel"], text=True
+).strip()
+git = ["git", "-C", repo_root]
 current_tree = subprocess.check_output([*git, "rev-parse", f"HEAD:{plugin}"], text=True).strip()
 # Les recettes TV et téléphone peuvent avancer séparément. La recette téléphone
 # utilise toujours le plugin de son build NovaTube, y compris dans un clone peu profond.
