@@ -79,11 +79,11 @@ class BlackBoxLastExit {
   final String deviceLabel;
 
   String get headline {
-    if (!brutal) return 'Dernière session terminée normalement.';
-    final String r = nativeReason.isEmpty ? 'raison inconnue (Android < 11)' : nativeReason;
     final String mem = pssMb > 0 ? ' · mémoire $pssMb Mo' : '';
     final String device = deviceLabel.isEmpty ? '' : ' · $deviceLabel';
-    return 'FERMETURE BRUTALE · $r$mem$device';
+    if (nativeReason.isNotEmpty) return 'SORTIE ANDROID · $nativeReason$mem$device';
+    if (!brutal) return 'Dernière session passée en arrière-plan. Cause de sortie inconnue.';
+    return 'Session interrompue · cause Android inconnue$device';
   }
 }
 
@@ -149,13 +149,13 @@ class BlackBox {
     _lastExit = await _analysePreviousSession();
 
     // 2) Nouvelle session : marqueur « pas encore sortie proprement ».
-    _writeSession(clean: false);
     _breadcrumb = '';
     try {
       final PackageInfo p = await PackageInfo.fromPlatform();
       _appVersion = '${p.version}+${p.buildNumber}';
     } catch (_) {}
 
+    _writeSession(clean: false);
     _line(BbLevel.info, 'BOOT',
         '===== démarrage $flavor v$_appVersion =====');
     if (_lastExit != null) {
@@ -195,6 +195,7 @@ class BlackBox {
 
   Future<BlackBoxLastExit?> _analysePreviousSession() async {
     bool hadSession = false;
+    int? previousPid;
     bool clean = true;
     DateTime? at;
     try {
@@ -204,6 +205,7 @@ class BlackBox {
         final Map<String, dynamic> j =
             jsonDecode(await f.readAsString()) as Map<String, dynamic>;
         clean = j['clean'] == true;
+        previousPid = (j['pid'] as num?)?.toInt();
         final int ts = (j['at'] as num?)?.toInt() ?? 0;
         if (ts > 0) at = DateTime.fromMillisecondsSinceEpoch(ts);
       }
@@ -213,9 +215,10 @@ class BlackBox {
     String lastAction = '';
     try {
       final File? c = _crumbFile;
-      if (c != null && await c.exists()) lastAction = (await c.readAsString()).trim();
+      if (c != null && await c.exists()) lastAction = redactBlackBox((await c.readAsString()).trim());
     } catch (_) {}
 
+    bool? nativeFault;
     String reason = '';
     String desc = '';
     int pss = 0;
@@ -233,20 +236,29 @@ class BlackBox {
     } catch (_) {}
     try {
       final Object? raw = await _device.invokeMethod<Object?>('getLastExitInfo');
-      if (raw is List && raw.isNotEmpty) {
-        // La plus récente en premier (ordre Android).
-        final Map<Object?, Object?> m = raw.first as Map<Object?, Object?>;
-        reason = (m['reasonName'] ?? '').toString();
-        desc = (m['description'] ?? '').toString();
-        pss = (m['pssMb'] as num?)?.toInt() ?? 0;
-        rss = (m['rssMb'] as num?)?.toInt() ?? 0;
-        final int ts = (m['timestamp'] as num?)?.toInt() ?? 0;
-        if (ts > 0) at = DateTime.fromMillisecondsSinceEpoch(ts);
+      if (raw is List && at != null) {
+        final int since = at.millisecondsSinceEpoch;
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        // API 30+ peut renvoyer plusieurs arrêts, y compris un service du paquet.
+        // Les anciennes sessions sans PID sont bornées par l'heure et le processus principal.
+        for (final Object? entry in raw) {
+          if (entry is! Map || entry['isMainProcess'] != true) continue;
+          final int timestamp = (entry['timestamp'] as num?)?.toInt() ?? 0;
+          if (timestamp < since || timestamp > now) continue;
+          if (previousPid != null && entry['pid'] != previousPid) continue;
+          nativeFault = entry['isFault'] as bool?;
+          reason = (entry['reasonName'] ?? '').toString();
+          desc = redactBlackBox((entry['description'] ?? '').toString());
+          pss = (entry['pssMb'] as num?)?.toInt() ?? 0;
+          rss = (entry['rssMb'] as num?)?.toInt() ?? 0;
+          at = DateTime.fromMillisecondsSinceEpoch(timestamp);
+          break;
+        }
       }
     } catch (_) {}
 
     return BlackBoxLastExit(
-      brutal: !clean,
+      brutal: nativeFault ?? !clean,
       at: at,
       lastAction: lastAction,
       nativeReason: reason,
@@ -436,7 +448,8 @@ class BlackBox {
         jsonEncode(<String, Object>{
           'clean': clean,
           'at': DateTime.now().millisecondsSinceEpoch,
-          'version': _appVersion,
+          if (_appVersion != '?') 'version': _appVersion,
+          'pid': pid,
         }),
         flush: true,
       );
