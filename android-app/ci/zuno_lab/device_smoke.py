@@ -55,13 +55,28 @@ def diagnostics(out, package, result, label):
     resumed = [m for l in (tasks + "\n" + window).splitlines()
                if any(k in l for k in ("ResumedActivity","mCurrentFocus","mFocusedApp","topResumed","Resumed:"))
                for m in re.findall(component_re,l)]
-    crash = adb("logcat", "-b", "crash", "-d", "-t", "250", check=False)
-    belongs = any("Process: "+package+"," in l or ">>> "+package+" <<<" in l for l in crash.splitlines())
+    crash = adb("logcat", "-b", "crash", "-v", "brief", "-d", "-t", "1500", check=False)
+    entries = []
+    for line in crash.splitlines():
+        m = re.match(r"[A-Z]/[^()]+\(\s*(\d+)\): (.*)", line)
+        if m:
+            entries.append((m[1], m[2]))
+    relevant = {pid for pid,msg in entries if "Process: "+package+"," in msg or ">>> "+package+" <<<" in msg}
+    belongs = bool(relevant)
+    crash = "\n".join(msg for pid,msg in entries if pid in relevant)
+    # Les diagnostics pré-Flutter sont souvent des RuntimeException dont Android place
+    # le motif sur la ligne suivante. Expurger URLs, MAC, e-mails, jetons et longs IDs.
+    def safe_cause(msg):
+        msg = re.sub(r"https?://\S+|(?:[a-fA-F0-9]{2}[:-]){5}[a-fA-F0-9]{2}|[\w.+-]+@[\w.-]+|[A-Za-z0-9_=-]{28,}", "[x]", msg)
+        return msg[:280]
+    causes = [safe_cause(msg) for msg in crash.splitlines() if
+              re.match(r"(Caused by: |java\.|android\.|Unable to |\*{2,}|#)",msg.strip())][:24]
     info = adb("shell", "dumpsys", "activity", "exit-info", package, check=False)
     record = {"launch_reply": dict(re.findall(r"^(Status|LaunchState|Activity|TotalTime|WaitTime):\s*(["+
                       r"a-zA-Z0-9_./$-]+)", result, re.M)),
               "observed_foreground_components": sorted(set(resumed)),
               "process_exists": bool(process(package)), "crash_buffer_names_package": belongs,
+              "process_scoped_causes": causes,
               "exit_reasons": re.findall(r"reason=([0-9]+) \(([A-Z_ ]+)\)", info)[:12],
               "java_exception_types": re.findall(r"\b([a-zA-Z0-9_.$]+(?:Error|Exception))\b", crash)[:30] if belongs else [],
               "java_stack_symbols": re.findall(r"\bat ([a-zA-Z0-9_.$]+)\(",crash)[:40] if belongs else [],
