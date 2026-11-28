@@ -51,7 +51,7 @@ jobs:
       - name: Encoder deux mires de référence
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil
+          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil python3-numpy
           python3 optics-tools/android-app/ci/novatube_tv/pilot_live_source.py prepare "$RUNNER_TEMP/fixtures"
       - name: Ouvrir l'application, ajouter la liste par l'écran et observer les compteurs
         run: |
