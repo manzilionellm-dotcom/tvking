@@ -1,0 +1,84 @@
+name: ZUNO LAB — catalogues ABBA et capture HD
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths:
+      - '.github/workflows/zuno-lab-catalog-control.yml'
+      - 'android-app/ci/zuno_lab/catalog/**'
+permissions:
+  contents: read
+env:
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  DART_SUPPRESS_ANALYTICS: 'true'
+  BASELINE_SHA: a096b2f85de082622ec232fa198069bdefbbccab
+  CANDIDATE_SHA: f90de79c2a0ab177a222b12ef70a86695ec92e97
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: oracle
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.BASELINE_SHA }}
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Comparer sur le même runner pendant trois blocs A-B-B-A
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/catalog"
+          lscpu > "$RUNNER_TEMP/catalog/cpu.txt"
+          awk '/MemTotal:/{print}' /proc/meminfo > "$RUNNER_TEMP/catalog/ram.txt"
+          python3 oracle/android-app/ci/zuno_lab/catalog/compare.py baseline candidate "$RUNNER_TEMP/catalog"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: zuno-catalog-ABBA-raw
+          path: ${{ runner.temp }}/catalog/
+  recording:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: oracle
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: candidate
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Lecture et enregistrement HLS MPEG-TS de 600 secondes
+        working-directory: candidate/android-app
+        run: |
+          set -euo pipefail
+          command -v ffmpeg || { sudo apt-get update -qq && sudo apt-get install -y ffmpeg; }
+          mkdir -p "$RUNNER_TEMP/record"
+          bash "$GITHUB_WORKSPACE/oracle/android-app/ci/zuno_lab/catalog/make_hls_hd.sh" "$RUNNER_TEMP/hd10" 600
+          ffprobe -v error -show_streams -show_format -of json "$RUNNER_TEMP/hd10/media.m3u8" | jq 'del(.format.filename)' > "$RUNNER_TEMP/record/source.json"
+          flutter --suppress-analytics pub get
+          flutter --suppress-analytics gen-l10n
+          cp "$GITHUB_WORKSPACE/oracle/android-app/ci/zuno_lab/catalog/hls_bytes_test.dart" ci/zuno_lab/hls_bytes_test.dart
+          ZUNO_HLS_FIXTURE="$RUNNER_TEMP/hd10" ZUNO_HLS_DEADLINE_S=1000 ZUNO_MEDIA_RESULT="$RUNNER_TEMP/record/hls.json" \
+            flutter --suppress-analytics test --no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:9 ci/zuno_lab/hls_bytes_test.dart
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: zuno-hls-hd-600s
+          path: ${{ runner.temp }}/record/
