@@ -38,7 +38,6 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../device/data/device_identity.dart';
 import '../../device/domain/display_mac.dart';
 import '../../playlists/domain/open_source_input.dart';
-import '../../subscription/data/novatube_atlas.dart';
 import '../../subscription/data/remote_activation_watch.dart';
 import '../../subscription/data/subscription_state.dart';
 import '../core/tv_app_tokens.dart';
@@ -142,85 +141,97 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
     final _AccessLine access = _AccessLine.of(l10n);
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        // Deux boutons côte à côte sur une TV, l'un sous l'autre sur un
-        // écran étroit (téléphone en portrait, fenêtre réduite).
-        final bool wide = constraints.maxWidth >= 720;
-        final List<Widget> entries = <Widget>[
-          _BigEntryButton(
-            key: const ValueKey<String>('novatube-welcome-m3u'),
-            icon: Icons.playlist_add_rounded,
-            label: l10n.novatubeAddM3u,
-            // Le premier bouton reçoit le focus : la télécommande est
-            // immédiatement utilisable, sans chercher où l'on se trouve.
-            autofocus: true,
-            onSelect: () => _openEntry(OpenEntryMode.m3u),
-          ),
-          _BigEntryButton(
-            key: const ValueKey<String>('novatube-welcome-xtream'),
-            icon: Icons.vpn_key_rounded,
-            label: l10n.novatubeXtreamLogin,
-            onSelect: () => _openEntry(OpenEntryMode.xtream),
-          ),
-        ];
+        // TvShell réserve déjà sa marge TV. Le focus agrandit les boutons :
+        // on garde une marge intérieure, même sur une sortie 720p avec overscan.
+        final bool short = constraints.maxHeight < 580;
+        final double gap = short ? 8 : 14;
+        final double inset = short ? 8 : 12;
+        final bool wide = constraints.maxWidth >= 660;
+        Widget actions(Widget first, Widget second) => wide
+            ? Row(
+                children: [
+                  Expanded(child: first),
+                  const SizedBox(width: 18),
+                  Expanded(child: second),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  first,
+                  SizedBox(height: gap),
+                  second,
+                ],
+              );
         return SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: inset),
           child: ConstrainedBox(
             constraints: BoxConstraints(
               minHeight: constraints.hasBoundedHeight
-                  ? constraints.maxHeight - 56
+                  ? (constraints.maxHeight - 2 * inset).clamp(
+                      0.0,
+                      double.infinity,
+                    )
                   : 0,
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 820),
+                constraints: const BoxConstraints(maxWidth: 860),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    const TvLogo(width: 300),
-                    const SizedBox(height: 22),
+                  children: [
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: short ? 42 : 56),
+                      child: const TvLogo(width: 220),
+                    ),
+                    SizedBox(height: gap),
                     Text(
-                      widget.licenseOnly ? l10n.novatubeCheckAccess : l10n.novatubeWelcomeTitle,
+                      widget.licenseOnly
+                          ? l10n.novatubeCheckAccess
+                          : l10n.novatubeWelcomeTitle,
                       textAlign: TextAlign.center,
-                      style: t.display(34, color: t.text),
+                      style: t.display(30, color: t.text),
                     ),
                     if (!widget.licenseOnly) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      l10n.novatubeWelcomeSubtitle,
-                      textAlign: TextAlign.center,
-                      style: t.ui(18, color: t.muted),
-                    ),
-                    const SizedBox(height: 28),
-                    if (wide)
-                      Row(
-                        children: <Widget>[
-                          Expanded(child: entries[0]),
-                          const SizedBox(width: 20),
-                          Expanded(child: entries[1]),
-                        ],
-                      )
-                    else ...<Widget>[
-                      entries[0],
-                      const SizedBox(height: 16),
-                      entries[1],
+                      const SizedBox(height: 4),
+                      Text(
+                        l10n.novatubeWelcomeSubtitle,
+                        textAlign: TextAlign.center,
+                        style: t.ui(18, color: t.muted),
+                      ),
+                      SizedBox(height: gap),
+                      actions(
+                        _BigEntryButton(
+                          key: const ValueKey<String>('novatube-welcome-m3u'),
+                          icon: Icons.playlist_add_rounded,
+                          label: l10n.novatubeAddM3u,
+                          autofocus: true,
+                          onSelect: () => _openEntry(OpenEntryMode.m3u),
+                        ),
+                        _BigEntryButton(
+                          key: const ValueKey<String>(
+                            'novatube-welcome-xtream',
+                          ),
+                          icon: Icons.vpn_key_rounded,
+                          label: l10n.novatubeXtreamLogin,
+                          onSelect: () => _openEntry(OpenEntryMode.xtream),
+                        ),
+                      ),
                     ],
-                    ],
-                    const SizedBox(height: 30),
+                    SizedBox(height: gap),
                     TvCard(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 22,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: short ? 8 : 12,
                       ),
                       child: Column(
-                        children: <Widget>[
+                        children: [
                           TvSectionLabel(l10n.novatubeDeviceCodeLabel),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 4),
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              // Format complet demandé : MK:XX:XX:XX:XX:XX.
                               displayMac(_mac, showPrefix: true),
-                              // Un code reste gauche → droite, même en arabe.
                               textDirection: TextDirection.ltr,
                               style: t.mono(
                                 34,
@@ -229,66 +240,43 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 4),
                           Text(
                             l10n.novatubeDeviceCodeHelp,
                             textAlign: TextAlign.center,
-                            style: t.ui(15, color: t.mutedDim),
+                            style: t.ui(15, color: t.muted),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 6),
                           _AccessStatus(line: access),
-                          // Données de l'app effacées : la fiche Atlas est
-                          // protégée. Ce code temporaire permet au revendeur
-                          // de la réassocier (licence et listes conservées).
-                          ValueListenableBuilder<String?>(
-                            valueListenable: NovatubeAtlas.instance.recoveryCode,
-                            builder: (BuildContext context, String? code, _) =>
-                                code == null
-                                    ? const SizedBox.shrink()
-                                    : Padding(
-                                        padding: const EdgeInsets.only(top: 12),
-                                        child: Text(
-                                          l10n.novatubeRecoveryCode(code),
-                                          textAlign: TextAlign.center,
-                                          style: t.mono(18, color: t.accentBright),
-                                        ),
-                                      ),
-                          ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 22),
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 20,
-                      runSpacing: 16,
-                      children: <Widget>[
-                        SizedBox(
-                          width: 360,
-                          child: TvCtaButton(
-                            autofocus: widget.licenseOnly,
-                            label: _busy ? l10n.tvChecking : l10n.novatubeCheckAccess,
-                            onSelect: _busy ? null : _checkAccess,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 360,
-                          child: TvCtaButton(
-                            key: const ValueKey<String>('novatube-welcome-code'),
-                            label: l10n.novatubeAccessCode,
-                            onSelect: _busy ? null : _openAccessCode,
-                          ),
-                        ),
-                      ],
+                    SizedBox(height: gap),
+                    actions(
+                      TvCtaButton(
+                        autofocus: widget.licenseOnly,
+                        label: _busy
+                            ? l10n.tvChecking
+                            : l10n.novatubeCheckAccess,
+                        onSelect: _busy ? null : _checkAccess,
+                      ),
+                      TvCtaButton(
+                        key: const ValueKey<String>('novatube-welcome-code'),
+                        label: l10n.novatubeAccessCode,
+                        onSelect: _busy ? null : _openAccessCode,
+                      ),
                     ),
-                    const SizedBox(height: 22),
+                    SizedBox(height: gap),
                     if (widget.licenseOnly)
-                      Text(l10n.novaPriceInfo, textAlign: TextAlign.center,
-                        style: t.ui(18, color: t.text)),
+                      Text(
+                        l10n.novaPriceInfo,
+                        textAlign: TextAlign.center,
+                        style: t.ui(18, color: t.text),
+                      ),
                     Text(
                       l10n.novatubePlayerNotice,
                       textAlign: TextAlign.center,
-                      style: t.ui(13, color: t.mutedDim),
+                      style: t.ui(14, color: t.mutedDim),
                     ),
                   ],
                 ),
@@ -330,8 +318,8 @@ class _BigEntryButton extends StatelessWidget {
         final TvAppTokens t = TvAppTokens.of(context);
         return AnimatedContainer(
           duration: const Duration(milliseconds: 140),
-          height: 118,
-          padding: const EdgeInsets.symmetric(horizontal: 22),
+          constraints: const BoxConstraints(minHeight: 84),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
           decoration: BoxDecoration(
             color: focused ? t.sel : t.card,
             borderRadius: radius,
@@ -342,7 +330,7 @@ class _BigEntryButton extends StatelessWidget {
           ),
           child: Row(
             children: <Widget>[
-              Icon(icon, size: 40, color: focused ? t.accentBright : t.accent),
+              Icon(icon, size: 32, color: focused ? t.accentBright : t.accent),
               const SizedBox(width: 18),
               Expanded(
                 child: Text(
@@ -385,22 +373,28 @@ class _AccessLine {
     final int days = s.trialDaysRemaining;
     return switch (s.status) {
       SubscriptionStatus.paid => _AccessLine(
-          s.remote.isLifetime || s.remote.paidUntil <= 0
-              ? l10n.novatubeStatusActive
-              : l10n.tvStatusPaidDays(days),
-          true,
-        ),
+        s.remote.isLifetime || s.remote.paidUntil <= 0
+            ? l10n.novatubeStatusActive
+            : l10n.tvStatusPaidDays(days),
+        true,
+      ),
       SubscriptionStatus.trialActive => _AccessLine(
-          days > 0 ? l10n.tvStatusTrial(days) : l10n.novatubeStatusTrial,
-          true,
-        ),
-      SubscriptionStatus.trialExpired =>
-        _AccessLine(l10n.novatubeStatusExpired, false),
-      SubscriptionStatus.frozen =>
-        _AccessLine(l10n.novatubeStatusSuspended, false),
+        days > 0 ? l10n.tvStatusTrial(days) : l10n.novatubeStatusTrial,
+        true,
+      ),
+      SubscriptionStatus.trialExpired => _AccessLine(
+        l10n.novatubeStatusExpired,
+        false,
+      ),
+      SubscriptionStatus.frozen => _AccessLine(
+        l10n.novatubeStatusSuspended,
+        false,
+      ),
       SubscriptionStatus.banned => _AccessLine(l10n.tvStatusBanned, false),
-      SubscriptionStatus.unknown =>
-        _AccessLine(l10n.novatubeStatusPending, false),
+      SubscriptionStatus.unknown => _AccessLine(
+        l10n.novatubeStatusPending,
+        false,
+      ),
     };
   }
 }
