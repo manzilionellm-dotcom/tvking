@@ -13,6 +13,7 @@ from urllib.request import urlopen
 
 from PIL import Image
 from read_display_capture import decode
+from display_capture import capture_png
 from origin import append, utc
 
 PKG='com.sevenmotion.tv.seven_tv.lab.diagnostic'
@@ -78,10 +79,27 @@ def canary(out,stop):
         stop.wait(10)
 
 
+def resources(out,stop):
+    while not stop.is_set():
+        row={'utc':utc(),'monotonic_s':time.monotonic()}
+        try:
+            pid=adb('shell','pidof',PKG,timeout=4).decode().strip()
+            if pid.isdigit():
+                row['pid']=int(pid)
+                run_shell(row,'mem',['shell','dumpsys','meminfo',pid],r'(TOTAL PSS|TOTAL RSS|Native Heap|Dalvik Heap)\s*:?\s*(\d+)')
+                run_shell(row,'process',['shell','cat','/proc/'+pid+'/status'],r'^(Threads|VmRSS|FDSize):\s*(\d+)')
+                run_shell(row,'cpu',['shell','dumpsys','cpuinfo'],r'([.0-9]+)%\s+\d+/'+re.escape(PKG)+r'\b')
+        except (OSError,subprocess.SubprocessError) as exc:
+            row['error']=type(exc).__name__
+        append(out/'resources.jsonl',row)
+        stop.wait(45)
+
+
 def observe(out,duration):
     stop=threading.Event()
     can=threading.Thread(target=canary,args=(out,stop),daemon=True)
     can.start()
+    watch=threading.Thread(target=resources,args=(out,stop),daemon=True);watch.start()
     ring=deque(maxlen=16)
     boot=time.monotonic();deadline=boot+110
     t0=last_t=repeated_from=last_counter=None
@@ -98,7 +116,7 @@ def observe(out,duration):
         start=time.monotonic(); ch=n=band=None
         capture='ok'
         try:
-            raw=adb('exec-out','screencap','-p',timeout=3)
+            raw=capture_png()
             with Image.open(io.BytesIO(raw)) as im: ch,n,band=region(im)
         except (ValueError,subprocess.SubprocessError,OSError):
             capture='failed'
@@ -154,7 +172,8 @@ def observe(out,duration):
         total+=1; last_t=t
         if t0 is not None and t>=deadline: break
         next_due=max(start+period,t)
-    stop.set();can.join(12)
+    stop.set();can.join(12);watch.join(25)
+    if t0 is None: forensic(out,last_pid)
     if worker: worker.join(58)
     completed=t0 is not None and (last_t-t0)>=duration
     summary=dict(utc_end=utc(),timed=completed,requested_s=duration,

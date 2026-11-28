@@ -1,0 +1,148 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' show FrameTiming;
+
+import 'package:flutter/material.dart';
+
+import '../../playlists/data/playlist_database.dart';
+import '../../playlists/data/playlist_repository.dart';
+import 'catalog_counts.dart';
+import 'tv_live_screen.dart';
+
+class CatalogProbe extends StatefulWidget {
+  const CatalogProbe({super.key});
+  @override
+  State<CatalogProbe> createState() => _ProbeState();
+}
+
+class _ProbeState extends State<CatalogProbe> {
+  bool ready = false;
+  final Stopwatch clock = Stopwatch()..start();
+  final List<int> frames = <int>[];
+  final List<int> builds = <int>[];
+  final List<int> rasters = <int>[];
+  final List<int> gaps = <int>[];
+  int lastTick = 0;
+  Timer? tick;
+  Timer? report;
+
+  void emit(String event, Map<String, dynamic> fields) {
+    print(
+      'ZUNO_CAT ${jsonEncode({'event': event, 't_ms': clock.elapsedMilliseconds, ...fields})}',
+    );
+  }
+
+  void timings(List<FrameTiming> ts) {
+    for (final t in ts) {
+      frames.add(t.totalSpan.inMicroseconds);
+      builds.add(t.buildDuration.inMicroseconds);
+      rasters.add(t.rasterDuration.inMicroseconds);
+    }
+  }
+
+  Map<String, int> summary(List<int> values, int limit) {
+    if (values.isEmpty) return <String, int>{'n': 0};
+    values.sort();
+    int pct(double fraction) => values[(values.length * fraction).ceil() - 1];
+    final result = {
+      'n': values.length,
+      'p50': pct(.5),
+      'p95': pct(.95),
+      'max': values.last,
+      'over_limit': values.where((v) => v > limit).length,
+    };
+    values.clear();
+    return result;
+  }
+
+  void flush(String phase) {
+    emit('sample', {
+      'phase': phase,
+      'flutter_span_us': summary(frames, 700000),
+      'build_us': summary(builds, 700000),
+      'raster_us': summary(rasters, 700000),
+      'heartbeat_gap_ms': summary(gaps, 700),
+      'selections': CatalogCounts.selections,
+      'unique_selected': CatalogCounts.focus.length,
+      'opens': CatalogCounts.opens,
+      'closes': CatalogCounts.closes,
+      'zap_intents': CatalogCounts.zapIntents,
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addTimingsCallback(timings);
+    lastTick = clock.elapsedMilliseconds;
+    tick = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      final now = clock.elapsedMilliseconds;
+      gaps.add(now - lastTick);
+      lastTick = now;
+    });
+    report = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => flush(ready ? 'navigation' : 'import'),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => run());
+  }
+
+  Future<void> run() async {
+    try {
+      final repo = PlaylistRepository.instance;
+      await repo.initialize();
+      final db = await PlaylistDatabase.instance.database;
+      const sql =
+          'SELECT COUNT(*) AS rows, COUNT(DISTINCT category) AS categories, '
+          'COUNT(DISTINCT external_id) AS ids, COUNT(DISTINCT stream_url) AS urls FROM channels';
+      final prior = (await db.rawQuery(sql)).single;
+      emit('before', Map<String, dynamic>.from(prior));
+      final importing = prior['rows'] == 0;
+      final sw = Stopwatch()..start();
+      if (importing) {
+        await repo.addXtreamPlaylist(
+          name: 'ZUNO LAB 30000',
+          serverUrl: 'http://127.0.0.1:18479',
+          username: 'demo',
+          password: 'demo',
+        );
+      }
+      final elapsed = sw.elapsedMilliseconds;
+      final counts = (await db.rawQuery(sql)).single;
+      final cached = repo.currentChannels.length;
+      emit(importing ? 'imported' : 'restored', {
+        'ms': elapsed,
+        'visible_cache': cached,
+        ...counts,
+      });
+      if (counts['rows'] != 30000 ||
+          counts['categories'] != 120 ||
+          cached != 30000) {
+        throw StateError('Contrôle du nombre de chaînes ou catégories');
+      }
+      flush('import');
+      if (mounted) setState(() => ready = true);
+    } catch (e) {
+      final text = e.toString().replaceAll(RegExp(r'https?://\S+'), '[URL]');
+      emit('failed', {
+        'type': e.runtimeType.toString(),
+        'reason': text.length > 220 ? text.substring(0, 220) : text,
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    tick?.cancel();
+    report?.cancel();
+    WidgetsBinding.instance.removeTimingsCallback(timings);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ready
+      ? const TvLiveScreen()
+      : const Scaffold(
+          body: Center(child: Text('ZUNO LAB · Catalogue 30 000')),
+        );
+}

@@ -6,10 +6,16 @@ on:
       - '.github/workflows/zuno-lab-diagnostic-endurance.yml'
       - 'android-app/ci/zuno_lab/endurance/**'
   workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Recompiler le diagnostic au lieu de reprendre les octets mesurés
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' && inputs.rebuild
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     defaults:
@@ -83,6 +89,7 @@ jobs:
 
   observation:
     needs: build
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 125
     strategy:
@@ -94,6 +101,7 @@ jobs:
       ROUTE: ${{ matrix.route }}
       SCENARIO: ${{ matrix.scenario }}
       DURATION: '4800'
+      DIAG_RUN: ${{ needs.build.result == 'success' && github.run_id || '46089992515' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -106,7 +114,9 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: diagnostic-seul-${{ github.run_id }}
+          github-token: ${{ github.token }}
+          run-id: ${{ env.DIAG_RUN }}
+          name: diagnostic-seul-${{ env.DIAG_RUN }}
           path: apk
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Préparer les outils de mesure hôte

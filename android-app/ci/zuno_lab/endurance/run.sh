@@ -3,7 +3,7 @@ set -euo pipefail
 here="$PWD/android-app/ci/zuno_lab/endurance"
 out="$PWD/observations"
 mkdir "$out"
-export PYTHONPATH="$PWD/original/android-app/ci/novatube_tv:$here"
+export PYTHONPATH="$PWD/original/android-app/ci/novatube_tv:$here:$PWD/android-app/ci/zuno_lab"
 export BENCH_PACKAGE=com.sevenmotion.tv.seven_tv.lab.diagnostic
 ram=1536
 if [[ "$SCENARIO" == lowram ]]; then ram=1024; fi
@@ -37,6 +37,9 @@ verify_bytes() {
   grep -Fx "$(sha256sum apk/ZUNO-DIAGNOSTIC.apk | cut -d' ' -f1)  base.apk" "$out/$stage.sha256"
 }
 verify_bytes before
+if [[ "$DIAG_RUN" == 46089992515 ]]; then
+  grep -Fx '8b7e166b9f59f59ecb006a45a023883ddfb953aa05b30389eed99d43f43bc29e  base.apk' "$out/before.sha256"
+fi
 # La vérification de fin reste indépendante des exceptions et du verdict
 # optique. Un échec de hachage conserve les données de l'écran et est signalé.
 finish() {
@@ -50,8 +53,8 @@ finish() {
 trap finish EXIT
 adb shell cat /proc/meminfo | head -1 > "$out/ram-android.txt"
 adb shell wm size > "$out/resolution.txt"
-adb reverse --list | awk '{print $(NF-1),$NF}' > "$out/reverse.txt"
-printf '%s\n' "$GITHUB_SHA" "$ROUTE" "$SCENARIO" "$DURATION" > "$out/conditions.txt"
+adb reverse --list | awk 'NF>=2 {print $(NF-1),$NF}' > "$out/reverse.txt"
+printf '%s\n' "$GITHUB_SHA" "$DIAG_RUN" "$ROUTE" "$SCENARIO" "$DURATION" > "$out/conditions.txt"
 python3 "$here/fixture.py" "$RUNNER_TEMP/hls" > "$RUNNER_TEMP/encode.log" 2>&1 & encoder=$!
 python3 "$here/origin.py" "$RUNNER_TEMP/hls" "$out/http.jsonl" "$ROUTE" "$SCENARIO" > "$RUNNER_TEMP/origin.log" 2>&1 & server=$!
 for _ in {1..80}; do

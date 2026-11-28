@@ -15,11 +15,11 @@ class DetectorTest(unittest.TestCase):
         image=Image.new('L',(300,30),255)
         raw=io.BytesIO();image.save(raw,format='PNG')
         def fake_adb(*args,**kwargs):
-            if 'screencap' in args:return raw.getvalue()
             if 'pidof' in args:return b'42'
             return b''
         seq=iter([0,1,2]+[2]*30)
         with TemporaryDirectory() as d, patch.object(observe,'adb',side_effect=fake_adb), \
+             patch.object(observe,'capture_png',return_value=raw.getvalue()), \
              patch.object(observe,'region',side_effect=lambda _:('A',next(seq),image)):
             out=Path(d)
             observe.observe(out,7)
