@@ -712,6 +712,7 @@
   "tvNoRecordingsBody": "Dina inspelningar visas här. Tryck på REC medan du tittar på en kanal för att spela in.",
   "tvMyRecordings": "Mina inspelningar",
   "tvDeleteQuestion": "Ta bort?",
+  "tvDeleteRecordingAppCopy": "Ta bort ”{name}” från appens inspelningar? Videon i Movies/NOVATUBE finns kvar.",
   "tvDeleteRecordingConfirm": "Ta bort ”{name}” permanent?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

@@ -529,7 +529,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       final Recording rec = _activeRecording!;
       _activeRecording = null;
       unawaited(LocalStreamRelay.instance.stopRecording(rec.streamUrl ?? _playingUrl)
-          .then((_) => RecordingRepository.instance.finishRecording(rec)));
+          .then<void>((bytes) async {
+        await RecordingRepository.instance.finishRecording(rec, expectedBytes: bytes);
+      }));
     }
     if (_compactZapEnabled) {
       ParentalControls.instance.kidsMode.removeListener(_onPreviewPermissionChanged);
@@ -1006,7 +1008,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
       );
       if (!mounted || !current() || _relayPlayUrl != localUrl) {
         await relay.stopRecording(realUrl);
-        await repo.finishRecording(rec);
+        await repo.finishRecording(rec, publish: false);
         return;
       }
       setState(() => _activeRecording = rec);
@@ -1023,7 +1025,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             _controller.setUrl(realUrl);
           }
         }
-        await repo.finishRecording(rec);
+        await repo.finishRecording(rec, publish: completed);
         if (mounted && current()) {
           if (completed) {
             final size = await File(rec.filePath).length();
@@ -1065,7 +1067,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     bool failed = false;
     try {
       bytes = await LocalStreamRelay.instance.stopRecording(realUrl);
-      await RecordingRepository.instance.finishRecording(rec);
+      failed = !await RecordingRepository.instance.finishRecording(rec, expectedBytes: bytes);
     } catch (_) {
       failed = true;
     }

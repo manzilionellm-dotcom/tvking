@@ -2142,6 +2142,7 @@
   "tvNoRecordingsBody": "Je opnames verschijnen hier. Druk tijdens het kijken van een zender op de REC-knop om op te nemen.",
   "tvMyRecordings": "Mijn opnames",
   "tvDeleteQuestion": "Verwijderen?",
+  "tvDeleteRecordingAppCopy": "‘{name}’ uit de opnamen van de app verwijderen? De video in Movies/NOVATUBE blijft bewaard.",
   "tvDeleteRecordingConfirm": "'{name}' definitief verwijderen?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

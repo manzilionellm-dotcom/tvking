@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 import unicodedata
 from urllib.request import urlopen
@@ -24,7 +25,8 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image
 
-PACKAGE = 'com.sevenmotion.novatube.tv'
+PLAY_PACKAGE = 'com.sevenmotion.novatube.tv'
+LAB_PACKAGE = 'com.sevenmotion.novatube.tv.lab.retour.rec'
 
 
 def normalise(value):
@@ -32,15 +34,17 @@ def normalise(value):
 
 
 class Scenario:
-    def __init__(self, out, serial, expected_version=1794878684, expected_source=None, expected_api=34):
+    def __init__(self, out, serial, expected_version=1794878684, expected_source=None, expected_api=34,
+                 package=PLAY_PACKAGE, expected_digest=None):
         self.out, self.serial = out, serial
+        self.package, self.expected_digest = package, expected_digest
         self.expected_version = expected_version
         self.expected_source = expected_source
         self.expected_api = expected_api
         self.started = time.monotonic()
         self.recording = None
         self.recording_quality_passed = False
-        self.report = {'validated': False, 'package': PACKAGE,
+        self.report = {'validated': False, 'package': self.package,
                        'receiver': 'FFmpeg DLNA receiver (emulated)', 'steps': []}
 
     def adb(self, *args, timeout=20, binary=False):
@@ -74,8 +78,13 @@ class Scenario:
 
     def words(self, name='current'):
         path = self.screenshot(name)
-        result = subprocess.check_output(['tesseract', str(path), 'stdout', '--psm', '11', 'tsv'],
-                                         stderr=subprocess.DEVNULL, text=True, timeout=12)
+        # Sur certaines images Google, le canal alpha de screencap est nul.
+        # Tesseract reçoit les couleurs visibles, indépendamment de cet alpha.
+        with Image.open(path) as screen:
+            pixels = io.BytesIO()
+            screen.convert('RGB').save(pixels, format='PNG')
+        result = subprocess.check_output(['tesseract', 'stdin', 'stdout', '--psm', '11', 'tsv'],
+                                         input=pixels.getvalue(), stderr=subprocess.DEVNULL, timeout=20).decode()
         words = []
         for word in csv.DictReader(io.StringIO(result), delimiter='\t'):
             text = normalise(word['text'] or '')
@@ -102,6 +111,44 @@ class Scenario:
             raise RuntimeError(f'Libellé visible introuvable : {expression}')
         self.adb('shell', 'input', 'tap', str(point[0]), str(point[1]))
         time.sleep(1.2)
+
+    def lab_import_button(self):
+        deadline = time.monotonic() + 50
+        while time.monotonic() < deadline:
+            words = self.words()
+            middle = [(word, x, y) for word, x, y in words if 0.25 < y / self.height < 0.80]
+            for word, x, y in middle:
+                if word == 'm3u':
+                    return x, y
+            # Certains rendus découpent mal « M3U ». Les mots voisins
+            # identifient alors le même bouton visible « Add ... playlist ».
+            for word, x, y in middle:
+                if word in {'playlist', 'liste'} and any(
+                    other in {'add', 'ajouter'} and 0 < x - ox < 0.25 * self.width
+                    and abs(y - oy) < 0.025 * self.height for other, ox, oy in middle):
+                    return x, y
+            time.sleep(0.5)
+        raise RuntimeError('Bouton M3U de l’accueil tactile introuvable')
+
+    def lab_home(self, timeout):
+        # Les deux variantes de l'accueil LAB ont la navigation en commun.
+        deadline = time.monotonic() + timeout
+        while True:
+            words = {word for word, _, _ in self.words()}
+            if 'tonight' in words or (words & {'live', 'direct'} and
+                    words & {'settings', 'reglages', 'movies', 'films', 'series', 'favorites', 'favoris'}):
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.5)
+
+    def cast_point(self, timeout):
+        bounds = (0.55, 0, 1, 0.3)
+        if self.package != LAB_PACKAGE:
+            return self.find('cast', bounds=bounds, timeout=timeout)
+        return (self.find('cast', bounds=bounds, timeout=min(timeout, 2))
+                or self.accessibility_point(r'cast to a tv|caster vers|diffuser sur|cast vers')
+                or self.find('cast', bounds=bounds, timeout=timeout))
 
     def key(self, value, delay=1.5):
         self.adb('shell', 'input', 'keyevent', value)
@@ -130,7 +177,7 @@ class Scenario:
             return json.load(response)
 
     def service(self, name):
-        text = self.adb('shell', 'dumpsys', 'activity', 'services', PACKAGE)
+        text = self.adb('shell', 'dumpsys', 'activity', 'services', self.package)
         (self.out / f'{name}-services.txt').write_text(text)
         block = re.search(r'ServiceRecord[^\n]*PlaybackForegroundService[\s\S]*?(?=\n\s*\* ServiceRecord|\Z)', text)
         active = block is not None and 'isForeground=true' in block.group(0)
@@ -152,18 +199,18 @@ class Scenario:
         self.report['android_api'] = actual_api
         self.report['android_release'] = self.adb('shell', 'getprop', 'ro.build.version.release').strip()
         assert actual_api == self.expected_api, 'Version Android inattendue'
-        package = self.adb('shell', 'dumpsys', 'package', PACKAGE)
+        package = self.adb('shell', 'dumpsys', 'package', self.package)
         version = re.search(r'\bversionCode=(\d+)\b', package)
         assert version, 'Version de l’APK installé absente'
         self.report['version_code'] = int(version.group(1))
         self.report['production_review_candidate'] = False
         assert self.report['version_code'] == self.expected_version, 'Mauvaise version APK installée'
-        if self.expected_version == 1794878684:
+        if self.package == PLAY_PACKAGE and self.expected_version == 1794878684:
             identity = json.loads((self.out / 'build-identity.json').read_text())
             assert self.expected_source and identity['source_commit'] == self.expected_source, 'Commit source non confirmé'
-            assert identity['package'] == PACKAGE and identity['version_code'] == self.expected_version
+            assert identity['package'] == self.package and identity['version_code'] == self.expected_version
             assert identity['play_build'] is True
-            installed = self.adb('shell', 'pm', 'path', PACKAGE).strip().splitlines()
+            installed = self.adb('shell', 'pm', 'path', self.package).strip().splitlines()
             assert len(installed) == 1 and installed[0].startswith('package:'), 'APK universel attendu'
             digest = self.adb('shell', 'sha256sum', installed[0].removeprefix('package:'), timeout=90).split()[0]
             recording_apk = identity.get('recording_apk')
@@ -176,18 +223,31 @@ class Scenario:
             assert digest == expected, 'Empreinte de l’APK installé différente du build vérifié'
             self.report.update(production_review_candidate=True, source_commit=identity['source_commit'],
                                apk_sha256=digest, build_environment=identity.get('build_environment', 'unspecified'))
+        elif self.package != PLAY_PACKAGE:
+            assert re.fullmatch(r'[0-9a-f]{64}', self.expected_digest or ''), 'Empreinte du LAB absente'
+            installed = self.adb('shell', 'pm', 'path', self.package).strip().splitlines()
+            assert len(installed) == 1 and installed[0].startswith('package:'), 'APK universel attendu'
+            digest = self.adb('shell', 'sha256sum', installed[0].removeprefix('package:'), timeout=90).split()[0]
+            assert digest == self.expected_digest, 'Le LAB installé diffère du fichier à livrer'
+            self.report.update(apk_sha256=digest, source_commit=self.expected_source)
         self.step('Installed APK opened on the touchscreen emulator', android_api=actual_api)
-        assert self.find('m3u', timeout=45), 'Accueil M3U absent'
-        self.screenshot('01-welcome')
-        # L'activation privée précédente peut avoir déplacé le focus. Le geste
-        # vise donc le libellé M3U réellement visible, jamais un focus présumé.
-        self.tap_word('m3u', timeout=10)
+        if self.package == LAB_PACKAGE:
+            x, y = self.lab_import_button()
+            self.screenshot('01-welcome')
+            self.adb('shell', 'input', 'tap', str(x), str(y))
+            assert self.find('source|url|http|file|fichier|link|m3u8', timeout=20), 'Formulaire M3U absent'
+        else:
+            assert self.find('m3u', timeout=45), 'Accueil M3U absent'
+            self.screenshot('01-welcome')
+            # L'activation précédente peut avoir déplacé le focus.
+            self.tap_word('m3u', timeout=10)
         self.screenshot('02-import-form')
         self.adb('shell', 'input', 'text', 'http://127.0.0.1:18999/review.m3u')
         self.key('KEYCODE_ENTER', 3)
-        if not self.find('tonight', timeout=4):
+        home = self.lab_home if self.package == LAB_PACKAGE else lambda delay: self.find('tonight', timeout=delay)
+        if not home(4):
             self.key('KEYCODE_DPAD_CENTER', 2)
-        assert self.find('tonight', timeout=35), 'Accueil après import absent'
+        assert home(35), 'Accueil après import absent'
         self.step('User imported a local M3U containing one generated video only')
         self.screenshot('03-imported-home')
 
@@ -206,17 +266,27 @@ class Scenario:
         self.tap_word('live|direct')
         assert self.find('mire', timeout=20), 'Chaîne locale absente'
         self.tap_word('mire', bounds=(0.15, 0, 0.65, 1))
-        if not self.find('cast', bounds=(0.55, 0, 1, 0.3), timeout=3):
+        if not self.cast_point(3):
             self.key('KEYCODE_DPAD_CENTER', 3)
-        assert self.find('cast', bounds=(0.55, 0, 1, 0.3), timeout=12), 'Lecteur tactile ou bouton Cast absent'
+        assert self.cast_point(12), 'Lecteur tactile ou bouton Cast absent'
         time.sleep(6)
         self.screenshot('04-local-playback')
         self.step('Synthetic video visibly opened in the normal full-screen player')
         before, _ = self.service('before-cast')
         assert not before, 'Le service était déjà actif avant le geste Cast'
-        self.tap_word('cast', bounds=(0.55, 0, 1, 0.3))
+        point = self.cast_point(12)
+        assert point, 'Commande Cast du lecteur introuvable'
+        self.adb('shell', 'input', 'tap', str(point[0]), str(point[1]))
+        time.sleep(1.2)
         self.screenshot('05-cast-picker')
-        self.tap_word('receiver', timeout=25)
+        if self.package == LAB_PACKAGE:
+            point = self.find('receiver', timeout=12) or self.accessibility_point(r'NOVATUBE QA Receiver')
+            point = point or self.find('receiver', timeout=13)
+            assert point, 'Récepteur DLNA de test introuvable dans le sélecteur'
+            self.adb('shell', 'input', 'tap', str(point[0]), str(point[1]))
+            time.sleep(1.2)
+        else:
+            self.tap_word('receiver', timeout=25)
         self.step('User selected the discovered emulated DLNA receiver from the normal Cast picker')
 
         deadline = time.monotonic() + 50
@@ -247,7 +317,7 @@ class Scenario:
         home = self.adb('shell', 'cmd', 'package', 'resolve-activity', '--brief',
                         '-a', 'android.intent.action.MAIN', '-c', 'android.intent.category.HOME').strip().splitlines()[-1]
         home_package = home.split('/')[0]
-        assert resumed and '/' in home and home_package in resumed and PACKAGE not in resumed, 'Accueil Android repris non confirmé'
+        assert resumed and '/' in home and home_package in resumed and self.package not in resumed, 'Accueil Android repris non confirmé'
         self.step('Home displayed while receiver continues decoding and service stays foreground',
                   before_frames=background_start['decoded_frames'], after_frames=background_end['decoded_frames'],
                   before_relay_bytes=background_start['relay_upstream_bytes_sent'],
@@ -258,7 +328,7 @@ class Scenario:
         self.screenshot('08-media-notification')
         notifications = self.adb('shell', 'dumpsys', 'notification', '--noredact')
         # Seule la fiche du paquet contrôlé est conservée, sans les autres apps.
-        match = re.search(r'NotificationRecord\([^\n]*pkg=' + re.escape(PACKAGE) + r'[^\n]*[\s\S]*?(?=\n\s*NotificationRecord\(|\n\s*Ranking Config|\Z)', notifications)
+        match = re.search(r'NotificationRecord\([^\n]*pkg=' + re.escape(self.package) + r'[^\n]*[\s\S]*?(?=\n\s*NotificationRecord\(|\n\s*Ranking Config|\Z)', notifications)
         (self.out / 'media-notification.txt').write_text(match.group(0) if match else 'Notification record not located\n')
         assert match and ('1002' in match.group(0) or 'playback_channel' in match.group(0)), 'Notification du service introuvable'
         visible_words = {word for word, _, _ in self.words('08-media-notification-visible')}
@@ -286,6 +356,68 @@ class Scenario:
         self.screenshot('09-user-stopped-cast')
         time.sleep(4)
         self.step('Foreground service and receiver stopped after visible user command')
+
+    def touch_record_control(self, start):
+        expression = 'rec|record|enregistrer' if start else 'stop|arret|arreter'
+        region = (0, 0.5, 1, 1)
+        for attempt in range(3):
+            point = self.find(expression, bounds=region, timeout=0)
+            if point:
+                name = '10-tap-record' if start else '11-tap-stop-recording'
+                self.screenshot(name)
+                self.adb('shell', 'input', 'tap', str(point[0]), str(point[1]))
+                return {'label': expression, 'x': point[0], 'y': point[1], 'screenshot': name + '.png'}
+            # Au centre de l'image, le vrai geste ouvre la barre pendant six secondes.
+            # L'aire de recherche exclut la pastille REC permanente en haut à gauche.
+            if attempt < 2:
+                self.adb('shell', 'input', 'tap', str(self.width // 2), str(self.height // 2))
+                time.sleep(0.4)
+        raise RuntimeError('Bouton tactile du lecteur introuvable : ' + expression)
+
+    def verify_handset_recording(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'novatube_tv'))
+        from verify_local_recording import Device, MEDIA, audio_tone, wait_for_new_movie
+        output = self.out / 'local-recording'
+        output.mkdir(exist_ok=True)
+        device = Device(self.serial)
+        previous = device.rows()
+        self.step('Touchscreen recording check started after the Cast scenario')
+        start = self.touch_record_control(True)
+        time.sleep(16)
+        stop = self.touch_record_control(False)
+        row = wait_for_new_movie(device, previous, self.package, 'Movies/NOVATUBE', 90)
+        assert row['mime_type'] == 'video/mp4' and row['name'].lower().endswith('.mp4'), row
+        video = output / 'handset-recording.mp4'
+        digest = device.export(row, video)
+        probe = json.loads(subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries',
+            'format=format_name,duration:stream=codec_name,codec_type', '-of', 'json', str(video)]))
+        tracks = {(s['codec_type'], s['codec_name']) for s in probe['streams']}
+        assert {('video', 'h264'), ('audio', 'aac')} <= tracks, probe
+        assert 'mp4' in probe['format']['format_name'].split(','), probe
+        assert 9 <= float(probe['format']['duration']) <= 35, probe
+        # Des vignettes de la mire décodées deux fois par seconde doivent changer.
+        framemd5 = subprocess.check_output(['ffmpeg', '-nostdin', '-v', 'error', '-i', str(video),
+            '-map', '0:v:0', '-vf', 'fps=2,scale=64:36', '-f', 'framemd5', '-'], text=True, timeout=45)
+        (output / 'motion.framemd5').write_text(framemd5)
+        hashes = [line.rsplit(',', 1)[-1].strip() for line in framemd5.splitlines()
+                  if line and not line.startswith('#')]
+        changes = sum(a != b for a, b in zip(hashes, hashes[1:]))
+        assert len(hashes) >= 16 and changes > 0.80 * (len(hashes) - 1), 'Image de la mire figée'
+        tone = audio_tone(video, output / 'audio-temp.pcm', 'A')
+        self.adb('shell', 'am', 'force-stop', self.package)
+        self.adb('shell', 'am', 'start', '-W', '-n', self.component)
+        current = device.rows().get(row['id'])
+        assert current == row, 'Ligne MediaStore modifiée après redémarrage'
+        reread = output / 'after-restart.mp4'
+        assert device.export(current, reread) == digest, 'Fichier MediaStore modifié après redémarrage'
+        reread.unlink()
+        proof = {'uri': f"{MEDIA}/{row['id']}", 'media_store': row, 'sha256': digest,
+                 'record_control': start, 'stop_control': stop, 'probe': probe, 'audio': tone,
+                 'decoded_thumbnails': len(hashes), 'changing_pairs': changes,
+                 'identical_after_app_restart': True, 'apk_sha256': self.report['apk_sha256']}
+        (output / 'proof.json').write_text(json.dumps(proof, indent=2) + '\n')
+        self.report['handset_local_recording'] = proof
+        self.step('User recorded the moving test pattern and its tone by touch; shared MP4 survived app restart')
 
     def verify_recorded_frames(self, video, duration):
         # Les images proviennent du MP4, jamais de screencap. Une capture ADB
@@ -370,6 +502,8 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--serial', default='emulator-5554')
     parser.add_argument('--component', required=True)
+    parser.add_argument('--package', default=PLAY_PACKAGE)
+    parser.add_argument('--expected-digest')
     parser.add_argument('--expected-version', type=int, default=1794878684)
     parser.add_argument('--expected-source')
     parser.add_argument('--expected-api', type=int, default=34)
@@ -379,7 +513,8 @@ def main():
         expected_file = args.out / 'expected-source.txt'
         args.expected_source = (expected_file.read_text().strip() if expected_file.exists()
                                 else os.environ.get('NOVATUBE_BUILD_COMMIT'))
-    scenario = Scenario(args.out, args.serial, args.expected_version, args.expected_source, args.expected_api)
+    scenario = Scenario(args.out, args.serial, args.expected_version, args.expected_source, args.expected_api,
+                        args.package, args.expected_digest)
     scenario.component = args.component
     failure = None
     try:
@@ -393,6 +528,13 @@ def main():
     except Exception as error:
         failure = failure or error
         scenario.report['finish_failure'] = str(error)
+    if failure is None and args.package == LAB_PACKAGE:
+        try:
+            scenario.verify_handset_recording()
+        except Exception as error:
+            failure = error
+            scenario.report['handset_recording_failure'] = str(error)
+            scenario.step('Phone recording verification failed', error=str(error))
     scenario.report['validated'] = (failure is None and scenario.recording is not None
                                     and scenario.recording_quality_passed)
     if failure is None and not scenario.report['validated']:

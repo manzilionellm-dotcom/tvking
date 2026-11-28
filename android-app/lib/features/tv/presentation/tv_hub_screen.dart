@@ -43,6 +43,9 @@ import 'tv_profile_label.dart';
 import '../../channels/data/recently_watched_repository.dart';
 import '../../channels/data/trending_repository.dart';
 import '../../channels/domain/channel.dart';
+import '../../cast/data/cast_platform.dart';
+import '../../cast/presentation/cast_button.dart';
+import '../../cast/presentation/cast_mini_bar.dart';
 import '../../cinema/data/watch_progress.dart';
 import '../../cinema/domain/cinema_models.dart';
 import '../../device/data/device_identity.dart';
@@ -1505,6 +1508,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                   },
                                 ),
                                 const Spacer(),
+                                if (CastPlatform.novaTubeMobileCast)
+                                  const CastButton(manualPlayback: true),
                                 _HubSearchButton(
                                   label: context.l10n.tvNavSearch,
                                   onSelect: () => VoiceNavigation.openSearch(),
@@ -1533,6 +1538,8 @@ class _TvHubScreenState extends State<TvHubScreen> {
                                 ),
                               ],
                             ),
+                            if (CastPlatform.novaTubeMobileCast)
+                              const CastMiniBar(keepSuspendedSession: true),
                             const SizedBox(height: 8),
                             Text(
                               _hello(context),

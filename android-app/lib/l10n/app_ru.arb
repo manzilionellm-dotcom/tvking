@@ -2142,6 +2142,7 @@
   "tvNoRecordingsBody": "Твои записи появятся здесь. Во время просмотра канала нажми кнопку REC, чтобы записать.",
   "tvMyRecordings": "Мои записи",
   "tvDeleteQuestion": "Удалить?",
+  "tvDeleteRecordingAppCopy": "Удалить «{name}» из записей приложения? Видео в Movies/NOVATUBE сохранится.",
   "tvDeleteRecordingConfirm": "Удалить «{name}» навсегда?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

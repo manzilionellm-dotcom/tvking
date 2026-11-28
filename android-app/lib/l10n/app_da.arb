@@ -712,6 +712,7 @@
   "tvNoRecordingsBody": "Dine optagelser vises her. Mens du ser en kanal, skal du trykke på REC for at optage.",
   "tvMyRecordings": "Mine optagelser",
   "tvDeleteQuestion": "Slet?",
+  "tvDeleteRecordingAppCopy": "Fjern ”{name}” fra appens optagelser? Videoen i Movies/NOVATUBE bevares.",
   "tvDeleteRecordingConfirm": "Slet »{name}« permanent?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

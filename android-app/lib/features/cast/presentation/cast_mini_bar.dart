@@ -17,7 +17,9 @@ import '../../../core/theme/app_text_styles.dart';
 import '../data/cast_manager.dart';
 
 class CastMiniBar extends StatelessWidget {
-  const CastMiniBar({super.key});
+  const CastMiniBar({super.key, this.keepSuspendedSession = false});
+
+  final bool keepSuspendedSession;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +27,9 @@ class CastMiniBar extends StatelessWidget {
       listenable: CastManager.instance,
       builder: (BuildContext context, _) {
         final CastManager mgr = CastManager.instance;
-        if (!mgr.isCasting && mgr.state != CastState.connecting) {
+        final bool reconnecting = keepSuspendedSession &&
+            mgr.hasActiveSession && !mgr.isCasting;
+        if (!mgr.isCasting && mgr.state != CastState.connecting && !reconnecting) {
           return const SizedBox.shrink();
         }
         return Container(
@@ -59,7 +63,7 @@ class CastMiniBar extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      mgr.state == CastState.connecting
+                      mgr.state == CastState.connecting || reconnecting
                           ? context.l10n.castConnecting
                           : context.l10n.castInProgressTitle,
                       style: AppTextStyles.labelSmall.copyWith(
@@ -102,7 +106,7 @@ class CastMiniBar extends StatelessWidget {
                 tooltip: mgr.state == CastState.paused
                     ? context.l10n.buttonResume
                     : context.l10n.playerPause,
-                onPressed: () {
+                onPressed: reconnecting ? null : () {
                   if (mgr.state == CastState.paused) {
                     mgr.resume();
                   } else {

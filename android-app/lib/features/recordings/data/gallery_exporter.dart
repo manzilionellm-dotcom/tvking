@@ -37,11 +37,15 @@ class GalleryExporter {
   static Future<GalleryExportResult> exportVideo({
     required String srcPath,
     required String displayName,
+    String? recordingKey,
   }) async {
     try {
       final bool? result = await _channel.invokeMethod<bool>(
-        'exportVideo',
+        // Le canal historique mobile conserve sa commande d’export manuel.
+        // La commande LAB reconnaît la même capture après un redémarrage.
+        recordingKey == null ? 'exportVideo' : 'publishRecording',
         <String, dynamic>{
+          if (recordingKey != null) 'recordingKey': recordingKey,
           'srcPath': srcPath,
           'displayName': displayName,
         },

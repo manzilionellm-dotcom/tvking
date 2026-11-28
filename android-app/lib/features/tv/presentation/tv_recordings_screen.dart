@@ -99,7 +99,9 @@ class _RecordingRow extends StatelessWidget {
           style: TextStyle(color: TvAppTokens.of(context).text),
         ),
         content: Text(
-          context.l10n.tvDeleteRecordingConfirm(rec.channelName),
+          rec.deviceCopySaved
+              ? context.l10n.tvDeleteRecordingAppCopy(rec.channelName)
+              : context.l10n.tvDeleteRecordingConfirm(rec.channelName),
           style: TextStyle(color: TvAppTokens.of(context).muted),
         ),
         actions: <Widget>[
@@ -179,6 +181,18 @@ class _RecordingRow extends StatelessWidget {
                             color: TvAppTokens.of(context).muted,
                           ),
                         ),
+                        if (rec.deviceCopyStatus != null)
+                          Text(
+                            rec.deviceCopyFailed
+                                ? context.l10n.recordingExportFailed(rec.deviceCopyStatus!)
+                                : rec.deviceCopyPending
+                                    ? 'Movies/NOVATUBE …'
+                                    : '✓ Movies/NOVATUBE',
+                            style: TextStyle(
+                              fontSize: TvDimens.label,
+                              color: TvAppTokens.of(context).muted,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -188,8 +202,21 @@ class _RecordingRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
+        if (rec.deviceCopyFailed) ...[
+          TvFocusable(
+            scale: TvFocusScale.small,
+            baseColor: TvAppTokens.of(context).card,
+            onSelect: () => RecordingRepository.instance.retryDeviceCopy(rec),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(context.l10n.buttonRetry),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
         TvFocusable(
           scale: TvFocusScale.small,
+          enabled: !rec.deviceCopyPending,
           baseColor: TvAppTokens.of(context).card,
           onSelect: () => _delete(context),
           child: Padding(

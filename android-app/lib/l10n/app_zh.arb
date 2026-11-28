@@ -2142,6 +2142,7 @@
   "tvNoRecordingsBody": "你的录制内容会显示在这里。播放频道时按 REC 键即可录制。",
   "tvMyRecordings": "我的录制",
   "tvDeleteQuestion": "确定删除？",
+  "tvDeleteRecordingAppCopy": "要从应用的录像列表移除“{name}”吗？Movies/NOVATUBE 中的视频会保留。",
   "tvDeleteRecordingConfirm": "永久删除“{name}”？",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

@@ -2142,6 +2142,7 @@
   "tvNoRecordingsBody": "Kayıtların burada görünecek. Bir kanalı izlerken kaydetmek için REC düğmesine bas.",
   "tvMyRecordings": "Kayıtlarım",
   "tvDeleteQuestion": "Silinsin mi?",
+  "tvDeleteRecordingAppCopy": "“{name}” uygulamanın kayıtlarından kaldırılsın mı? Movies/NOVATUBE içindeki video saklanır.",
   "tvDeleteRecordingConfirm": "« {name} » kalıcı olarak silinsin mi?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

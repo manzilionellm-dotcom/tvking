@@ -2194,6 +2194,7 @@
   "tvNoRecordingsBody": "Duubisyadaadu halkan ayay ka muuqan doonaan. Markaad kanaal daawanayso, riix DUUB si aad u duubto.",
   "tvMyRecordings": "Duubisyadayda",
   "tvDeleteQuestion": "Ma tirtirtaa?",
+  "tvDeleteRecordingAppCopy": "Ma ka saartaa «{name}» duubista abka? Fiidiyowga ku jira Movies/NOVATUBE wuu sii jiri doonaa.",
   "tvDeleteRecordingConfirm": "Si joogto ah ma u tirtirtaa “{name}”?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

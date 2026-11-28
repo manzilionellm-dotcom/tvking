@@ -59,7 +59,7 @@ Future<void> showCastPicker(
 /// → Tap sur un device = on mémorise la cible, sans envoyer de flux.
 ///   Ensuite, dès que l'utilisateur tape sur une chaîne, le flux part
 ///   automatiquement vers la TV (modèle YouTube/Netflix).
-Future<void> showCastPickerGlobal(BuildContext context) {
+Future<void> showCastPickerGlobal(BuildContext context, {bool manualPlayback = false}) {
   final ScaffoldState? noticeHost = Scaffold.maybeOf(context);
   final ScaffoldMessengerState? noticeMessenger = ScaffoldMessenger.maybeOf(context);
   return showModalBottomSheet<void>(
@@ -68,6 +68,7 @@ Future<void> showCastPickerGlobal(BuildContext context) {
     isScrollControlled: true,
     useSafeArea: true,
     builder: (_) => CastPickerSheet(
+      manualPlayback: manualPlayback,
       noticeHost: noticeHost,
       noticeMessenger: noticeMessenger,
     ),
@@ -76,6 +77,7 @@ Future<void> showCastPickerGlobal(BuildContext context) {
 
 class CastPickerSheet extends StatefulWidget {
   const CastPickerSheet({
+    this.manualPlayback = false,
     this.streamUrl,
     this.title,
     this.imageUrl,
@@ -92,6 +94,7 @@ class CastPickerSheet extends StatefulWidget {
   /// Logo de la chaine — sera affiche sur le recepteur (idle +
   /// overlay) via les metadonnees Cast. Phase 1+/G1.
   final String? imageUrl;
+  final bool manualPlayback;
 
   // Le shell Zuno n'a pas de Scaffold. Un message facultatif ne doit
   // jamais transformer un Cast réussi en échec ni rouvrir le flux local.
@@ -136,7 +139,9 @@ class _CastPickerSheetState extends State<CastPickerSheet> {
     if (_isGlobalMode) {
       mgr.selectDevice(device);
       if (!mounted) return;
-      final String message = context.l10n.castConnectedTapChannel(device.displayName);
+      final String message = widget.manualPlayback
+          ? context.l10n.castToDevice(device.displayName)
+          : context.l10n.castConnectedTapChannel(device.displayName);
       Navigator.of(context).pop();
       _toast(
         message,

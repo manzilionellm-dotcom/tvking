@@ -712,6 +712,7 @@
   "tvNoRecordingsBody": "ستظهر تسجيلاتك هنا. أثناء مشاهدة قناة، اضغط على REC للتسجيل.",
   "tvMyRecordings": "تسجيلاتي",
   "tvDeleteQuestion": "حذف؟",
+  "tvDeleteRecordingAppCopy": "هل تريد إزالة «{name}» من تسجيلات التطبيق؟ سيبقى الفيديو في Movies/NOVATUBE.",
   "tvDeleteRecordingConfirm": "حذف «{name}» نهائيًا؟",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

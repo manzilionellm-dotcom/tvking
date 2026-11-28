@@ -28,7 +28,11 @@ import '../data/cast_manager.dart';
 import 'cast_picker_sheet.dart';
 
 class CastButton extends StatelessWidget {
-  const CastButton({super.key});
+  const CastButton({super.key, this.manualPlayback = false});
+
+  /// Sur l'accueil NovaTube le sélecteur démarre sa découverte au toucher.
+  /// La mini-barre prend le relais dès qu'une session est engagée.
+  final bool manualPlayback;
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +51,10 @@ class CastButton extends StatelessWidget {
         // ou qu'un scan est en cours — pour donner le feedback visuel).
         // Sinon l'utilisateur tape sur une icone qui ouvre une liste
         // vide -> sentiment d'app cassee.
-        if (!hasDevices && !isActive && !hasTarget && !scanning) {
+        if (manualPlayback && mgr.hasActiveSession) {
+          return const SizedBox.shrink();
+        }
+        if (!manualPlayback && !hasDevices && !isActive && !hasTarget && !scanning) {
           return const SizedBox.shrink();
         }
 
@@ -86,21 +93,12 @@ class CastButton extends StatelessWidget {
                   mgr.selectedDevice?.name ?? mgr.device?.name ?? 'TV')
               : context.l10n.castIdle,
           icon: child,
-          onPressed: () => _onTap(context, mgr),
+          onPressed: () => showCastPickerGlobal(context, manualPlayback: manualPlayback),
         );
       },
     );
   }
 
-  Future<void> _onTap(BuildContext context, CastManager mgr) async {
-    if (mgr.hasTarget) {
-      // Déjà connecté → on propose le picker pour changer de device
-      // ET un bouton "Déconnecter" via le bandeau actif du picker.
-      await showCastPickerGlobal(context);
-      return;
-    }
-    await showCastPickerGlobal(context);
-  }
 }
 
 /// Petite icône qui pulse doucement pendant la découverte SSDP.

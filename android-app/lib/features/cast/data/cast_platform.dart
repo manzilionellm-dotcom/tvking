@@ -16,6 +16,13 @@ abstract final class CastPlatform {
       _androidHandset);
   static bool get canSendFromZuno => isWindows || isAndroidHandset;
 
+  /// L'accueil et les aperçus du LAB utilisent le Cast mobile de 7 Motion
+  /// seulement sur un téléphone ou une tablette identifiés par Android.
+  static bool get novaTubeMobileCast =>
+      const bool.fromEnvironment('NOVATUBE_TV') &&
+      const bool.fromEnvironment('NOVATUBE_SEVEN_MOTION_CAST') &&
+      isAndroidHandset;
+
   /// Le plugin croise le matériel avec l'édition signée du paquet :
   /// ZUNO TV ne peut jamais émettre ; ZUNO Mobile garde le Cast tactile.
   /// Les anciens paquets adaptatifs conservent leur détection matérielle.

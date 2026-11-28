@@ -2142,6 +2142,7 @@
   "tvNoRecordingsBody": "Le tue registrazioni compariranno qui. Durante la riproduzione di un canale, premi il tasto REC per registrare.",
   "tvMyRecordings": "Le mie registrazioni",
   "tvDeleteQuestion": "Eliminare?",
+  "tvDeleteRecordingAppCopy": "Rimuovere «{name}» dalle registrazioni dell’app? Il video resterà in Movies/NOVATUBE.",
   "tvDeleteRecordingConfirm": "Eliminare definitivamente « {name} »?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

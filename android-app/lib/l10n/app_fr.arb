@@ -2196,6 +2196,8 @@
   "tvNoRecordingsBody": "Tes enregistrements apparaîtront ici. Pendant la lecture d'une chaîne, appuie sur le bouton REC pour enregistrer.",
   "tvMyRecordings": "Mes enregistrements",
   "tvDeleteQuestion": "Supprimer ?",
+  "tvDeleteRecordingAppCopy": "Retirer « {name} » des enregistrements de l’application ? La vidéo dans Movies/NOVATUBE reste disponible.",
+  "@tvDeleteRecordingAppCopy": {"placeholders": {"name": {"type": "String"}}},
   "tvDeleteRecordingConfirm": "Supprimer définitivement « {name} » ?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

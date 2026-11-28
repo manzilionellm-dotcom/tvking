@@ -12,7 +12,11 @@ import 'package:tv_king/features/cast/data/cast_transport.dart';
 import 'package:tv_king/features/cast/data/google_cast_api.dart';
 import 'package:tv_king/features/cast/data/stream_probe.dart';
 import 'package:tv_king/features/cast/domain/cast_device.dart';
+import 'package:tv_king/features/cast/presentation/cast_button.dart';
+import 'package:tv_king/features/cast/presentation/cast_mini_bar.dart';
+import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/desktop/desktop_cast_controls.dart';
+import 'package:tv_king/features/tv/presentation/tv_live_preview.dart';
 
 class LocalPlayer extends NativeVideoController {
   final List<String> events;
@@ -141,6 +145,79 @@ void main() {
     expect(events, isEmpty);
     await tester.pumpWidget(const SizedBox());
     expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets('Présélection seule : ouvrir un direct ou un film reste local',
+      (tester) async {
+    await CastPlatform.initializeZuno();
+    final events = <String>[];
+    final local = LocalPlayer(events);
+    final receiver = Receiver(events);
+    final manager = managerFor(receiver)..selectDevice(google);
+    addTearDown(() async {
+      await manager.disconnect();
+      manager.dispose();
+      local.dispose();
+    });
+    Future<void> selectInPlayer(BuildContext context,
+        {required String streamUrl, required String title, String? imageUrl}) =>
+        manager.castTo(manager.selectedDevice!, streamUrl: streamUrl, title: title);
+    await showControls(tester, local: local, manager: manager, picker: selectInPlayer);
+    const movie = 'http://stream.invalid/movie.mp4';
+    await showControls(tester, local: local, manager: manager, url: movie, picker: selectInPlayer);
+    expect(events, isEmpty);
+    expect(receiver.urls, isEmpty);
+    expect(manager.selectedDevice, google);
+    await tester.tap(find.byType(TextButton));
+    await tester.pumpAndSettle();
+    expect(events, ['local-stop', 'remote-play']);
+    expect(receiver.urls, [movie]);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
+  testWidgets('Accueil NovaTube : découverte manuelle, mini-barre et aperçu pendant le Cast',
+      (tester) async {
+    const lab = bool.fromEnvironment('NOVATUBE_TV') &&
+        bool.fromEnvironment('NOVATUBE_SEVEN_MOTION_CAST');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(capability, (_) async => false);
+    await CastPlatform.initializeZuno();
+    expect(CastPlatform.novaTubeMobileCast, isFalse);
+    messenger.setMockMethodCallHandler(capability, (_) async => true);
+    await CastPlatform.initializeZuno();
+    expect(CastPlatform.novaTubeMobileCast, lab);
+    if (!lab) return;
+
+    final manager = CastManager.instance;
+    const channel = Channel(id: 'test', name: 'Test', category: 'Test',
+        streamUrl: originalUrl, isLive: true);
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('fr'),
+      home: const Scaffold(body: Column(children: [
+        CastButton(manualPlayback: true),
+        CastMiniBar(keepSuspendedSession: true),
+        Expanded(child: TvLivePreview(channel: channel)),
+      ])),
+    ));
+    expect(find.byTooltip('Cast vers une TV'), findsOneWidget);
+    manager.selectDevice(google);
+    await tester.pump();
+    expect(find.byIcon(Icons.cast_connected_rounded), findsOneWidget);
+    expect(manager.hasActiveSession, isFalse);
+    manager.debugNativeSessionEvent(const CastNativeSessionEvent('resumed_at_boot'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.byTooltip('Arrêter le cast'), findsOneWidget);
+    expect(find.byType(NativeVideoView), findsNothing);
+    manager.debugNativeSessionEvent(const CastNativeSessionEvent('suspended'));
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.byTooltip('Arrêter le cast'), findsOneWidget);
+    expect(find.byType(NativeVideoView), findsNothing);
+    manager.debugNativeSessionEvent(const CastNativeSessionEvent('ended'));
+    await tester.pump();
+    expect(find.byTooltip('Cast vers une TV'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   for (final accept in [true, false]) {

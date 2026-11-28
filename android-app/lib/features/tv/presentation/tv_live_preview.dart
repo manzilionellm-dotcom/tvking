@@ -31,6 +31,8 @@ import 'package:native_video_player/native_video_player.dart';
 import 'package:native_video_player/playback_lease.dart';
 
 import '../../player/data/image_prefs.dart';
+import '../../cast/data/cast_manager.dart';
+import '../../cast/data/cast_platform.dart';
 import '../../channels/domain/channel.dart';
 import '../core/tv_tokens.dart';
 import '../core/tv_app_tokens.dart';
@@ -68,12 +70,29 @@ class _TvLivePreviewState extends State<TvLivePreview> {
   NativeVideoController? _ctrl;
   Timer? _timer;
   Future<void>? _nativeRelease;
+  CastManager? _cast;
+  bool _remoteActive = false;
 
   @override
   void initState() {
     super.initState();
     TvLivePreview._active = this;
+    if (CastPlatform.novaTubeMobileCast) {
+      _cast = CastManager.instance..addListener(_onCastSession);
+      _remoteActive = _cast!.hasActiveSession;
+    }
     _schedule();
+  }
+
+  void _onCastSession() {
+    final bool active = _cast!.hasActiveSession;
+    if (_remoteActive == active) return;
+    _remoteActive = active;
+    if (active) {
+      unawaited(_releaseNow());
+    } else {
+      _schedule();
+    }
   }
 
   @override
@@ -87,6 +106,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
 
   void _schedule() {
     _timer?.cancel();
+    if (_remoteActive) return;
     _timer = Timer(widget.debounce, _start);
   }
 
@@ -124,7 +144,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
     final timer = _timer;
     _stop();
     if (_nativeRelease != null) await _nativeRelease;
-    if (!mounted || timer != _timer || ForegroundPlayback.locked) return;
+    if (!mounted || timer != _timer || ForegroundPlayback.locked || _remoteActive) return;
     final String url = widget.channel.streamUrl;
     if (url.isEmpty) return;
     final NativeVideoController created = NativeVideoController(
@@ -142,6 +162,7 @@ class _TvLivePreviewState extends State<TvLivePreview> {
 
   @override
   void dispose() {
+    _cast?.removeListener(_onCastSession);
     _timer?.cancel();
     if (identical(TvLivePreview._active, this)) TvLivePreview._active = null;
     // Enfants déjà démontés (écouteur retiré) : on peut disposer le notifier.

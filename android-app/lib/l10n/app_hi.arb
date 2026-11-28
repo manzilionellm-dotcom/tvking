@@ -2142,6 +2142,7 @@
   "tvNoRecordingsBody": "आपकी रिकॉर्डिंग यहाँ दिखेंगी। कोई चैनल देखते समय रिकॉर्ड करने के लिए REC बटन दबाएँ।",
   "tvMyRecordings": "मेरी रिकॉर्डिंग",
   "tvDeleteQuestion": "हटाएँ?",
+  "tvDeleteRecordingAppCopy": "ऐप की रिकॉर्डिंग से “{name}” हटाएँ? Movies/NOVATUBE में वीडियो बनी रहेगी।",
   "tvDeleteRecordingConfirm": "« {name} » को हमेशा के लिए हटाएँ?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

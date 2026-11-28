@@ -22,13 +22,20 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/observability/structured_logger.dart';
 import '../../playlists/data/playlist_database.dart';
 import '../domain/recording.dart';
+import 'gallery_exporter.dart';
 import 'http_recording_downloader.dart';
+
+// Le fichier est aussi utilisé par des éditions mobiles qui recopient ces
+// sources. Les deux constantes réservent la publication au LAB de cette TV.
+const bool _publishLocalRecordings = bool.fromEnvironment('NOVATUBE_TV') &&
+    bool.fromEnvironment('NOVATUBE_LOCAL_RECORDINGS');
 
 class RecordingRepository {
   RecordingRepository._();
   static final RecordingRepository instance = RecordingRepository._();
 
   bool _initialized = false;
+  final Set<int> _publishing = <int>{};
   final StreamController<List<Recording>> _controller =
       StreamController<List<Recording>>.broadcast();
   List<Recording> _cache = const <Recording>[];
@@ -86,8 +93,26 @@ class RecordingRepository {
       // deja presente
     }
 
+    if (_publishLocalRecordings) {
+      // Migration transactionnelle, y compris si le lecteur et le démarrage
+      // ouvrent le dépôt simultanément. Les anciennes vidéos restent privées.
+      await db.transaction((txn) async {
+        final columns = await txn.rawQuery('PRAGMA table_info(recordings)');
+        if (!columns.any((column) => column['name'] == 'device_copy_status')) {
+          await txn.execute('ALTER TABLE recordings ADD COLUMN device_copy_status TEXT');
+        }
+      });
+    }
+
     _initialized = true;
     await _refresh();
+    if (_publishLocalRecordings) {
+      // Un arrêt OS a pu survenir après la clôture du .ts et avant la fin
+      // de la copie. MediaStore reconnaît la clé si la copie existe déjà.
+      for (final rec in _cache.where((r) => r.deviceCopyPending)) {
+        unawaited(_publishToDevice(rec));
+      }
+    }
   }
 
   /// Dossier où stocker les .ts. Sur Android → externe (visible
@@ -123,7 +148,10 @@ class RecordingRepository {
     final String slug = programTitle == null || programTitle.isEmpty
         ? safe(channelName)
         : '${safe(channelName)}-${safe(programTitle)}';
-    return p.join(dir.path, '$slug-$stamp.ts');
+    // Sur LAB deux appuis REC dans la même minute doivent produire deux
+    // rushes distincts, même si la première publication travaille encore.
+    final suffix = _publishLocalRecordings ? '-${now.microsecondsSinceEpoch}' : '';
+    return p.join(dir.path, '$slug-$stamp$suffix.ts');
   }
 
   // ----- CRUD -----
@@ -153,9 +181,14 @@ class RecordingRepository {
     return rec.copyWith(id: id);
   }
 
-  Future<void> finishRecording(Recording rec) async {
+  /// Renvoie false si les octets annoncés par le relais ne sont pas sur disque.
+  Future<bool> finishRecording(
+    Recording rec, {
+    bool publish = true,
+    int? expectedBytes,
+  }) async {
     await initialize();
-    if (rec.id == null) return;
+    if (rec.id == null) return false;
     final Database db = await PlaylistDatabase.instance.database;
     int size = 0;
     try {
@@ -164,16 +197,64 @@ class RecordingRepository {
         size = await f.length();
       }
     } catch (_) {}
-    await db.update(
+    final complete = expectedBytes == null || expectedBytes == size;
+    final queueCopy = _publishLocalRecordings && publish && complete && size > 0;
+    final changed = await db.update(
       'recordings',
       <String, Object?>{
         'ended_at': DateTime.now().millisecondsSinceEpoch,
         'file_size_bytes': size,
+        if (queueCopy) 'device_copy_status': 'pending',
       },
-      where: 'id = ?',
+      where: _publishLocalRecordings ? 'id = ? AND ended_at IS NULL' : 'id = ?',
       whereArgs: <Object>[rec.id!],
     );
     await _refresh();
+    if (queueCopy && changed == 1) unawaited(_publishToDevice(rec));
+    return complete;
+  }
+
+  /// Un remux peut être long. Le lecteur reprend immédiatement le direct ;
+  /// les Réglages suivent la fiche et permettent de relancer une copie ratée.
+  Future<void> _publishToDevice(Recording rec) async {
+    final id = rec.id!;
+    if (!_publishing.add(id)) return;
+    try {
+      final result = await GalleryExporter.exportVideo(
+        srcPath: rec.filePath,
+        displayName: p.basenameWithoutExtension(rec.filePath),
+        recordingKey: '${rec.id}-${rec.startedAt}-${p.basename(rec.filePath)}',
+      );
+      final db = await PlaylistDatabase.instance.database;
+      await db.update(
+        'recordings',
+        {'device_copy_status': result.success ? 'saved' : result.errorCode ?? 'EXPORT_FAILED'},
+        where: 'id = ? AND device_copy_status = ?',
+        whereArgs: [id, 'pending'],
+      );
+      await _refresh();
+    } catch (error) {
+      // Une coupure de la base ou du moteur peut laisser « pending ». La
+      // clé de publication permet de reprendre sans doubler le fichier.
+      StructuredLogger.instance.warn(domain: 'rec', event: 'device_copy.interrupted',
+          ctx: {'id': id, 'type': error.runtimeType.toString()});
+    } finally {
+      _publishing.remove(id);
+    }
+  }
+
+  Future<void> retryDeviceCopy(Recording rec) async {
+    if (!_publishLocalRecordings || !rec.deviceCopyFailed || rec.id == null) return;
+    final db = await PlaylistDatabase.instance.database;
+    final changed = await db.update(
+      'recordings', {'device_copy_status': 'pending'},
+      where: 'id = ? AND device_copy_status = ?',
+      whereArgs: [rec.id!, rec.deviceCopyStatus!],
+    );
+    if (changed == 1) {
+      await _refresh();
+      await _publishToDevice(rec);
+    }
   }
 
   /// Finalise un enregistrement par son CHEMIN de fichier, sans avoir

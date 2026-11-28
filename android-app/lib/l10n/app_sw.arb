@@ -712,6 +712,7 @@
   "tvNoRecordingsBody": "Rekodi zako zitaonekana hapa. Unapotazama kituo, bonyeza REC ili kurekodi.",
   "tvMyRecordings": "Rekodi zangu",
   "tvDeleteQuestion": "Ufute?",
+  "tvDeleteRecordingAppCopy": "Ondoa “{name}” kutoka kwenye rekodi za programu? Video itabaki katika Movies/NOVATUBE.",
   "tvDeleteRecordingConfirm": "Ufute “{name}” kabisa?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

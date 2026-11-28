@@ -2142,6 +2142,7 @@
   "tvNoRecordingsBody": "Deine Aufnahmen erscheinen hier. Drücke während der Wiedergabe eines Senders die REC-Taste, um aufzunehmen.",
   "tvMyRecordings": "Meine Aufnahmen",
   "tvDeleteQuestion": "Löschen?",
+  "tvDeleteRecordingAppCopy": "„{name}“ aus den Aufnahmen der App entfernen? Das Video in Movies/NOVATUBE bleibt erhalten.",
   "tvDeleteRecordingConfirm": "„{name}“ endgültig löschen?",
   "@tvDeleteRecordingConfirm": {
     "placeholders": {

@@ -21,6 +21,7 @@ class Recording {
     this.channelLogoUrl,
     this.streamUrl,
     this.autoStopReason,
+    this.deviceCopyStatus,
   });
 
   final int? id;
@@ -54,6 +55,14 @@ class Recording {
   ///   - `interruptedByOsKill`   (recovere via recoverOrphans, F-01)
   ///   - `null`                  (stop volontaire utilisateur ou ancien)
   final String? autoStopReason;
+
+  /// État de la copie MediaStore locale. Null pour les anciennes fiches ou
+  /// une capture incomplète, sinon « pending », « saved » ou le code d’échec.
+  final String? deviceCopyStatus;
+  bool get deviceCopyPending => deviceCopyStatus == 'pending';
+  bool get deviceCopySaved => deviceCopyStatus == 'saved';
+  bool get deviceCopyFailed =>
+      deviceCopyStatus != null && !deviceCopyPending && !deviceCopySaved;
 
   Duration get duration {
     final int end = endedAt ?? DateTime.now().millisecondsSinceEpoch;
@@ -102,6 +111,7 @@ class Recording {
       'channel_logo_url': channelLogoUrl,
       'stream_url': streamUrl,
       'auto_stop_reason': autoStopReason,
+      if (deviceCopyStatus != null) 'device_copy_status': deviceCopyStatus,
     };
   }
 
@@ -118,6 +128,7 @@ class Recording {
       channelLogoUrl: map['channel_logo_url'] as String?,
       streamUrl: map['stream_url'] as String?,
       autoStopReason: map['auto_stop_reason'] as String?,
+      deviceCopyStatus: map['device_copy_status'] as String?,
     );
   }
 
@@ -139,6 +150,7 @@ class Recording {
       channelLogoUrl: channelLogoUrl,
       streamUrl: streamUrl,
       autoStopReason: autoStopReason ?? this.autoStopReason,
+      deviceCopyStatus: deviceCopyStatus,
     );
   }
 }

@@ -7,15 +7,23 @@ out="$(mkdir -p "$2" && readlink -f "$2")"
 scripts="$(dirname "$(readlink -f "$0")")"
 sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:?Android SDK absent}}"
 serial=emulator-5554
-pkg=com.sevenmotion.novatube.tv
+pkg="${NOVATUBE_REVIEW_PACKAGE:-com.sevenmotion.novatube.tv}"
+version="${NOVATUBE_REVIEW_VERSION_CODE:-1794878684}"
+digest="${NOVATUBE_REVIEW_APK_SHA256:-}"
+[[ "$pkg" =~ ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$ && "$version" =~ ^[0-9]+$ ]]
 image='system-images;android-34;google_apis;x86_64'
 accel="${NOVATUBE_EMULATOR_ACCEL:-on}"
 emulator_pid=''
 receiver_pid=''
 ssdp_pid=''
 mkdir -p "$out/media" "$out/dex" "$out/java"
-cp "$(dirname "$apk")/build-identity.json" "$out/build-identity.json"
-test -n "${NOVATUBE_BUILD_COMMIT:?Commit source attendu absent}"
+if [[ "$pkg" == com.sevenmotion.novatube.tv ]]; then
+  cp "$(dirname "$apk")/build-identity.json" "$out/build-identity.json"
+  test -n "${NOVATUBE_BUILD_COMMIT:?Commit source attendu absent}"
+else
+  [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+  test "$(sha256sum "$apk" | cut -d' ' -f1)" = "$digest"
+fi
 # Les versions récentes du SDK et de l'émulateur n'utilisent pas toutes le
 # même répertoire utilisateur par défaut. Ce chemin explicite évite l'écart.
 export ANDROID_AVD_HOME="$(dirname "$out")/novatube_review_avd"
@@ -40,8 +48,8 @@ trap finish EXIT
 sdkmanager platform-tools emulator 'build-tools;35.0.0' 'platforms;android-34' "$image" > "$out/sdk-install.txt" 2>&1
 bt="$sdk/build-tools/35.0.0"
 "$bt/aapt" dump badging "$apk" > "$out/installed-badging.txt"
-rg -q "name='$pkg'" "$out/installed-badging.txt"
-rg -q "versionCode='1794878684'" "$out/installed-badging.txt"
+rg -Fq "package: name='$pkg'" "$out/installed-badging.txt"
+rg -Fq "versionCode='$version'" "$out/installed-badging.txt"
 
 # Mire animée + tonalité, produites exprès pour ce contrôle. Aucun service IPTV.
 ffmpeg -hide_banner -loglevel error -nostdin -y \
@@ -121,7 +129,8 @@ component="$(adb -s "$serial" shell cmd package resolve-activity --brief \
 [[ "$component" == "$pkg/"* ]]
 adb -s "$serial" logcat -c
 adb -s "$serial" shell am start -W -n "$component" > "$out/app-start.txt"
-python3 -u "$scripts/record_review.py" --out "$out" --serial "$serial" --component "$component"
+python3 -u "$scripts/record_review.py" --out "$out" --serial "$serial" --component "$component" \
+  --package "$pkg" --expected-version "$version" --expected-digest "$digest"
 
 # Les gros intermédiaires synthétiques ne sont pas utiles à la revue finale.
 rm -rf "$out/media" "$out/java" "$out/dex"
