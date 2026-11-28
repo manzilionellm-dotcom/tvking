@@ -50,6 +50,7 @@ features="$("${device[@]}" shell pm list features)"
 "${device[@]}" shell settings put global transition_animation_scale 0
 "${device[@]}" shell settings put system accelerometer_rotation 0
 "${device[@]}" shell settings put system user_rotation 1
+"${device[@]}" shell settings put secure show_ime_with_hard_keyboard 1
 "${device[@]}" shell wm density 320
 "${device[@]}" shell svc power stayon true
 "${device[@]}" install -r "$apk"
@@ -61,4 +62,4 @@ if [[ "$component" != "$package/"* ]]; then
 fi
 [[ "$component" == "$package/"* ]]
 "${device[@]}" shell am start -W -n "$component" >/dev/null
-python3 "$scripts/verify_paste.py" "$serial" "$package" "$apk" "$out"
+python3 "$scripts/verify_paste.py" "$serial" "$package" "$apk" "$out" "$component"

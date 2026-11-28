@@ -8,7 +8,9 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-serial, package, apk, output = sys.argv[1:]
+from source_keyboard import verify_source_keyboard
+
+serial, package, apk, output, component = sys.argv[1:]
 out = Path(output)
 mk_format = re.compile(r"(?<![A-Za-z0-9:])MK(?::[0-9A-F]{2}){5}(?![A-Za-z0-9:])")
 tree_path = "/data/local/tmp/novatube-copy-window.xml"
@@ -149,5 +151,6 @@ proof = {
     "paste_destination": field["package"] + "/" + field["class"],
     "pasted_text_equals_displayed_code": True,
 }
+proof["source_keyboard"] = verify_source_keyboard(serial, package, component, shell, wait_for, tap)
 (out / "proof.json").write_text(json.dumps(proof, ensure_ascii=False, indent=2) + "\n")
 shell("rm", "-f", tree_path)

@@ -16,14 +16,14 @@ permissions:
 
 concurrency:
   group: novatube-lab-vpn-build-${{ github.ref_name }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_name == 'feature/novatube-lab-copie-code' }}
 
 env:
   CI: 'true'
   FLUTTER_SUPPRESS_ANALYTICS: 'true'
   SOURCE_SHA: ${{ github.sha }}
   NOVATUBE_TV_APP_ID: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && 'com.sevenmotion.novatube.tv.lab.copie' || 'com.sevenmotion.novatube.tv.lab.retour.rec.vpn' }}
-  NOVATUBE_TV_VERSION: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && '1.0.3' || '1.0.2' }}
+  NOVATUBE_TV_VERSION: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && '1.0.4' || '1.0.2' }}
   NOVATUBE_LABEL: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && 'NovaTube LAB Copie' || 'NovaTube LAB VPN' }}
   NOVATUBE_APK: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && 'NovaTube-LAB-Copie.apk' || 'NovaTube-LAB-VPN.apk' }}
 
@@ -240,7 +240,7 @@ jobs:
           retention-days: 14
 
   telephone:
-    name: Copier le code affiché et le coller sur Android
+    name: Tester la copie du MK et la saisie au clavier sur téléphone Android
     needs: build
     if: github.ref_name == 'feature/novatube-lab-copie-code'
     runs-on: ubuntu-24.04
@@ -275,7 +275,10 @@ jobs:
         if: always()
         with:
           name: controle-copie-telephone-${{ github.sha }}
-          path: preuve/proof.json
+          path: |
+            preuve/proof.json
+            preuve/last-controls.json
+            preuve/emulator.txt
           if-no-files-found: warn
 
   publier:
@@ -296,14 +299,19 @@ jobs:
           set -euo pipefail
           gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "novatube-tv-apk-$GITHUB_SHA" --dir apk
           gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "controle-copie-telephone-$GITHUB_SHA" --dir preuve
-          test -s preuve/proof.json
+          jq -e --arg sha "$EXPECTED_SHA" --arg pkg "$NOVATUBE_TV_APP_ID" '
+            .verified and .apk_sha256 == $sha and .package == $pkg
+            and .pasted_text_equals_displayed_code
+            and (.source_keyboard | .rotation_preserved_text and .welcome_restored_landscape
+                 and all(.landscape, .portrait; .ime_visible and .field_clear_of_ime and .text_preserved_after_back))
+          ' preuve/proof.json >/dev/null
           echo "$EXPECTED_SHA  apk/$NOVATUBE_APK" | sha256sum -c -
           tag="novatube-lab-copie-${GITHUB_SHA:0:8}"
           if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$tag" "apk/$NOVATUBE_APK" apk/SHA256SUMS.txt preuve/proof.json \
               --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
-              --title "NovaTube LAB Copie $NOVATUBE_TV_VERSION" \
-              --notes "Sur téléphone, le bouton copie le code MK complet affiché sur l’accueil. Test sur Android : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Cette préversion s’installe séparément de la LAB VPN 1.0.2."
+              --title "NovaTube LAB $NOVATUBE_TV_VERSION – Clavier et copie du code" \
+              --notes "Sur téléphone, le bouton copie le code MK complet affiché sur l’accueil. Le formulaire d’ajout de source adapte la saisie M3U et Xtream au clavier du téléphone. Test sur Android : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Cette préversion s’installe séparément de la LAB VPN 1.0.2."
           fi
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$tag/$NOVATUBE_APK"
           curl -fsSL --retry 5 --retry-all-errors "$url" -o public.apk

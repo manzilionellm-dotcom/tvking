@@ -37,6 +37,7 @@ class TvSourceEntryForm extends StatefulWidget {
     this.initialMode = OpenEntryMode.xtream,
     this.onAdded,
     this.autofocus = false,
+    this.touchInput = false,
     this.externalBusy = false,
     this.submitForTesting,
     this.pickLocalFileForTesting,
@@ -48,6 +49,9 @@ class TvSourceEntryForm extends StatefulWidget {
   final OpenEntryMode initialMode;
   final VoidCallback? onAdded;
   final bool autofocus;
+
+  /// Saisie au toucher dans la route dédiée du téléphone.
+  final bool touchInput;
 
   /// Une autre opération occupe le dépôt. La saisie reste possible ; seul
   /// l'envoi et le choix du mode attendent pour éviter un import concurrent.
@@ -404,6 +408,22 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final linkField = _SourceField(
+      key: const ValueKey<String>('tv-source-m3u'),
+      controller: _link,
+      focusNode: _linkFocus,
+      obscure: kNovatubeTv && _privateLink,
+      label: l10n.tvFieldM3uUrl,
+      hint: 'http://',
+      enabled: !_busy,
+      autofocus: widget.autofocus && !widget.touchInput,
+      keyboardType: TextInputType.url,
+      inputFormatters: const <TextInputFormatter>[
+        SourceHttpInputFormatter(),
+      ],
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _submit(),
+    );
     return FocusTraversalGroup(
       policy: ReadingOrderTraversalPolicy(),
       child: Container(
@@ -481,6 +501,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               ],
             ),
             const SizedBox(height: 16),
+            if (widget.touchInput && _mode == OpenEntryMode.m3u)
+              linkField,
             if (kNovatubeTv && _mode == OpenEntryMode.m3u) ...[
               if (_recent.isNotEmpty)
                 Wrap(children: [
@@ -498,8 +520,14 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
               ]),
               _SourceField(controller: _name, focusNode: _nameFocus,
                 label: l10n.tvFieldNameOptional, enabled: !_busy,
-                textInputAction: TextInputAction.next,
-                onSubmitted: (_) => _linkFocus.requestFocus()),
+                textInputAction: widget.touchInput ? TextInputAction.done : TextInputAction.next,
+                onSubmitted: (_) {
+                  if (widget.touchInput) {
+                    _submit();
+                  } else {
+                    _linkFocus.requestFocus();
+                  }
+                }),
             ],
             if (_mode == OpenEntryMode.xtream) ...<Widget>[
               ConfiguredServersPicker(
@@ -517,7 +545,7 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                 label: l10n.tvFieldServer,
                 hint: 'http://',
                 enabled: !_busy,
-                autofocus: widget.autofocus,
+                autofocus: widget.autofocus && !widget.touchInput,
                 keyboardType: TextInputType.url,
                 inputFormatters: const <TextInputFormatter>[
                   SourceHttpInputFormatter(),
@@ -563,23 +591,8 @@ class _TvSourceEntryFormState extends State<TvSourceEntryForm> {
                   ),
                 ),
               ),
-            ] else
-              _SourceField(
-                key: const ValueKey<String>('tv-source-m3u'),
-                controller: _link,
-                focusNode: _linkFocus,
-                obscure: kNovatubeTv && _privateLink,
-                label: l10n.tvFieldM3uUrl,
-                hint: 'http://',
-                enabled: !_busy,
-                autofocus: widget.autofocus,
-                keyboardType: TextInputType.url,
-                inputFormatters: const <TextInputFormatter>[
-                  SourceHttpInputFormatter(),
-                ],
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _submit(),
-              ),
+            ] else if (!widget.touchInput)
+              linkField,
             if (_error != null) ...<Widget>[
               const SizedBox(height: 12),
               Semantics(
