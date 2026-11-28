@@ -9,9 +9,9 @@ permissions:
   actions: read
 
 env:
-  BUILD_RUN: '46090971677'
-  BUILD_SHA: ad1a99cdf1a53ec9df68db548281e91e5c842d98
-  RIGHTS_RUN: '46090971676'
+  BUILD_RUN: '46091822042'
+  BUILD_SHA: 926377d224daf77b14b775981adfe1590e5d113a
+  RIGHTS_RUN: '46091822040'
   LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 jobs:
