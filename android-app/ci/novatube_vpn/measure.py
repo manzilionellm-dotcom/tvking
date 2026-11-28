@@ -89,13 +89,17 @@ class Bench(Scenario):
         self.adb("push", str(playlist), path)
         self.adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
                  "-d", "file://" + path)
-        self.tap(self.locate("file|fichier", timeout=8, semantics=r"^\s*(file|fichier)\s*$"))
+        file_control = self.locate("file|fichier", timeout=8, semantics=r"^\s*(file|fichier)\s*$")
+        self.tap(file_control)
         # DocumentsUI peut ouvrir « Récents » ou « Téléchargements ».
         file_label = r"\bNovaTubeQA(?:\.txt)?\b"
         doc = self.accessibility_point(file_label)
+        if doc is None and self.focused_target(file_control, "file|fichier"):
+            self.key("KEYCODE_DPAD_CENTER", .6)
+            doc = self.accessibility_point(file_label)
         if doc is None:
             menu = self.accessibility_point(r"show roots|open navigation drawer|afficher les racines",
-                                            resource=r":id/toolbar$", region=(0, 0, .18, .35))
+                                            region=(0, 0, .22, .35))
             if menu:
                 self.tap(menu)
             downloads = self.accessibility_point(r"^\s*(downloads|téléchargements)\s*$")
