@@ -105,8 +105,13 @@ abstract final class LiveFallback {
       if (!c.isLive || c.id == current.id) continue;
       final String u = c.streamUrl.trim();
       if (u.isEmpty || u == url) continue;
+      // Quatre adresses locales suffisent même si le catalogue contient des
+      // milliers de copies. Continuer à chercher les autres serveurs, qui
+      // gardent leur priorité même s'ils arrivent en fin de catalogue.
+      final localFull = sameHost.length == maxBackups;
+      if (localFull && _host(u) == host) continue;
       if (matchKey(c.name) != key) continue;
-      final List<String> bucket = _host(u) == host ? sameHost : otherHost;
+      final bucket = !localFull && _host(u) == host ? sameHost : otherHost;
       if (!bucket.contains(u)) bucket.add(u);
       if (otherHost.length >= maxBackups) break;
     }
