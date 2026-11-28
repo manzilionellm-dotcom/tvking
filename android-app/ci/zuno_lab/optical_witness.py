@@ -108,7 +108,7 @@ def observe_ui(folder, state, classify=None, retry=False):
     return ns, ts, size, im, focused
 
 
-def open_fixture(folder, stop_at_grid=False):
+def open_fixture(folder, stop_at_grid=False, observer=None):
     phase = "after-submit" if os.environ.get("ZUNO_PRELOADED_BY_PANEL") == "yes" else "choose"
     via_sources = False
     backed_out = False
@@ -123,6 +123,8 @@ def open_fixture(folder, stop_at_grid=False):
         def classify(ns, ts, size):
             return next_step(ns, ts, size, phase, via_sources, backed_out)
         ns, ts, size, image, focus = observe_ui(folder, phase, classify, retry=previous is not None)
+        if observer is not None:
+            observer(image, ts, ns, size)
         # Évaluer l'arbre et les pixels séparément. Un écran initial figé de
         # la console ne doit pas masquer un formulaire interactif déjà présent.
         ax_action, ax_point = classify(ns, [], size) if ns else ("wait", None)
