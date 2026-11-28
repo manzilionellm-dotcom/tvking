@@ -356,6 +356,7 @@ class RemoteActivationWatch {
   Future<void> _signalLoop(int generation) async {
     final http.Client client = http.Client();
     _signalHttp = client;
+    int refusalDelaySeconds = 2;
     try {
       await _loadCursors();
       while (_run && generation == _generation) {
@@ -409,33 +410,46 @@ class RemoteActivationWatch {
         _signalFailures = 0;
         lastSignalBody = result.raw;
         if (result.orders.isEmpty) continue;
-        final bool applied = await _applyOrders(result.orders, via: 'attente');
-        if (!applied) {
-          await _pause(const Duration(seconds: 2), generation);
-          continue;
+        // Un signal numérique ne porte pas sa révision. Si plusieurs ordres
+        // de listes sont en attente, le GET ne peut lire que le dernier état.
+        // Ne jamais créditer l'ancien ordre avec le résultat du plus récent.
+        final legacySources = result.orders.where((o) =>
+            !o.fleet && o.orderId.isEmpty && channelRefreshesSources(o.kind));
+        final latestSource = legacySources.fold<BoxOrder?>(null,
+            (latest, order) => latest == null || order.id > latest.id ? order : latest);
+        final otherOrders = result.orders.where((o) => !legacySources.contains(o)).toList();
+        final accepted = <BoxOrder>[];
+        final refused = <BoxOrder>[];
+        for (final group in [
+          if (otherOrders.isNotEmpty) otherOrders,
+          if (latestSource != null) [latestSource],
+        ]) {
+          final ok = await _applyOrders(group, via: 'attente');
+          (ok ? accepted : refused).addAll(group);
         }
-        final List<int> boxIds = <int>[
-          for (final BoxOrder o in result.orders)
-            if (!o.fleet) o.id,
-        ];
-        final List<int> fleetIds = <int>[
-          for (final BoxOrder o in result.orders)
-            if (o.fleet) o.id,
-        ];
-        final bool acked = await BoxSignalClient.ack(
-          client: client,
-          mac: mac,
-          boxIds: boxIds,
-          fleetIds: fleetIds,
-        );
-        if (!acked) continue;
-        if (boxIds.isNotEmpty) {
-          _boxCursor = boxIds.reduce((int a, int b) => a > b ? a : b);
+        if (accepted.isNotEmpty) {
+          final acked = await BoxSignalClient.ack(
+            client: client,
+            mac: mac,
+            boxIds: [for (final o in accepted) if (!o.fleet) o.id],
+            fleetIds: [for (final o in accepted) if (o.fleet) o.id],
+          );
+          if (!acked) continue;
+          // Le Worker filtre les identifiants déjà accusés en D1. Un échec
+          // antérieur doit encore être redélivré après redémarrage.
+          for (final o in accepted) {
+            if (refused.any((r) => r.fleet == o.fleet && r.id <= o.id)) continue;
+            if (o.fleet && o.id > _fleetCursor) _fleetCursor = o.id;
+            if (!o.fleet && o.id > _boxCursor) _boxCursor = o.id;
+          }
+          await _saveCursors();
         }
-        if (fleetIds.isNotEmpty) {
-          _fleetCursor = fleetIds.reduce((int a, int b) => a > b ? a : b);
+        if (refused.isNotEmpty) {
+          await _pause(Duration(seconds: refusalDelaySeconds), generation);
+          refusalDelaySeconds = (refusalDelaySeconds * 2).clamp(2, 30).toInt();
+        } else {
+          refusalDelaySeconds = 2;
         }
-        await _saveCursors();
       }
     } finally {
       client.close();
@@ -540,10 +554,19 @@ class RemoteActivationWatch {
       }
       if (SubscriptionState.instance.syncHint == 'offline') return false;
     }
+    final bool sourceApplied = !sourceOrdered || orderOutcome(
+      kind: 'source',
+      receivedAtMs: receivedAt,
+      statusRead: SubscriptionState.instance.syncHint != 'offline',
+      sideEffectOk: true,
+      report: RemoteSourceRepository.lastReport,
+    ).applied;
     final Map<String, bool> sideOk = <String, bool>{};
     for (final String kind in kinds) {
       sideOk[kind] = await _sideEffect(kind);
-      if (sideOk[kind] == true) SignalInbox.instance.note(kind);
+      if (sideOk[kind] == true && (!channelRefreshesSources(kind) || sourceApplied)) {
+        SignalInbox.instance.note(kind);
+      }
     }
     // Issue RÉELLE de chaque ordre suivi : APPLIED ou FAILED, avec le
     // résultat, l'erreur et la révision de listes effectivement appliquée.
@@ -579,6 +602,7 @@ class RemoteActivationWatch {
       }
       unawaited(OrderAckClient.send(ackMac, finals));
     }
+    if (!sourceApplied) return false;
     for (final Map<String, Object?> m in freshBox) {
       _seenBox.add(m['id']! as int);
     }

@@ -15,10 +15,12 @@ from pathlib import Path
 
 from PIL import Image
 from read_display_capture import decode
+from display_capture import capture_png
+from zuno_ui_path import next_step, normalized
 
 APK_PACKAGE = os.environ.get("BENCH_PACKAGE", "com.sevenmotion.tv.seven_tv")
 URL = "http://127.0.0.1:18471/channels.m3u"
-ALLOWED = set("zuno live direct settings movies films series guide sources playlists channels add my source connect load paste file xtream m3u url server username password playlist list enter http mire a b all favourites favorites search watch now loading welcome allow while using app notifications ok continue start skip done english français deutsch select language".split())
+ALLOWED = set("zuno live direct settings movies films series guide sources playlists channels add my source connect load paste file xtream m3u url server username password playlist list enter http mire a b all favourites favorites search watch now loading welcome allow while using app notifications ok continue start skip done english francais deutsch select language langue serveur reglages mes ma liste listes ajouter ajouter ma source coller fichier codes sign in and se connecter et charger autoriser sources series my channels toutes les chaines favoris".split())
 
 
 def adb(*parts, timeout=15, check=True):
@@ -34,8 +36,7 @@ def tap(x, y):
 
 
 def screen():
-    raw = adb("exec-out", "screencap", "-p", timeout=12)
-    return Image.open(io.BytesIO(raw)).convert("RGB")
+    return Image.open(io.BytesIO(capture_png())).convert("RGB")
 
 
 def words(im):
@@ -45,15 +46,16 @@ def words(im):
                             capture_output=True, timeout=20, check=True).stdout.decode(errors="replace")
     items = []
     for row in csv.DictReader(io.StringIO(output), delimiter="\t"):
-        label = re.sub("[^a-z0-9]", "", row["text"].lower())
-        if label in ALLOWED:
-            x, y, w, h = [int(row[k]) for k in ("left","top","width","height")]
-            items.append((label, x + w / 2, y + h / 2))
+        labels = normalized(row["text"]).split()
+        x, y, w, h = [int(row[k]) for k in ("left","top","width","height")]
+        for i, label in enumerate(labels):
+            if label in ALLOWED:
+                items.append((label, x + (i + .5) * w / len(labels), y + h / 2))
     return items
 
 
 def nodes():
-    data = adb("exec-out", "uiautomator", "dump", "/dev/tty", timeout=12, check=False)
+    data = adb("exec-out", "uiautomator", "dump", "/dev/tty", timeout=4, check=False)
     start, end = data.find(b"<hierarchy"), data.rfind(b"</hierarchy>")
     if start < 0 or end < start:
         return []
@@ -79,10 +81,25 @@ def event(folder, state, **details):
                             "state": state, **details})+"\n")
 
 
-def observe_ui(folder, state):
-    ns = nodes()
-    im = screen()
-    ts = words(im)
+def observe_ui(folder, state, classify=None):
+    ns = []
+    try:
+        im = screen()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        event(folder, "screen-unavailable", stage=state, reason=type(exc).__name__)
+        raise
+    try:
+        ts = words(im)
+    except (OSError, subprocess.SubprocessError):
+        event(folder, "ocr-unavailable", stage=state)
+        ts = []
+    # Le dump de l’émulateur peut attendre une interface idle. Un contrôle
+    # OCR déjà reconnu évite tout appel à uiautomator sur cet écran.
+    if classify is None or classify([], ts, im.size)[0] == "wait":
+        try:
+            ns = nodes()
+        except (OSError, subprocess.SubprocessError):
+            event(folder, "semantics-unavailable", stage=state)
     # Ne conserver que des mots d'interface connus et une empreinte des pixels.
     event(folder, state, ocr=[(w,int(x),int(y)) for w,x,y in ts], size=im.size,
           sha256_rgb=hashlib.sha256(im.tobytes()).hexdigest(),
@@ -91,35 +108,48 @@ def observe_ui(folder, state):
     return ns, ts, im.size
 
 
-def wait_control(folder, state, pattern, ocr_fallback, timeout=40, editable=False):
-    deadline = time.monotonic()+timeout
+def open_fixture(folder):
+    phase = "choose"
+    via_sources = False
+    backed_out = False
+    deadline = time.monotonic() + 180
+    actions = {}
+    last_action = {}
     while time.monotonic() < deadline:
-        ns, ts, size = observe_ui(folder, state)
-        for t,x,y,c in ns:
-            if editable and c.endswith("EditText") and x < size[0]*.75:
-                return x,y
-            if re.search(pattern,t) and len(t)<105:
-                return x,y
-        point = ocr_fallback(ts,size) if ocr_fallback else None
-        if point:
-            return point
-        if state == "mode-m3u":
-            if any(t[0] in {"deutsch","français","language"} for t in ts):
-                english = token(ts,{"english"})
-                if english:
-                    tap(*english)
-                    time.sleep(1)
-            elif any(t[0] in {"movies","films","settings"} for t in ts):
-                sources = token(ts,{"server","sources","playlists"})
-                if sources:
-                    tap(*sources)
-                    time.sleep(1)
-        time.sleep(.5)
-    raise RuntimeError("Contrôle non identifié : "+state)
-
-
-def token(ts, names, predicate=lambda x,y: True):
-    return next(((x,y) for t,x,y in ts if t in names and predicate(x,y)), None)
+        def classify(ns, ts, size):
+            return next_step(ns, ts, size, phase, via_sources, backed_out)
+        ns, ts, size = observe_ui(folder, phase, classify)
+        action, point = classify(ns, ts, size)
+        now = time.monotonic()
+        if action == "wait" or now - last_action.get(action, 0) < 6:
+            time.sleep(.4)
+            continue
+        actions[action] = actions.get(action, 0) + 1
+        if actions[action] > 2 or (action in {"type-url", "submit-button"} and actions[action] > 1):
+            event(folder, "navigation-stalled", phase=phase, action=action)
+            raise RuntimeError("Le contrôle TV ne change pas d’écran : " + action)
+        event(folder, "ui-action", phase=phase, action=action)
+        last_action[action] = now
+        if point is not None:
+            tap(*point)
+        if action == "channel-a":
+            return
+        if action in {"return-to-hub", "return-from-settings"}:
+            key("KEYCODE_BACK")
+            backed_out = True
+        elif action == "add-m3u":
+            via_sources = True
+            phase = "url"  # route dédiée ouverte avec initialMode=m3u
+        elif action == "choose-m3u":
+            phase = "url"
+        elif action == "type-url":
+            adb("shell", "input", "text", URL)
+            key("KEYCODE_ENTER")  # TextInputAction.done => _submit
+            phase = "after-submit"
+            last_action["submit-button"] = time.monotonic()
+        time.sleep(.7)
+    event(folder, "navigation-timeout", phase=phase, actions=actions)
+    raise RuntimeError("Aucune ouverture de la chaîne A confirmable dans le délai")
 
 
 def read_marker(im):
@@ -162,36 +192,7 @@ def motion(folder, name, target, timeout, rows, save=False):
 def run(folder, count):
     folder.mkdir(exist_ok=True, parents=True)
     event(folder,"started", package=APK_PACKAGE, source="two synthetic HLS 1080p25; 2 s segments")
-    chip=wait_control(folder,"mode-m3u",r"^m3u\s*/\s*url$",lambda ts,s:token(ts,{"m3u"},lambda x,y:x<s[0]*.72))
-    tap(*chip)
-    row=wait_control(folder,"field-url",r"m3u url|^http://$",lambda ts,s:token(ts,{"http"},lambda x,y:x<s[0]*.72),editable=True)
-    tap(*row)
-    adb("shell","input","text",URL)
-    key("KEYCODE_ENTER")
-    time.sleep(3)
-    def target_a(ts, size):
-        return token(ts,{"mire"},lambda x,y:x<size[0]*.75)
-    deadline=time.monotonic()+65
-    navigated=False
-    confirmed=False
-    while time.monotonic()<deadline:
-        ns,ts,s=observe_ui(folder,"seek-channel")
-        point=next(((x,y) for t,x,y,c in ns if re.search(r"\bmire a\b",t)),None) or target_a(ts,s)
-        if point:
-            tap(*point)
-            break
-        live=next(((x,y) for t,x,y,c in ns if t.strip()=="live"),None) or token(ts,{"live","direct"})
-        if live and not navigated:
-            tap(*live)
-            navigated=True
-        elif not confirmed:
-            submit=next(((x,y) for t,x,y,c in ns if t in ("connect","confirm and load my list","add the list")),None) or token(ts,{"connect","load"})
-            if submit:
-                tap(*submit)
-                confirmed=True
-        time.sleep(1)
-    else:
-        raise RuntimeError("Aucune ligne A reconnue après import par le formulaire")
+    open_fixture(folder)
     rows=[]
     cases=[]
     def persist():
@@ -216,13 +217,26 @@ def run(folder, count):
             if last_confirmed == target or last_confirmed is None:
                 raise RuntimeError("Destination initiale non prouvée ; série interrompue.")
             dispatch=time.monotonic()
-            key(code)
-            end=motion(folder,str(i+1),target,9,rows,i<2)
-            cases.append({"number":i+1,"phase":phase,"key":code,"target":target,"from":last_confirmed,"dispatch_s":dispatch,
-                          "movement_upper_ms":round((end-dispatch)*1000,3) if end else None})
+            attempt = {"number":i+1,"phase":phase,"key":code,"target":target,
+                       "from":last_confirmed,"dispatch_s":dispatch,"movement_upper_ms":None,
+                       "status":"dispatch-requested"}
+            cases.append(attempt)
             persist()
+            try:
+                key(code)
+                attempt["status"] = "command-returned"
+                end=motion(folder,str(i+1),target,9,rows,i<2)
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+                event(folder, "trial-collection-failure", number=i+1, stage=attempt["status"],
+                      reason=type(exc).__name__)
+                attempt["status"] = ("dispatch-uncertain" if attempt["status"] == "dispatch-requested"
+                                     else "capture-failed")
+                raise
             if end is None:
+                attempt["status"] = "target-timeout"
                 raise RuntimeError("Destination non confirmée ; conserver l’expiration puis recalibrer hors série.")
+            attempt.update(status="verified-motion",movement_upper_ms=round((end-dispatch)*1000,3))
+            persist()
             last_confirmed=target
             if phase=="spaced":
                 time.sleep(max(0,dispatch+5-time.monotonic()))

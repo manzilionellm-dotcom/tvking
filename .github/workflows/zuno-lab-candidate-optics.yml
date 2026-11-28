@@ -5,8 +5,8 @@ on:
     paths: ['.github/workflows/zuno-lab-candidate-optics.yml']
 
 env:
-  BUILD_RUN: '46087049284'
-  BUILD_SHA: c9f0153fae358aaef2e45d83c3f2e27383d3e0a0
+  BUILD_RUN: '46089281538'
+  BUILD_SHA: 408119fc4d58f51a125a468dfae28bf264decf60
   BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 permissions:
