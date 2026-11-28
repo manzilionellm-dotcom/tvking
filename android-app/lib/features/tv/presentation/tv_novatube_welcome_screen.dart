@@ -234,7 +234,7 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                               displayMac(_mac, showPrefix: true),
                               textDirection: TextDirection.ltr,
                               style: t.mono(
-                                32,
+                                34,
                                 color: t.accentBright,
                                 spacing: 2,
                               ),
