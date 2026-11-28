@@ -111,7 +111,7 @@ class Receiver:
                 raise RuntimeError(f'Échec console {command} : {reply}')
             return reply
 
-        mapping = r'^tcp:\s*19001\s*=>\s*(\d+)\s*$'
+        mapping = r'^(?:ipv4[ \t]+)?tcp:[ \t]*19001[ \t]*=>[ \t]*(\d+)[ \t]*$'
         if re.search(mapping, console('list'), re.MULTILINE):
             console('del', 'tcp:19001')
         console('add', f'tcp:19001:{guest_port}')
