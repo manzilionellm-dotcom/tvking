@@ -1,3 +1,9 @@
+import 'package:tv_king/features/tv/presentation/tv_app.dart';
+import 'package:tv_king/features/tv/presentation/tv_activation_screen.dart';
+import 'package:tv_king/features/subscription/data/subscription_state.dart';
+import 'package:tv_king/features/security/data/parental_controls.dart';
+import 'package:tv_king/core/update/build_flags.dart';
+import 'package:native_video_player/native_video_player.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -294,4 +300,67 @@ void main() {
       }
     },
   );
+
+  // L’essai emprunte le Navigator installé par TvApp et le véritable écran
+  // du lecteur. Les deux chaînes sont des mires locales sans contenu protégé.
+  for (final cause in ['frozen', 'banned', 'kids']) {
+    testWidgets('le lecteur actif retire sa surface après ${cause}', (tester) async {
+      expect(kFreeZunoPlayer, isTrue, reason: 'Utiliser les defines du build officiel');
+      final subscription = SubscriptionState.instance;
+      await subscription.resetForTesting();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('subscription.block');
+      await subscription.initialize();
+      await ParentalControls.instance.setKidsMode(false);
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1920, 1080);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(const TvApp());
+      await tester.pump();
+      try {
+        final navigator = Navigator.of(tester.element(find.byType(TvGate)));
+        final probe = Channel(
+          id: 'mire-autorisation',
+          name: cause == 'kids' ? 'Mire 18+' : 'Mire A',
+          isLive: true,
+          category: cause == 'kids' ? 'Adult' : 'Fixtures',
+          streamUrl: 'http://127.0.0.1:18471/A/index.m3u8',
+        );
+        navigator.push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => TvPlayerScreen(channels: [probe], startIndex: 0),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.byType(TvPlayerScreen), findsOneWidget);
+        expect(find.byType(NativeVideoView), findsOneWidget);
+        if (cause == 'kids') {
+          await ParentalControls.instance.setKidsMode(true);
+          expect(ParentalControls.instance.kidsMode.value, isTrue);
+        } else {
+          // Le cache local de test passe par le même notifier que la lecture
+          // du statut distant. Aucune commande administrative ne sort de ce test.
+          await subscription.resetForTesting();
+          await prefs.setString('subscription.block', cause);
+          await subscription.initialize();
+          expect(subscription.status.name, cause);
+        }
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        final nativeAlive = find.byType(NativeVideoView, skipOffstage: false).evaluate().length;
+        debugPrint('ZUNO_DROITS cause=$cause vuesNatives=$nativeAlive');
+        expect(nativeAlive, 0, reason: 'ZUNO_DROITS_SURFACE_CONSERVEE');
+        if (cause != 'kids') {
+          expect(find.byType(TvActivationScreen), findsOneWidget);
+        }
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 10));
+        await ParentalControls.instance.setKidsMode(false);
+        await prefs.remove('subscription.block');
+        await subscription.resetForTesting();
+      }
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !kFreeZunoPlayer);
+  }
 }

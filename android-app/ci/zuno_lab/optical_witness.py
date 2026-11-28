@@ -32,7 +32,7 @@ def key(code):
 
 
 def tap(x, y):
-    adb("shell", "input", "tap", str(int(x)), str(int(y)))
+    adb("shell", "input", "tap", str(int(x)), str(int(y)), timeout=25)
 
 
 def screen():
@@ -43,7 +43,7 @@ def words(im):
     buff = io.BytesIO()
     im.save(buff, "PNG")
     output = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11", "tsv"], input=buff.getvalue(),
-                            capture_output=True, timeout=20, check=True).stdout.decode(errors="replace")
+                            capture_output=True, env={**os.environ, "OMP_THREAD_LIMIT": "1"}, timeout=20, check=True).stdout.decode(errors="replace")
     items = []
     for row in csv.DictReader(io.StringIO(output), delimiter="\t"):
         labels = normalized(row["text"]).split()
@@ -55,7 +55,12 @@ def words(im):
 
 
 def nodes():
-    data = adb("exec-out", "uiautomator", "dump", "/dev/tty", timeout=4, check=False)
+    # Le dump via /dev/tty peut perdre sa fin quand ADB est chargé. Une
+    # copie privée sur cet AVD vierge évite de mélanger XML et notification.
+    private = "/data/local/tmp/zuno-optics-ui.xml"
+    adb("shell", "rm", "-f", private, timeout=4, check=False)
+    adb("shell", "uiautomator", "dump", private, timeout=14, check=False)
+    data = adb("exec-out", "cat", private, timeout=6, check=False)
     start, end = data.find(b"<hierarchy"), data.rfind(b"</hierarchy>")
     if start < 0 or end < start:
         return []

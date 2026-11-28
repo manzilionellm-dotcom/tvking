@@ -5,7 +5,10 @@ image="${1:?image Android}"
 out="${2:?sortie}"
 mkdir -p "$out"
 sdkmanager platform-tools emulator 'build-tools;35.0.0' "$image" >/dev/null
-echo no | avdmanager create avd -f -n lab -k "$image" >/dev/null
+profile=pixel_2
+if [[ "$image" == *android-tv* ]]; then profile=tv_1080p; fi
+echo no | avdmanager create avd -f -n lab -k "$image" --device "$profile" >/dev/null
+printf '%s\n' "$profile" > "$out/avd-profile.txt"
 sudo setfacl -m "u:$(id -un):rw" /dev/kvm
 export ANDROID_SERIAL=emulator-5554
 adb start-server
@@ -25,5 +28,8 @@ adb shell input keyevent 82
 adb shell settings put global device_provisioned 1
 adb shell settings put secure user_setup_complete 1
 adb shell settings put secure tv_user_setup_complete 1
-if [[ "$image" == *android-tv* ]]; then adb shell wm size 1920x1080; fi
+# Le profil matériel fixe aussi la surface réellement capturée par la console.
+# Avec le profil générique, wm size 1920x1080 laissait une sortie 320x640.
+adb shell wm size > "$out/resolution.txt"
+adb shell wm density > "$out/density.txt"
 printf '%s\n' "$image" > "$out/image.txt"

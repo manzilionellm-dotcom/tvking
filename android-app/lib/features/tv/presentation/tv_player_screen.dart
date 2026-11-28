@@ -28,6 +28,9 @@ import '../../cast/data/cast_platform.dart';
 import 'dart:async';
 import 'dart:io';
 
+import '../../../core/update/build_flags.dart';
+import '../../security/data/parental_controls.dart';
+
 import '../desktop/desktop_cast_controls.dart';
 import '../data/zuno_pip_service.dart';
 
@@ -106,10 +109,102 @@ class TvPlayerScreen extends StatefulWidget {
   final String? startAtUrl;
 
   @override
-  State<TvPlayerScreen> createState() => _TvPlayerScreenState();
+  State<TvPlayerScreen> createState() => _PlayerAccessState();
 }
 
-class _TvPlayerScreenState extends State<TvPlayerScreen>
+/// Le lecteur possède la liste de zap au moment de son ouverture. Si le
+/// profil devient protégé, cette ancienne session doit être démontée, même
+/// si Direct a déjà filtré sa propre grille derrière le lecteur.
+class _PlayerAccessState extends State<TvPlayerScreen> {
+  bool _closed = false;
+  late List<Channel> _channels;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _channels = widget.channels;
+    _index = widget.startIndex;
+    if (!kFreeZunoPlayer) return;
+    final mode = ParentalControls.instance.kidsMode;
+    mode.addListener(_onKidsMode);
+    if (!mode.value) return;
+    final current = _channels[_index];
+    if (current.genre == ChannelGenre.adult) {
+      _close();
+      return;
+    }
+    // Le Direct écarte déjà les chaînes qui attendent leur préclassement.
+    // Garder la variante sélectionnée par identité évite toute substitution
+    // entre deux chaînes homonymes ou partageant le même identifiant EPG.
+    _channels = [
+      for (final channel in widget.channels)
+        if (identical(channel, current) ||
+            _knownSafe(channel))
+          channel,
+    ];
+    _index = _channels.indexOf(current);
+  }
+
+  static bool _knownSafe(Channel channel) {
+    final genre = ChannelPrecompute.cachedGenre(channel);
+    return genre != null && genre != ChannelGenre.adult;
+  }
+
+  void _onKidsMode() {
+    if (!_closed && ParentalControls.instance.kidsMode.value) {
+      setState(_close);
+    }
+  }
+
+  void _close() {
+    _closed = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && route.isActive && !route.isFirst) {
+        Navigator.of(context).removeRoute(route);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    if (kFreeZunoPlayer) {
+      ParentalControls.instance.kidsMode.removeListener(_onKidsMode);
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_closed) {
+      return ColoredBox(color: TvAppTokens.playbackOf(context).bg);
+    }
+    return _TvPlayerSession(
+      channels: _channels,
+      startIndex: _index,
+      startAtUrl: widget.startAtUrl,
+    );
+  }
+}
+
+class _TvPlayerSession extends StatefulWidget {
+  const _TvPlayerSession({
+    required this.channels,
+    required this.startIndex,
+    this.startAtUrl,
+  });
+
+  final List<Channel> channels;
+  final int startIndex;
+  final String? startAtUrl;
+
+  @override
+  State<_TvPlayerSession> createState() => _TvPlayerScreenState();
+}
+
+class _TvPlayerScreenState extends State<_TvPlayerSession>
     with WidgetsBindingObserver {
   late final NativeVideoController _controller;
   late final ZunoPipPlayback _pip;

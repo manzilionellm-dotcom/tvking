@@ -6,6 +6,7 @@ on:
       - '.github/workflows/zuno-lab-guide.yml'
       - 'android-app/lib/features/tv/presentation/tv_player_screen.dart'
       - 'android-app/lib/features/tv/presentation/tv_live_screen.dart'
+      - 'android-app/lib/features/tv/presentation/tv_app.dart'
       - 'android-app/test/features/tv/zuno_tv_variant_focus_test.dart'
 
 permissions:
@@ -32,6 +33,19 @@ jobs:
           screen=lib/features/tv/presentation/tv_player_screen.dart
           git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$screen" > "$screen"
           options=(--no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789)
+          # Vérifier les trois retraits sur le vrai Navigator, puis rétablir
+          # le candidat. Une autre assertion rouge n’est pas une reproduction.
+          shell=lib/features/tv/presentation/tv_app.dart
+          git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$shell" > "$shell"
+          if flutter test "${options[@]}" --plain-name 'le lecteur actif retire sa surface' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/guide/droits-avant.txt" 2>&1; then
+            echo 'Absence de reproduction du défaut de politique pendant la lecture'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/droits-avant.txt"
+          for cause in frozen banned kids; do
+            grep -Fq "ZUNO_DROITS cause=$cause vuesNatives=1" "$RUNNER_TEMP/guide/droits-avant.txt"
+          done
+          grep -Fq 'ZUNO_DROITS_SURFACE_CONSERVEE' "$RUNNER_TEMP/guide/droits-avant.txt"
+          git restore -- "$shell"
           # Deux OK avant la libération de l’aperçu ont empilé deux lecteurs
           # sur le témoin. Une panne de compilation ne valide pas ce test rouge.
           live=lib/features/tv/presentation/tv_live_screen.dart
