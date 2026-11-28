@@ -1,0 +1,57 @@
+name: ZUNO LAB • première image et zaps du témoin 119
+
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths:
+      - '.github/workflows/zuno-lab-optics.yml'
+      - 'android-app/ci/zuno_lab/optical_witness.py'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  witness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45710084378
+          artifact-ids: 15068980205
+          merge-multiple: true
+          path: ${{ runner.temp }}/official
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: optics-tools
+          persist-credentials: false
+          sparse-checkout: android-app/ci/novatube_tv
+      - name: Encoder deux mires de référence
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil
+          python3 optics-tools/android-app/ci/novatube_tv/pilot_live_source.py prepare "$RUNNER_TEMP/fixtures"
+      - name: Ouvrir l'application, ajouter la liste par l'écran et observer les compteurs
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$PWD/optics-tools/android-app/ci/novatube_tv"
+          python3 "$PYTHONPATH/pilot_live_source.py" serve "$RUNNER_TEMP/fixtures" --duration 3000 >"$RUNNER_TEMP/fixture.log" 2>&1 &
+          source android-app/ci/zuno_lab/run_witness_device.sh
+          adb reverse tcp:18471 tcp:18471
+          curl -fsS --retry 5 http://127.0.0.1:18471/A/index.m3u8 >/dev/null
+          python3 android-app/ci/zuno_lab/optical_witness.py "$out/optical" --count 100
+      - name: Conserver uniquement les résultats expurgés
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: zuno-witness-119-optical
+          path: zuno-witness/
+          retention-days: 14
+          if-no-files-found: error
