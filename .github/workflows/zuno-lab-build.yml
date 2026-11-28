@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/zuno-lab-build.yml'
       - 'android-app/ci/zuno_lab/prepare_lab.py'
+      - 'android-app/ci/play_editions/prepare.py'
+      - 'android-app/ci/mobile/verify_work_database.sh'
       - 'android-app/packages/native_video_player/android/src/main/**'
       - 'android-app/lib/**'
 
@@ -56,6 +58,7 @@ jobs:
             --dart-define=APP_BUILD_TS="$(date +%s)" --target=lib/main_tv.dart
           mkdir -p build/lab
           cp build/app/outputs/flutter-apk/app-release.apk build/lab/ZUNO-LAB.apk
+          bash ci/mobile/verify_work_database.sh build/lab/ZUNO-LAB.apk
           cd build/lab
           bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           "$bt/apksigner" verify --verbose --print-certs ZUNO-LAB.apk > signature.txt
