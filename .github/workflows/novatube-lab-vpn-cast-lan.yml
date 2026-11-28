@@ -2,7 +2,10 @@ name: NovaTube LAB VPN · lecture Cast sur le réseau local émulé
 on:
   push:
     branches: ['qa/novatube-lab-vpn-rapidite']
-    paths: ['.github/workflows/novatube-lab-vpn-cast-lan.yml']
+    paths:
+      - '.github/workflows/novatube-lab-vpn-cast-lan.yml'
+      - 'android-app/ci/novatube_play_review/dlna_receiver.py'
+      - 'android-app/ci/novatube_vpn/cast_lan_once.py'
   workflow_dispatch:
 
 permissions:
