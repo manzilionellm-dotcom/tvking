@@ -3,6 +3,7 @@ import csv
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -23,13 +24,21 @@ def run(out, status):
     out.mkdir()
     screen_dir = out / "ecrans"
     screen_dir.mkdir()
-    targets = {"frozen": {"frozen", "gelé", "gele"}, "banned": {"suspended", "suspendu"}}[status]
+    targets = {"frozen": {"paused", "pause", "frozen", "gelé", "gele"}, "banned": {"banned", "banni", "suspended", "suspendu"}}[status]
     LABELS["suspension"] = targets | {"account", "compte", "temporarily", "temporairement"}
     results = {"status_test": status, "utc": datetime.now(timezone.utc).isoformat(), "film": None}
     def save():
         (out / "preuve.json").write_text(json.dumps(results, ensure_ascii=False, indent=2))
     os.environ["ZUNO_PRELOADED_BY_PANEL"] = "yes"
-    open_fixture(out)
+    try:
+        open_fixture(out)
+    except RuntimeError as exc:
+        results["setup_first_attempt"]=type(exc).__name__
+        save()
+        panel.adb("shell","am","force-stop",panel.PACKAGE)
+        panel.adb("shell","am","start","-n",panel.PACKAGE+"/com.example.tv_king.MainActivity")
+        time.sleep(4)
+        open_fixture(out)
     initial = []
     moving = motion(out,"ouverture","A",12,initial,True)
     if not moving:
@@ -62,6 +71,7 @@ def run(out, status):
             raise RuntimeError("La révocation n'a pas été écrite")
         deadline = time.monotonic()+160
         inspect_at = time.monotonic()+2
+        ack_at = None
         positive = None
         rows = []
         ledger = out / "samples.csv"
@@ -80,6 +90,11 @@ def run(out, status):
                 writer.writerow([start,end,ch,n,ok]);file.flush()
                 rows.append((start,end,ch,n,ok))
                 if end>=inspect_at and positive is None:
+                    applied=panel.api("GET","/api/v1/boxes/live")["items"][0].get("last_applied") or {}
+                    if ack_at is None and applied.get("kind") in ("suspend","block"):
+                        ack_at=time.monotonic()
+                        results["reader_ack_observed_s"]=ack_at
+                        results["reader_ack_kind"]=applied["kind"]
                     try:
                         ev=screen_evidence(screen_dir,"look-"+str(len(rows)))
                         labels=set(ev["labels"])
@@ -87,12 +102,18 @@ def run(out, status):
                         if not labels & targets:
                             nodes=visible_nodes(panel.PACKAGE)
                             for label,_,_,_ in nodes:
-                                words.update(label.casefold().replace("."," ").split())
+                                words.update(re.findall(r"[^\W_]+",label.casefold()))
+                        # Termes réellement utilisés par TvActivationScreen, dont
+                        # « Your account is paused » et « Account banned ».
                         hits=(labels|words)&targets
                         if hits and is_foreground(panel.PACKAGE):
                             positive=time.monotonic()
                             results["lock_screen"]=dict(time=positive,visible_words=sorted(hits),sensor="pixels" if labels&targets else "accessibility")
                             save()
+                            key("KEYCODE_BACK")
+                            time.sleep(.4)
+                            key("KEYCODE_CHANNEL_DOWN")
+                            results["attempt_after_revocation"]=["BACK","CHANNEL_DOWN"]
                     except (OSError,ValueError,RuntimeError,subprocess.SubprocessError):
                         pass
                     inspect_at=time.monotonic()+5

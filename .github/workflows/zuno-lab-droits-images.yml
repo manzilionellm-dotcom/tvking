@@ -19,7 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {version: avant, status: frozen, run: '46089851484', sha: 8bc709cb275e0ac97c3d907d2bf8ad0447594584}
           - {version: apres, status: frozen, run: '46091822042', sha: 926377d224daf77b14b775981adfe1590e5d113a}
           - {version: apres, status: banned, run: '46091822042', sha: 926377d224daf77b14b775981adfe1590e5d113a}
     env:
