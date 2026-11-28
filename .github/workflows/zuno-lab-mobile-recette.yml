@@ -1,0 +1,99 @@
+name: ZUNO LAB — contrôler la recette des deux éditions 7 MOTION avec leur moteur épinglé
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths: ['.github/workflows/zuno-lab-mobile-recette.yml', 'android-app/ci/mobile/prepare_novatube_video.py']
+permissions:
+  contents: read
+jobs:
+  regression_mobile:
+    strategy:
+      fail-fast: false
+      matrix:
+        edition:
+        - reviewed
+        - play
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        path: mission
+        persist-credentials: false
+        ref: daba06b196754e4fff9dbfd8a454bd804b752be6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+        path: phone
+        persist-credentials: false
+    - name: Récupérer le candidat mobile déjà testé sur Android
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ matrix.edition == 'play' && '8ea5a55075d8b5ad334643b780067c486a917f61' || '69eee01d24f50d5e516935b94a189f791de0837c' }}
+        path: mobile-reviewed
+        persist-credentials: false
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+        path: recette-verifiee
+        persist-credentials: false
+        sparse-checkout: android-app/ci/mobile
+    - name: Appliquer uniquement la recette de compilation à l’arbre du candidat inchangé
+      run: |
+        set -euo pipefail
+        cp recette-verifiee/android-app/ci/mobile/prepare_novatube_video.py mission/android-app/ci/mobile/prepare_novatube_video.py
+        test "$(git -C mission diff --name-only)" = android-app/ci/mobile/prepare_novatube_video.py
+    - name: Préparer le code mobile sans fusionner la lignée TV
+      working-directory: phone
+      run: |
+        if [[ "${{ matrix.edition }}" == "play" ]]; then
+          bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../mobile-reviewed
+        else
+          bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+        fi
+        python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
+        if [[ "${{ matrix.edition }}" == "play" ]]; then
+          flutter pub get --enforce-lockfile
+        else
+          flutter pub get
+        fi
+        flutter gen-l10n
+    - name: Vérifier la numérotation des APK publiés
+      working-directory: phone
+      run: bash ci/build_label_test.sh
+    - name: Vérifier la classification du matériel sans appareil client
+      if: matrix.edition == 'reviewed'
+      working-directory: phone
+      run: bash ci/test-device-hardware-kind.sh
+    - name: Analyser le code mobile complet
+      working-directory: phone
+      run: flutter analyze --no-fatal-infos --no-fatal-warnings
+    - name: Vérifier les gestes et les actions utilisateur corrigés
+      if: matrix.edition == 'reviewed'
+      working-directory: phone
+      run: flutter test --reporter expanded test/core/settled_page_view_test.dart test/features/playlists/library_refresh_test.dart test/features/playlists/import_return_test.dart
+    - name: Vérifier les régressions et la suite mobile complète
+      working-directory: phone
+      run: |
+        mkdir -p build/premium-captures
+        flutter test --reporter expanded --dart-define=PREMIUM_CAPTURE_DIR=build/premium-captures
+    - name: Vérifier le lecteur gratuit, ses sources et la communication avec le panel
+      if: matrix.edition == 'play'
+      working-directory: phone
+      run: |
+        bash ../mission/android-app/ci/mobile/free/prepare-sources.sh
+        flutter gen-l10n
+        flutter analyze --no-fatal-infos --no-fatal-warnings
+        bash ../mission/android-app/ci/mobile/free/test-release.sh
+    - name: Conserver les captures du vrai accueil mobile
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: 7motion-premium-preview-${{ matrix.edition }}
+        path: phone/build/premium-captures/*.png
+        if-no-files-found: ignore
+        retention-days: 14
