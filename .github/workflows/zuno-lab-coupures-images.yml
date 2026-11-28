@@ -72,9 +72,19 @@ jobs:
           python3 "$RUNNER_TEMP/origine.py" serve "$RUNNER_TEMP/fixtures" --duration 3500 >"$RUNNER_TEMP/fixture.log" 2>&1 &
           python3 android-app/ci/zuno_lab/outage_pixels/origin.py "$out/reseau" "$arm" "$LINK" >"$RUNNER_TEMP/bridge.log" 2>&1 &
           (cd apk && sha256sum -c SHA256SUMS)
-          source android-app/ci/zuno_lab/boot_lab.sh 'system-images;android-36;android-tv;x86_64' "$out"
+          boot=android-app/ci/zuno_lab/boot_lab.sh
           if [[ "$LINK" == direct ]]; then
-            adb shell settings put global global_http_proxy_exclusion_list '10.0.2.2,localhost,127.0.0.1'
+            # Le proxy de lancement QEMU refusait aussi le trafic vers l’hôte de la mire.
+            # Le DNS Internet reste coupé, l’APK est configuré sur le Worker de boucle locale.
+            grep -F -- '-http-proxy http://127.0.0.1:9' "$boot" >/dev/null
+            sed 's@-http-proxy http://127.0.0.1:9@-dns-server 127.0.0.1@' "$boot" > "$RUNNER_TEMP/boot-local.sh"
+            boot="$RUNNER_TEMP/boot-local.sh"
+          fi
+          source "$boot" 'system-images;android-36;android-tv;x86_64' "$out"
+          if [[ "$LINK" == direct ]]; then
+            adb shell 'printf "GET /A/index.m3u8 HTTP/1.0\r\nHost: 10.0.2.2\r\n\r\n" | toybox nc -w 8 10.0.2.2 18471' > "$RUNNER_TEMP/controle-local"
+            grep -q '^#EXTM3U' "$RUNNER_TEMP/controle-local"
+            echo 'guest=10.0.2.2:18471 manifest=verified' > "$out/controle-trajet.txt"
           fi
           # Une fenêtre de bienvenue du lanceur peut intercepter HOME sur un AVD
           # neuf. Le parcours vidéo possède ses propres preuves et n'impose pas
@@ -90,6 +100,7 @@ jobs:
           if [[ "$LINK" == tunnel ]]; then adb reverse tcp:18471 tcp:18471; fi
           adb reverse tcp:18475 tcp:18475
           adb reverse tcp:18789 tcp:18787
+          adb reverse --list | awk 'NF>=2 {print $(NF-1),$NF}' > "$out/trajets-reverse.txt"
           export ZUNO_QA_PASS
           ZUNO_QA_PASS=$(python3 -c 'import secrets;print(secrets.token_urlsafe(42))')
           node android-app/ci/zuno_lab/panel/local-worker.mjs android-app/cloudflare android-app/cloudflare "$RUNNER_TEMP/ready.json" >"$RUNNER_TEMP/workerd.log" 2>&1 & worker=$!
