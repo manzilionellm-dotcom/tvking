@@ -218,6 +218,63 @@ void main() {
     },
   );
   testWidgets(
+    'double OK dans Direct ouvre un seul lecteur et autorise sa réouverture',
+    (tester) async {
+      await show(tester, const TvLiveScreen());
+      try {
+        final row = find.text(names[1]).first;
+        Focus.of(tester.element(row)).requestFocus();
+        await tester.pump();
+
+        // Deux paires appui/relâchement avant la fin de la libération
+        // asynchrone de l’aperçu. Le système de focus les envoie à la vraie
+        // ligne du Direct, même si aucun nouveau frame n’a encore été tracé.
+        void pressOk() {
+          const key = LogicalKeyboardKey.select;
+          const physical = PhysicalKeyboardKey.select;
+          HardwareKeyboard.instance.handleKeyEvent(
+            const KeyDownEvent(
+              logicalKey: key,
+              physicalKey: physical,
+              timeStamp: Duration.zero,
+            ),
+          );
+          HardwareKeyboard.instance.handleKeyEvent(
+            const KeyUpEvent(
+              logicalKey: key,
+              physicalKey: physical,
+              timeStamp: Duration.zero,
+            ),
+          );
+        }
+
+        pressOk();
+        pressOk();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        final players = find.byType(TvPlayerScreen, skipOffstage: false);
+        debugPrint('ZUNO_DOUBLE_OK routes=${players.evaluate().length}');
+        expect(players, findsOneWidget, reason: 'ZUNO_DOUBLE_OK_ROUTES');
+        final player = tester.widget<TvPlayerScreen>(players);
+        expect(player.channels[player.startIndex].name, names[1]);
+
+        Navigator.of(tester.element(players)).pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(players, findsNothing);
+        Focus.of(tester.element(row)).requestFocus();
+        await tester.pump();
+        pressOk();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(players, findsOneWidget);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 10));
+      }
+    },
+  );
+  testWidgets(
     'la recherche de la chaîne conserve chaque variante sur ZUNO TV',
     (tester) async {
       await show(tester, const TvSearchScreen(initialQuery: 'Mire Sport'));

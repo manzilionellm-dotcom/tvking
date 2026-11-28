@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/zuno-lab-guide.yml'
       - 'android-app/lib/features/tv/presentation/tv_player_screen.dart'
+      - 'android-app/lib/features/tv/presentation/tv_live_screen.dart'
       - 'android-app/test/features/tv/zuno_tv_variant_focus_test.dart'
 
 permissions:
@@ -31,6 +32,17 @@ jobs:
           screen=lib/features/tv/presentation/tv_player_screen.dart
           git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$screen" > "$screen"
           options=(--no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789)
+          # Deux OK avant la libération de l’aperçu ont empilé deux lecteurs
+          # sur le témoin. Une panne de compilation ne valide pas ce test rouge.
+          live=lib/features/tv/presentation/tv_live_screen.dart
+          git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$live" > "$live"
+          if flutter test "${options[@]}" --plain-name 'double OK dans Direct' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/guide/double-ok-avant.txt" 2>&1; then
+            echo 'Le témoin a laissé passer la contre-épreuve double OK'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/double-ok-avant.txt"
+          grep -Fq 'ZUNO_DOUBLE_OK routes=2' "$RUNNER_TEMP/guide/double-ok-avant.txt"
+          grep -Fq 'ZUNO_DOUBLE_OK_ROUTES' "$RUNNER_TEMP/guide/double-ok-avant.txt"
+          git restore -- "$live"
           if flutter test "${options[@]}" --plain-name 'une seule lecture du guide' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/guide/avant.txt" 2>&1; then
             echo 'Le témoin ne reproduit pas le défaut'; exit 1
           fi
@@ -38,6 +50,18 @@ jobs:
           grep -q 'ZUNO_GUIDE_READ_COUNT\|ZUNO_GUIDE_STALE_CONTROL' "$RUNNER_TEMP/guide/avant.txt"
           git restore -- "$screen"
           flutter test "${options[@]}" test/features/tv/zuno_tv_variant_focus_test.dart test/features/player/hls_recording_test.dart test/features/player/relay_dead_stream_test.dart | tee "$RUNNER_TEMP/guide/apres.txt"
+      - name: Contre-épreuves des parcours partagés avec l'édition adaptative
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          flutter test --no-pub --concurrency=2 --reporter expanded \
+            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto \
+            --dart-define=BACKEND_URL=http://127.0.0.1:18789 \
+            test/core/blackbox test/features/profiles/profile_migration_test.dart \
+            test/features/tv/zuno_pip_service_test.dart test/features/tv/zuno_pip_player_widget_test.dart \
+            test/features/tv/desktop/zuno_mobile_cast_controls_test.dart test/features/tv/tv_channel_guide_replay_test.dart \
+            test/features/player/live_fallback_test.dart test/features/player/reconnect_plan_test.dart \
+            | tee "$RUNNER_TEMP/guide/parcours-partages.txt"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
