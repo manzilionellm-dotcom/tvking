@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from optical_witness import APK_PACKAGE,open_fixture,motion,key
 from android_ui import visible_nodes
+from timestats import parse as layer_histograms
 
 def adb(*args,binary=False):
     try:
@@ -90,6 +91,10 @@ def main(out):
     write=lambda:(out/'mesure.json').write_text(json.dumps(result,indent=2,ensure_ascii=False))
     write();open_fixture(private)
     if not motion(private,'A-initiale','A',25,[]):raise RuntimeError('Mire A mobile initiale absente')
+    # Seule cette image Android jetable est remise à zéro. Les compteurs
+    # système globaux et les noms de couches étrangers ne sont jamais exportés.
+    shell('dumpsys','SurfaceFlinger','--timestats','-clear')
+    shell('dumpsys','SurfaceFlinger','--timestats','-enable')
     start=time.monotonic()
     raw={};periods={};polled=[];prior={};coverage={};known=layers();list_at=start
     while time.monotonic()-start<75:
@@ -114,7 +119,13 @@ def main(out):
             prior[ln]=present
         polled.append([tick-start,time.monotonic()-tick])
         time.sleep(max(0,.9-(time.monotonic()-tick)))
-    end=time.monotonic();same=shell('pidof','-s',APK_PACKAGE).strip()==pid
+    end=time.monotonic()
+    shell('dumpsys','SurfaceFlinger','--timestats','-disable')
+    sf=shell('dumpsys','SurfaceFlinger','--timestats','-dump')
+    result['timestats_unites']='Histogrammes de présentation par couche Android, pas les images perdues par Media3.'
+    result['timestats_entrees_service']=len(re.findall(r'(?m)^\s*layerName\s*=',sf))
+    result['timestats_du_paquet']=layer_histograms(sf,APK_PACKAGE)
+    same=shell('pidof','-s',APK_PACKAGE).strip()==pid
     result.update(actual_seconds=end-start,same_pid=same,display_end=display(),polls=polled,layers=[])
     with (out/'composition.csv').open('w') as f:
         writer=csv.writer(f);writer.writerow(['layer_digest','desired_ns','actual_present_ns','ready_ns'])
