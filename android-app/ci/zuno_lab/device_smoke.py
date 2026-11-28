@@ -46,6 +46,29 @@ def process(package):
     return adb("shell", "pidof", "-s", package, check=False)
 
 
+def diagnostics(out, package, result, label):
+    # Les piles Java sont réduites aux noms de classes/méthodes. Aucune donnée de message,
+    # URL, MAC, valeur de champ, ni description libre n’entre dans les artefacts.
+    tasks = adb("shell", "dumpsys", "activity", "activities")
+    window = adb("shell", "dumpsys", "window", "windows")
+    component_re = r"[a-zA-Z][a-zA-Z0-9_.]+/[.a-zA-Z0-9_$]+"
+    resumed = [m for l in (tasks + "\n" + window).splitlines()
+               if any(k in l for k in ("ResumedActivity","mCurrentFocus","mFocusedApp","topResumed","Resumed:"))
+               for m in re.findall(component_re,l)]
+    crash = adb("logcat", "-b", "crash", "-d", "-t", "250", check=False)
+    belongs = any("Process: "+package+"," in l or ">>> "+package+" <<<" in l for l in crash.splitlines())
+    info = adb("shell", "dumpsys", "activity", "exit-info", package, check=False)
+    record = {"launch_reply": dict(re.findall(r"^(Status|LaunchState|Activity|TotalTime|WaitTime):\s*(["+
+                      r"a-zA-Z0-9_./$-]+)", result, re.M)),
+              "observed_foreground_components": sorted(set(resumed)),
+              "process_exists": bool(process(package)), "crash_buffer_names_package": belongs,
+              "exit_reasons": re.findall(r"reason=([0-9]+) \(([A-Z_ ]+)\)", info)[:12],
+              "java_exception_types": re.findall(r"\b([a-zA-Z0-9_.$]+(?:Error|Exception))\b", crash)[:30] if belongs else [],
+              "java_stack_symbols": re.findall(r"\bat ([a-zA-Z0-9_.$]+)\(",crash)[:40] if belongs else [],
+              "native_signals": re.findall(r"signal (\d+) \((SIG[A-Z]+)\)",crash)[:5] if belongs else []}
+    (out / ("system-" + label + ".json")).write_text(json.dumps(record,indent=2))
+
+
 def stats(samples):
     ordered = sorted(samples)
     if not ordered:
@@ -94,6 +117,7 @@ def main():
                 "measure": "am start -W; host captures full command time; TotalTime is optional on HOT. No source of video or panel timing."}
     (out / "device.json").write_text(json.dumps(metadata, indent=2))
     rows = []
+    adb("shell", "wm", "dismiss-keyguard", check=False)
     with (out / "launches.csv").open("w", newline="") as f:
         fields = ["index", "kind", "utc", "status", "pid_continuity", "launch_state",
                   "android_total_ms", "android_wait_ms", "host_command_ms", "foreground_after", "observation"]
@@ -125,6 +149,8 @@ def main():
                 row = dict(zip(fields, [i, kind, stamp, "ok" if ok else "error", continuous,
                     values.get("LaunchState", ""), values.get("TotalTime", ""), values.get("WaitTime", ""),
                     round(elapsed, 2), foreground, "activity_foreground"]))
+                if i == 1 or (i == args.count and not ok):
+                    diagnostics(out, pkg, result, f"{kind}-{i}")
                 rows.append(row)
                 writer.writerow(row)
                 f.flush()
