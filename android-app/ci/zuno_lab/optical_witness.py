@@ -18,7 +18,7 @@ from read_display_capture import decode
 
 APK_PACKAGE = os.environ.get("BENCH_PACKAGE", "com.sevenmotion.tv.seven_tv")
 URL = "http://127.0.0.1:18471/channels.m3u"
-ALLOWED = set("zuno live direct settings movies films series guide sources playlists channels add my source connect load paste file xtream m3u url server username password playlist list enter http mire a b all favourites favorites search watch now loading welcome allow while using app notifications ok continue start skip done".split())
+ALLOWED = set("zuno live direct settings movies films series guide sources playlists channels add my source connect load paste file xtream m3u url server username password playlist list enter http mire a b all favourites favorites search watch now loading welcome allow while using app notifications ok continue start skip done english français deutsch select language".split())
 
 
 def adb(*parts, timeout=15, check=True):
@@ -103,6 +103,17 @@ def wait_control(folder, state, pattern, ocr_fallback, timeout=40, editable=Fals
         point = ocr_fallback(ts,size) if ocr_fallback else None
         if point:
             return point
+        if state == "mode-m3u":
+            if any(t[0] in {"deutsch","français","language"} for t in ts):
+                english = token(ts,{"english"})
+                if english:
+                    tap(*english)
+                    time.sleep(1)
+            elif any(t[0] in {"movies","films","settings"} for t in ts):
+                sources = token(ts,{"server","sources","playlists"})
+                if sources:
+                    tap(*sources)
+                    time.sleep(1)
         time.sleep(.5)
     raise RuntimeError("Contrôle non identifié : "+state)
 
@@ -140,7 +151,7 @@ def motion(folder, name, target, timeout, rows, save=False):
             if save:
                 # Cette bande contient exclusivement les cases binaires vérifiées de la mire.
                 im.crop(box).save(folder / f"marker-{name}-{n}.png")
-            if prev is not None and 0<n-prev<300:
+            if prev is not None and 0<(n-prev)%3000<300:
                 return end
             prev=n
         else:
@@ -197,18 +208,24 @@ def run(folder, count):
             raise RuntimeError("Plein écran A non confirmé par deux compteurs croissants")
         event(folder,"first-moving-channel",channel="A")
         # Suite prédéfinie, même ordre quel que soit le résultat. Les délais sont des bornes hautes.
-        for i in range(count):
+        last_confirmed="A"
+        for i in range(count*2):
+            phase="spaced" if i<count else "burst"
             target="B" if i%2==0 else "A"
             code="KEYCODE_CHANNEL_DOWN" if i%2==0 else "KEYCODE_CHANNEL_UP"
+            if last_confirmed == target or last_confirmed is None:
+                raise RuntimeError("Destination initiale non prouvée ; série interrompue.")
             dispatch=time.monotonic()
             key(code)
             end=motion(folder,str(i+1),target,9,rows,i<2)
-            cases.append({"number":i+1,"key":code,"target":target,"dispatch_s":dispatch,
+            cases.append({"number":i+1,"phase":phase,"key":code,"target":target,"from":last_confirmed,"dispatch_s":dispatch,
                           "movement_upper_ms":round((end-dispatch)*1000,3) if end else None})
             persist()
-            if not end and len(cases)>=3 and all(c["movement_upper_ms"] is None for c in cases[-3:]):
-                raise RuntimeError("Trois expirations consécutives ; protocole de navigation à revoir")
-            time.sleep(max(0,dispatch+5-time.monotonic()))
+            if end is None:
+                raise RuntimeError("Destination non confirmée ; conserver l’expiration puis recalibrer hors série.")
+            last_confirmed=target
+            if phase=="spaced":
+                time.sleep(max(0,dispatch+5-time.monotonic()))
     finally:
         persist()
 
