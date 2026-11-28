@@ -1,0 +1,121 @@
+{
+  "source": "capture externe sur le câble HDMI ou caméra du seul téléviseur ; son enregistré dans le même fichier",
+  "max_discontinuite_audio_s": 6.66666666759852e-07,
+  "mesures": [
+    {
+      "image": 0,
+      "pts": 0.0,
+      "mire": "A",
+      "compteur": 0,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A"
+      ],
+      "mouvement": false,
+      "accord": false
+    },
+    {
+      "image": 6,
+      "pts": 0.24,
+      "mire": "A",
+      "compteur": 6,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A",
+        "A"
+      ],
+      "mouvement": true,
+      "accord": true
+    },
+    {
+      "image": 12,
+      "pts": 0.48,
+      "mire": "A",
+      "compteur": 12,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A",
+        "A"
+      ],
+      "mouvement": true,
+      "accord": true
+    },
+    {
+      "image": 18,
+      "pts": 0.72,
+      "mire": "A",
+      "compteur": 18,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A",
+        "A"
+      ],
+      "mouvement": true,
+      "accord": true
+    },
+    {
+      "image": 24,
+      "pts": 0.96,
+      "mire": "A",
+      "compteur": 24,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A",
+        "A"
+      ],
+      "mouvement": true,
+      "accord": true
+    },
+    {
+      "image": 30,
+      "pts": 1.2,
+      "mire": "A",
+      "compteur": 30,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A",
+        "A"
+      ],
+      "mouvement": true,
+      "accord": true
+    },
+    {
+      "image": 36,
+      "pts": 1.44,
+      "mire": "A",
+      "compteur": 36,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A",
+        "A"
+      ],
+      "mouvement": true,
+      "accord": true
+    },
+    {
+      "image": 42,
+      "pts": 1.68,
+      "mire": "A",
+      "compteur": 42,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A",
+        "A"
+      ],
+      "mouvement": true,
+      "accord": true
+    },
+    {
+      "image": 48,
+      "pts": 1.92,
+      "mire": "A",
+      "compteur": 48,
+      "titre": "A",
+      "audio_avant_apres": [
+        "A"
+      ],
+      "mouvement": true,
+      "accord": false
+    }
+  ]
+}
