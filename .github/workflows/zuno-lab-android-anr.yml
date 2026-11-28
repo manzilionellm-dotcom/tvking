@@ -1,0 +1,65 @@
+name: ZUNO LAB — triage ANR Direct et threads sur 30 000 chaînes en AVD
+on:
+  workflow_dispatch:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths:
+      - '.github/workflows/zuno-lab-android-anr.yml'
+      - 'android-app/ci/zuno_lab/android_catalog_anr/**'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exercises:
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [immediate-meminfo, immediate-light, wait-light]
+    name: Android 1 Go - ${{ matrix.kind }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: bits-catalog-diagnostic-46091531061
+          github-token: ${{ github.token }}
+          run-id: 46091531061
+          path: android-app/build/lab/
+      - name: Exécuter le scénario sur AVD isolé
+        run: |
+          set -euo pipefail
+          (cd build/lab && sha256sum --check SHA256SUMS)
+          root="$PWD"
+          out="$root/build/cycles-android"
+          mkdir -p "$out"
+          cp build/lab/{SHA256SUMS,signature.txt,badging.txt} "$out"
+          echo "$GITHUB_SHA" > "$out/git-commit.txt"
+          echo "d346615eba5f55f3df6a5c2e7897f3c3b48aa21ecb664e564e778e1708e8c4ef  build/lab/ZUNO-DIAGNOSTIC.apk" | sha256sum -c -
+          echo "52d6a4710795551895241b407e183127b573b012be1e0594a50f2d89c911e3f4  ci/zuno_lab/android_catalog_fixture/mire.ts" | sha256sum -c -
+          cp ci/zuno_lab/android_catalog_fixture/mire.ts "$RUNNER_TEMP/catalog.ts"
+          source ci/zuno_lab/android_catalog_boot/boot1g.sh "$out"
+          python3 ci/zuno_lab/android_catalog_anr/observe.py "$out" "$root/build/lab/ZUNO-DIAGNOSTIC.apk" "$RUNNER_TEMP/catalog.ts" "${{ matrix.kind }}"
+      - name: Enregistrer la cause système si la collecte a échoué
+        if: failure()
+        run: |
+          out="$PWD/build/cycles-android"
+          mkdir -p "$out"
+          pkg=com.sevenmotion.tv.seven_tv.lab.catalog
+          timeout 8 adb shell pidof "$pkg" > "$out/failure-pid.txt" || true
+          timeout 8 adb shell getprop sys.boot_completed > "$out/boot-complete.txt" || true
+          timeout 8 adb shell dumpsys activity exit-info "$pkg" | grep -oE 'reason=[0-9]+ \([^)]*\)|subreason=[0-9]+ \([^)]*\)|status=[0-9]+' > "$out/failure-exit.txt" || true
+          timeout 8 adb logcat -b crash -d | grep -oE '(java|android|androidx|kotlin)\.[A-Za-z0-9_.$]+(Exception|Error)' | sort -u > "$out/failure-exceptions.txt" || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: triage-android-${{ matrix.kind }}-${{ github.run_id }}
+          path: android-app/build/cycles-android/
+          if-no-files-found: warn
+          retention-days: 14
