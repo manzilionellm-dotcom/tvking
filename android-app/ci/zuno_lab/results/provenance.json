@@ -6,7 +6,8 @@
     "version": "117",
     "version_code": 1794559150,
     "date_ui": "16 nov. 17:07",
-    "rollout_percent": 100
+    "rollout_percent_reported_in_earlier_notes": 100,
+    "rollout_percent_verified_on_available_screenshot": null
   },
   "production_replaced": {
     "version": "118",
@@ -16,7 +17,6 @@
     "version": "119",
     "version_code": 1794559152
   },
-  "production_console": "https://play.google.com/console/u/0/developers/6790957789570734722/app/4975332597911476405/tracks/4697320223240474591?tab=releases",
   "official_run": {
     "id": 45710084378,
     "job": 139544600030,
@@ -57,7 +57,6 @@
     "cast_scope_metadata": "handset-only"
   },
   "play_standard_apk_119": {
-    "artifact_id": "4860255232374187179",
     "bytes": 125920802,
     "sha256": "96b81d876be292f9155bc2d761e07532af15b4695fc44c829ffe27f20e8909b8",
     "certificate_sha256": "b4b81292ceb87349c7b6f0c5ae20a52eeebbabf41ca57c481b41d10b91a4f369",
