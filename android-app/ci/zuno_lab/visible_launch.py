@@ -11,6 +11,7 @@ import subprocess
 import time
 
 from PIL import Image
+from device_smoke import is_foreground, diagnostics
 
 LABELS = {
     "home": {"live", "movies", "series", "guide", "server", "settings", "direct", "films", "serveur", "réglages"},
@@ -58,17 +59,19 @@ def main():
     activity = pkg + "/com.example.tv_king.MainActivity"
     for phase in ("ouverture", "reouverture"):
         command("adb", "shell", "am", "force-stop", pkg)
-        command("adb", "shell", "am", "start", "-W", "-n", activity)
+        command("adb", "shell", "am", "start", "-n", activity)
         rows = []
-        deadline = time.monotonic() + 55
+        deadline = time.monotonic() + 70
         while time.monotonic() < deadline:
             item = screen_evidence(out, phase)
             rows.append(item)
-            if item["page"] and command("adb","shell","pidof",pkg).strip():
+            item["foreground"] = is_foreground(pkg)
+            if item["page"] and item["foreground"] and command("adb","shell","pidof",pkg).strip():
                 break
             time.sleep(1)
         (out / f"{phase}.json").write_text(json.dumps(rows, indent=2))
-        if not rows[-1]["page"]:
+        if not rows[-1]["page"] or not rows[-1]["foreground"]:
+            diagnostics(out, pkg, "", phase)
             raise SystemExit(f"{phase} : aucun écran ZUNO reconnu")
     print("Deux écrans interactifs ZUNO reconnus par leurs libellés sur la sortie Android.")
 

@@ -9,8 +9,8 @@ permissions:
   actions: read
 
 env:
-  BUILD_RUN: '46085894777'
-  BUILD_SHA: f90de79c2a0ab177a222b12ef70a86695ec92e97
+  BUILD_RUN: '46087049284'
+  BUILD_SHA: c9f0153fae358aaef2e45d83c3f2e27383d3e0a0
   LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 jobs:
@@ -91,10 +91,14 @@ jobs:
           source_path=$(adb shell pm path "$LAB_PACKAGE" | tr -d '\r' | sed 's/^package://')
           adb shell sha256sum "$source_path" | cut -d' ' -f1 > qa/installed.before
           test "$(cat qa/installed.before)" = "$(awk '{print $1}' apk/SHA256SUMS)"
-          python3 android-app/ci/zuno_lab/visible_launch.py qa
-          python3 android-app/ci/zuno_lab/device_smoke.py --apk apk/ZUNO-LAB.apk --package "$LAB_PACKAGE" --out qa/launches --count 30
+          visual=0
+          python3 android-app/ci/zuno_lab/visible_launch.py qa || visual=$?
+          series=0
+          python3 android-app/ci/zuno_lab/device_smoke.py --apk apk/ZUNO-LAB.apk --package "$LAB_PACKAGE" --out qa/launches --count 30 || series=$?
           adb shell sha256sum "$source_path" | cut -d' ' -f1 > qa/installed.after
           cmp qa/installed.before qa/installed.after
+          test "$visual" -eq 0
+          test "$series" -eq 0
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:

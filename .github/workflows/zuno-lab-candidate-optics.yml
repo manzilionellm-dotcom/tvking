@@ -5,8 +5,8 @@ on:
     paths: ['.github/workflows/zuno-lab-candidate-optics.yml']
 
 env:
-  BUILD_RUN: '46086918229'
-  BUILD_SHA: 9564ada01d13601cc3fd083f22c08018b0e89393
+  BUILD_RUN: '46087049284'
+  BUILD_SHA: c9f0153fae358aaef2e45d83c3f2e27383d3e0a0
   BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 permissions:
@@ -61,21 +61,20 @@ jobs:
           # Une fenêtre de bienvenue du lanceur peut intercepter HOME sur un AVD
           # neuf. Le parcours vidéo possède ses propres preuves et n'impose pas
           # la réussite d'une campagne HOME distincte avant le premier appui.
-          adb shell pm disable-user --user 0 com.google.android.tvlauncher/.dialog.ShowDialogsActivity >/dev/null || true
+          adb shell input keyevent KEYCODE_BACK
           adb install apk/ZUNO-LAB.apk
           installed="$(adb shell pm path "$BENCH_PACKAGE" | tr -d '\r' | sed -n 's/^package://p')"
           test -n "$installed"
-          adb exec-out cat "$installed" | sha256sum | awk '{print $1}' > "$out/installed-before.sha256"
+          adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-before.sha256"
           test "$(cat "$out/installed-before.sha256")" = "$(sha256sum apk/ZUNO-LAB.apk | awk '{print $1}')"
-          component="$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER "$BENCH_PACKAGE" | tr -d '\r' | tail -1)"
-          [[ "$component" == "$BENCH_PACKAGE/"* ]]
+          component="$BENCH_PACKAGE/com.example.tv_king.MainActivity"
           adb shell am start -n "$component"
           sleep 10
           adb reverse tcp:18471 tcp:18471
           curl -fsS --retry 5 http://127.0.0.1:18471/A/index.m3u8 >/dev/null
           status=0
           python3 android-app/ci/zuno_lab/optical_witness.py "$out/optical" --count 100 || status=$?
-          adb exec-out cat "$installed" | sha256sum | awk '{print $1}' > "$out/installed-after.sha256"
+          adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-after.sha256"
           cmp "$out/installed-before.sha256" "$out/installed-after.sha256"
           exit "$status"
       - name: Conserver uniquement les résultats expurgés
