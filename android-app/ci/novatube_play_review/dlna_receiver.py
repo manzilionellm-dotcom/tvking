@@ -3,16 +3,18 @@
 
 Le récepteur est explicitement émulé. Il refuse les sources directes afin
 de vérifier la reprise par relais, puis lit les octets du serveur HTTP de
-l'application par un transfert ADB du port dynamique de l'émulateur.
+l'application via le routeur virtuel ou le transfert ADB de l'ancien banc.
 Aucun appel au service Android ou au canal Flutter n'est effectué ici.
 """
 from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import subprocess
 import threading
@@ -29,8 +31,8 @@ NAME = 'NOVATUBE QA Receiver'
 
 
 class Receiver:
-    def __init__(self, out: Path, serial: str):
-        self.out, self.serial = out, serial
+    def __init__(self, out: Path, serial: str, transport='adb'):
+        self.out, self.serial, self.transport = out, serial, transport
         self.lock = threading.RLock()
         self.process = None
         self.uri = ''
@@ -93,6 +95,65 @@ class Receiver:
         self.event('relay_uri_received', uri=uri)
         return True
 
+    def redirect_port(self, guest_port):
+        adb = ['adb', '-s', self.serial]
+        if self.transport == 'adb':
+            subprocess.run([*adb, 'forward', 'tcp:19001', f'tcp:{guest_port}'], check=True)
+            return
+        started = time.monotonic_ns()
+
+        def console(*args):
+            command = ['redir', *args]
+            result = subprocess.run([*adb, 'emu', *command], capture_output=True, text=True, timeout=8)
+            reply = (result.stdout + result.stderr).strip()
+            self.event('emulator_redir', command=command, reply=reply)
+            if result.returncode or any(line.startswith('KO') for line in reply.splitlines()):
+                raise RuntimeError(f'Échec console {command} : {reply}')
+            return reply
+
+        mapping = r'^tcp:\s*19001\s*=>\s*(\d+)\s*$'
+        if re.search(mapping, console('list'), re.MULTILINE):
+            console('del', 'tcp:19001')
+        console('add', f'tcp:19001:{guest_port}')
+        actual = re.search(mapping, console('list'), re.MULTILINE)
+        if not actual or int(actual.group(1)) != guest_port:
+            raise RuntimeError('Redirection TCP absente de la console de l’émulateur')
+        self.event('relay_port_redirected', direction='runner -> emulator virtual router -> Android',
+                   host_port=19001, guest_port=guest_port,
+                   setup_ms=round((time.monotonic_ns() - started) / 1_000_000, 1))
+
+    def observe_lan_socket(self, generation, uri):
+        url = urlsplit(uri)
+        # Sur l'image x86_64, /proc expose chaque mot IPv4/IPv6 en ordre little-endian.
+        def endpoint(value):
+            words, port = value.split(':')
+            packed = b''.join(bytes.fromhex(words[i:i+8])[::-1] for i in range(0, len(words), 8))
+            address = ipaddress.ip_address(packed)
+            return str(getattr(address, 'ipv4_mapped', None) or address), int(port, 16)
+
+        try:
+            for _ in range(4):
+                table = subprocess.run(['adb', '-s', self.serial, 'shell', 'cat', '/proc/net/tcp',
+                                        '/proc/net/tcp6'], capture_output=True, text=True, timeout=4, check=True)
+                for line in table.stdout.splitlines():
+                    fields = line.split()
+                    if len(fields) < 4 or fields[3] != '01':
+                        continue
+                    local, port = endpoint(fields[1])
+                    if port != url.port or local not in ('10.0.2.15', '10.0.2.16'):
+                        continue
+                    peer, peer_port = endpoint(fields[2])
+                    if not peer.startswith('10.0.2.') or peer == local:
+                        continue
+                    self.event('relay_socket_on_guest', generation=generation, local_ip=local, local_port=port,
+                               peer_ip=peer, peer_port=peer_port, advertised_ip=url.hostname,
+                               received_on_advertised_ip=local == url.hostname)
+                    return
+                time.sleep(.2)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            self.event('relay_socket_check_error', generation=generation, reason=str(exc))
+        self.event('relay_socket_unconfirmed', generation=generation, guest_port=url.port)
+
     def play(self):
         with self.lock:
             if self.process and self.process.poll() is None:
@@ -103,7 +164,7 @@ class Receiver:
             if not self.uri:
                 raise RuntimeError('Aucune URI de relais reçue')
             url = urlsplit(self.uri)
-            subprocess.run(['adb', '-s', self.serial, 'forward', 'tcp:19001', f'tcp:{url.port}'], check=True)
+            self.redirect_port(url.port)
             forwarded = urlunsplit((url.scheme, '127.0.0.1:19001', url.path, url.query, ''))
             self.generation += 1
             generation = self.generation
@@ -117,12 +178,13 @@ class Receiver:
             self.process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors, text=True, bufsize=1)
             self.state = 'TRANSITIONING'
             self.write_status()
-            self.event('decoder_started', original_uri=self.uri, forwarded_uri=forwarded,
-                       adb_guest_port=url.port, pid=self.process.pid)
+            details = {'adb_guest_port': url.port} if self.transport == 'adb' else {'slirp_guest_port': url.port}
+            self.event('decoder_started', original_uri=self.uri, forwarded_uri=forwarded, generation=generation,
+                       transport=self.transport, pid=self.process.pid, **details)
             threading.Thread(target=self.collect_progress,
-                             args=(self.process, generation, errors), daemon=True).start()
+                             args=(self.process, generation, errors, self.uri), daemon=True).start()
 
-    def collect_progress(self, process, generation, errors):
+    def collect_progress(self, process, generation, errors, uri):
         try:
             for line in process.stdout:
                 key, _, value = line.strip().partition('=')
@@ -136,7 +198,10 @@ class Receiver:
                         self.frame = current
                         if first:
                             self.state = 'PLAYING'
-                            self.event('first_real_frame_decoded', frame=current)
+                            self.event('first_real_frame_decoded', frame=current, generation=generation)
+                            if self.transport == 'slirp':
+                                threading.Thread(target=self.observe_lan_socket, args=(generation, uri),
+                                                 daemon=True).start()
                     elif key == 'out_time_us' and value.lstrip('-').isdigit():
                         self.seconds = int(value) / 1_000_000
                     elif key == 'progress':
@@ -171,9 +236,10 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--media', type=Path, required=True)
     parser.add_argument('--serial', default='emulator-5554')
+    parser.add_argument('--transport', choices=('adb', 'slirp'), default='adb')
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    receiver = Receiver(args.out, args.serial)
+    receiver = Receiver(args.out, args.serial, args.transport)
 
     lab_live = (os.environ.get('NOVATUBE_REVIEW_PACKAGE') == 'com.sevenmotion.novatube.tv.lab.retour.rec'
                 or bool(os.environ.get('NOVATUBE_PERF_PROFILE')))
@@ -236,6 +302,8 @@ def main():
                     self.copyfile(media, self.wfile)
                 return
             if self.path == '/device.xml':
+                receiver.event('device_description', host=self.headers.get('Host'),
+                               listener=self.connection.getsockname()[0])
                 self.reply(('<?xml version="1.0"?><root xmlns="urn:schemas-upnp-org:device-1-0">'
                     '<specVersion><major>1</major><minor>0</minor></specVersion><device>'
                     '<deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>'
@@ -256,7 +324,11 @@ def main():
         def do_POST(self):
             data = self.rfile.read(int(self.headers.get('Content-Length', '0')))
             action = self.headers.get('SOAPAction', '').strip('"').split('#')[-1]
-            receiver.event('soap', action=action)
+            host, listener = self.headers.get('Host'), self.connection.getsockname()[0]
+            receiver.event('soap', action=action, host=host, listener=listener)
+            if args.transport == 'slirp' and (host != '10.0.2.2:18999' or listener != '127.0.0.1'):
+                self.reply(b'Unexpected control route', 400, 'text/plain')
+                return
             try:
                 if action == 'GetProtocolInfo':
                     self.reply(envelope(action, '<Source></Source><Sink>http-get:*:video/mp2t:*</Sink>', CM))

@@ -35,10 +35,36 @@ jobs:
           - { edition: candidate, profile: phone, vpn: 'off' }
           - { edition: candidate, profile: tv, vpn: 'off' }
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Consulter la mesure TV sur le même APK et le même émulateur
+        id: prior
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EDITION: ${{ matrix.edition }}
+          PROFILE: ${{ matrix.profile }}
+          VPN: ${{ matrix.vpn }}
+        run: |
+          set -euo pipefail
+          reuse=false
+          if [[ "$PROFILE" == tv ]]; then
+            name="$EDITION · $PROFILE · VPN $VPN"
+            for attempt in $(seq 1 50); do
+              job="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/46099124851/jobs?per_page=100" | jq -c --arg name "$name" '.jobs[] | select(.name==$name)')"
+              [[ -z "$job" || "$(jq -r .status <<< "$job")" == completed ]] && break
+              sleep 12
+            done
+            if [[ -n "$job" ]] && jq -e 'any(.steps[]?; .name=="Mesurer le parcours visible et contrôler le média" and .conclusion=="success")' <<< "$job" >/dev/null; then
+              # Une mesure de référence tolère l’échec au niveau du job. Vérifier la preuve elle-même.
+              gh run download 46099124851 --repo "$GITHUB_REPOSITORY" -n "preuve-$EDITION-$PROFILE-vpn-$VPN" -D preuve
+              if jq -e '.validated==true' preuve/measurements.json; then reuse=true; fi
+            fi
+          fi
+          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+      - if: steps.prior.outputs.reuse != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Charger le fichier signé et vérifier son identité
+        if: steps.prior.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           EDITION: ${{ matrix.edition }}
@@ -76,12 +102,15 @@ jobs:
             echo "NOVATUBE_BUILD_COMMIT=$commit"
             echo "NOVATUBE_REVIEW_APK_SHA256=$(sha256sum "apk/$name" | cut -d' ' -f1)"
           } >> "$GITHUB_ENV"
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      - if: steps.prior.outputs.reuse != 'true'
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - if: steps.prior.outputs.reuse != 'true'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Mesurer le parcours visible et contrôler le média
+        if: steps.prior.outputs.reuse != 'true'
         env:
           NOVATUBE_PERF_PROFILE: ${{ matrix.profile }}
           NOVATUBE_QA_VPN: ${{ matrix.vpn }}

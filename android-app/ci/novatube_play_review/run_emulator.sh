@@ -18,6 +18,10 @@ memory=3072
 profile="${NOVATUBE_PERF_PROFILE:-}"
 vpn="${NOVATUBE_QA_VPN:-off}"
 tunnel="$scripts/../novatube_vpn/tunnel.sh"
+cast_transport=adb
+if [[ "$profile" == phone && "${NOVATUBE_QA_CAST_LAN:-on}" == on ]]; then
+  cast_transport=slirp
+fi
 if [[ -n "$profile" ]]; then
   [[ "$profile" == phone || "$profile" == tv ]]
   [[ "$vpn" == on || "$vpn" == off ]]
@@ -63,6 +67,9 @@ finish() {
     if [[ -n "$process" ]]; then kill "$process" >/dev/null 2>&1 || true; fi
   done
   if [[ -n "$emulator_pid" ]]; then
+    if [[ "$cast_transport" == slirp ]]; then
+      adb -s "$serial" emu redir del tcp:19001 > /dev/null 2>&1 || true
+    fi
     adb -s "$serial" emu kill >/dev/null 2>&1 || true
     kill "$emulator_pid" >/dev/null 2>&1 || true
   fi
@@ -101,8 +108,7 @@ $NOVATUBE_QA_ORIGIN/pattern.ts
 $NOVATUBE_QA_ORIGIN/movie/qa/lab/777.mp4
 M3U
 fi
-# Le répondeur répond aux M-SEARCH normaux sur le réseau Android. ADB ne
-# transporte que le HTTP du récepteur et les octets du relais de l'application.
+# Le répondeur utilise le groupe SSDP Android et publie l'adresse du mode choisi.
 javac --release 8 -d "$out/java" "$scripts/SsdpResponder.java"
 "$bt/d8" --min-api 24 --output "$out/dex" "$out/java/SsdpResponder.class"
 jar cf "$out/ssdp-responder.jar" -C "$out/dex" classes.dex
@@ -164,13 +170,23 @@ if [[ -n "$profile" && "$vpn" == on ]]; then
   touch "$out/vpn-started"
   bash "$tunnel" start "$serial" "$pkg" "$out/vpn"
 fi
-python3 -u "$scripts/dlna_receiver.py" --out "$out" --media "$out/media" --serial "$serial" > "$out/receiver-console.txt" 2>&1 &
+python3 -u "$scripts/dlna_receiver.py" --out "$out" --media "$out/media" --serial "$serial" --transport "$cast_transport" > "$out/receiver-console.txt" 2>&1 &
 receiver_pid=$!
 sleep 1
 curl --fail --silent http://127.0.0.1:18999/device.xml > "$out/receiver-description.xml"
-adb -s "$serial" reverse tcp:18999 tcp:18999
+if [[ "$cast_transport" == slirp ]]; then
+  # Ces ports sont réservés par ce banc sur un émulateur neuf.
+  adb -s "$serial" forward --list > "$out/adb-forwards.txt"
+  adb -s "$serial" reverse --list > "$out/adb-reverses.txt"
+  if rg -q 'tcp:(18999|19001)([[:space:]]|$)' "$out/adb-forwards.txt" "$out/adb-reverses.txt"; then
+    echo 'Transfert ADB inattendu sur un port du récepteur' >&2
+    exit 1
+  fi
+else
+  adb -s "$serial" reverse tcp:18999 tcp:18999
+fi
 adb -s "$serial" push "$out/ssdp-responder.jar" /data/local/tmp/novatube-ssdp.jar > "$out/ssdp-install.txt"
-adb -s "$serial" shell 'CLASSPATH=/data/local/tmp/novatube-ssdp.jar app_process /system/bin SsdpResponder' > "$out/ssdp-discovery.txt" 2>&1 &
+adb -s "$serial" shell CLASSPATH=/data/local/tmp/novatube-ssdp.jar app_process /system/bin SsdpResponder "$cast_transport" > "$out/ssdp-discovery.txt" 2>&1 &
 ssdp_pid=$!
 sleep 2
 kill -0 "$ssdp_pid"
@@ -186,6 +202,17 @@ python3 -u "$pilot" --out "$out" --serial "$serial" --component "$component" \
   --package "$pkg" --expected-version "$version" --expected-digest "$digest"
 if [[ -n "$profile" && "$vpn" == on ]]; then
   bash "$tunnel" verify "$serial" "$pkg" "$out/vpn" 18999
+fi
+
+if [[ "$cast_transport" == slirp ]]; then
+  # Chaque décodage a sa propre preuve de connexion entrante côté Android.
+  jq -se '
+    any(.[]; .event == "device_description" and .host == "10.0.2.2:18999")
+    and any(.[]; .event == "soap" and .action == "Play" and .host == "10.0.2.2:18999")
+    and ([.[] | select(.event == "decoder_started") | .generation] | length > 0)
+    and (([.[] | select(.event == "decoder_started") | .generation] -
+          [.[] | select(.event == "relay_socket_on_guest") | .generation]) | length == 0)
+  ' "$out/receiver-events.jsonl" > "$out/cast-lan-proof.txt"
 fi
 
 # Les gros intermédiaires synthétiques ne sont pas utiles à la revue finale.

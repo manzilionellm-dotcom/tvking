@@ -45,9 +45,7 @@ class Bench(Scenario):
             raise ValueError("Le profil du banc ne correspond pas aux capacités Android")
         self.restart()
         if not self.lab_home(2):
-            self.tap(self.lab_import_button())
-            if not self.find("source|url|http|file|fichier|link|m3u8", timeout=22):
-                raise RuntimeError("Formulaire M3U absent")
+            self.open_import_form()
             self.adb("shell", "input", "text", self.origin + "/review.m3u")
             self.key("KEYCODE_ENTER", 3)
             if not self.lab_home(4):
@@ -55,6 +53,38 @@ class Bench(Scenario):
         if not self.lab_home(40):
             raise RuntimeError("L'accueil ou la playlist synthétique n'a pas chargé")
         self.save()
+
+    def open_import_form(self):
+        # Le formulaire peut arriver après une transition lente. Sur l'accueil,
+        # « playlist » figure aussi dans le sous-titre, distinct du bouton M3U.
+        self.tap(self.lab_import_button())
+        selected = time.monotonic()
+        deadline = selected + 100
+        ok_sent = False
+        while time.monotonic() < deadline:
+            words = self.words()
+            names = {w for w, _, _ in words}
+            if (names & {"paste", "coller", "file", "fichier"} and
+                    names & {"source", "url", "http", "name", "nom", "optional", "optionnel", "username"}):
+                self.screenshot("source-form")
+                return
+            # Le champ URL et le clavier constituent un second témoin. On
+            # n'envoie jamais OK tant qu'un éditeur de NovaTube a le focus.
+            edit = self.accessibility_point(r"m3u url|url m3u|https?://", package=self.package)
+            if edit and not (names & {"welcome", "bienvenue"}):
+                self.screenshot("source-form")
+                return
+            row = [(w, x, y) for w, x, y in words if .3 < y/self.height < .75]
+            button = next(((x, y) for w, x, y in row if w in {"m3u", "playlist", "liste"}
+                           and x < self.width * .5 and any(
+                               ow == "xtream" and abs(oy-y) < self.height*.04 for ow, _, oy in row)), None)
+            if button and not ok_sent and time.monotonic() - selected > 9:
+                # La première sélection peut simplement donner le focus au
+                # bouton sur Android TV. Le formulaire doit encore être absent.
+                self.key("KEYCODE_DPAD_CENTER", .4)
+                ok_sent = True
+            time.sleep(.35)
+        raise RuntimeError("Formulaire M3U absent après sélection du bouton et contrôle du focus")
 
     def save(self):
         super().save()
@@ -123,12 +153,26 @@ class Bench(Scenario):
             elif first is None:
                 last_blank = before
             time.sleep(.16)
-        raise RuntimeError("Aucune preuve de première image plein écran suivie de mouvement")
+        raise TimeoutError("Aucune preuve de première image plein écran suivie de mouvement")
+
+    def focused_target(self, point, expr):
+        # Confirmer uniquement si le même libellé est toujours à la même place.
+        # Un lecteur déjà ouvert peut avoir son propre titre, à un autre endroit.
+        words = self.words()
+        return any(re.fullmatch(expr, word) and abs(x - point[0]) < self.width * .06 and
+                   abs(y - point[1]) < self.height * .035 for word, x, y in words)
 
     def open_tab(self, path):
         vocab = "live|direct" if path == "live" else "movies|films|cinema"
         semantics = r"\b(live|direct)\b" if path == "live" else r"\b(movies|films|cin[eé]ma)\b"
-        self.tap(self.locate(vocab, timeout=12, semantics=semantics))
+        tab = self.locate(vocab, timeout=12, semantics=semantics)
+        self.tap(tab)
+        marker = "orion" if path == "movie" else "mire"
+        if not self.find(marker, timeout=4) and self.focused_target(tab, vocab):
+            # Le hub contient parfois un titre recommandé. « Tonight » est un
+            # témoin supplémentaire qu'on est encore sur l'accueil, avant OK.
+            if self.find("tonight|soir", timeout=1):
+                self.key("KEYCODE_DPAD_CENTER", .5)
 
     def play_point(self):
         return self.locate("play|watch|lire|lecture|regarder|resume|reprendre", timeout=7,
@@ -148,6 +192,8 @@ class Bench(Scenario):
                 self.tap(category)
             point = self.locate("orion", timeout=12, semantics=r"\borion\b")
         self.tap(point)
+        if self.play_point() is None and self.focused_target(point, "orion"):
+            self.key("KEYCODE_DPAD_CENTER", .5)
 
     def back_to_item(self, path):
         for _ in range(3):
@@ -236,7 +282,24 @@ class Bench(Scenario):
                 point = self.back_to_item(item)
             self.verify_not_fullscreen()
             started = self.tap(point)
-            self.first_picture(started, result)
+            try:
+                self.first_picture(started, result)
+                result["start_gesture"] = "touch"
+            except TimeoutError:
+                expr = "mire" if item == "live" else "play|watch|lire|lecture|regarder|resume|reprendre"
+                if not self.focused_target(point, expr) or self.image()[-1] >= 5:
+                    raise
+                # Un premier tap a pu donner uniquement le focus. Le délai
+                # total conserve cette attente. On mesure aussi OK séparément.
+                confirmed = clock()
+                self.adb("shell", "input", "keyevent", "KEYCODE_DPAD_CENTER")
+                self.first_picture(confirmed, result)
+                result["start_gesture"] = "focus_touch_then_dpad_center"
+                result["time_before_confirm_ms"] = round((confirmed-started) / NS_PER_MS, 1)
+                result["delay_after_confirm_ms"] = result["delay_ms"]
+                for bound in ("first_visible_lower_ms", "first_visible_upper_ms"):
+                    result[bound] = round(result[bound] + result["time_before_confirm_ms"], 1)
+                result["delay_ms"] = result["first_visible_upper_ms"]
             if path == "cast":
                 result["local_delay_ms"] = result.pop("delay_ms")
                 self.casting(result)
