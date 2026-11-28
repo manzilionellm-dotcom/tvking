@@ -1496,6 +1496,8 @@
   "novatubeAddM3u": "Lägg till en M3U-spellista",
   "novatubeXtreamLogin": "Logga in med Xtream Codes",
   "novatubeDeviceCodeLabel": "Enhetskod",
+  "novatubeCopyCode": "Kopiera koden",
+  "novatubeCopyCodeFailed": "Det gick inte att kopiera koden. Försök igen.",
   "novatubeDeviceCodeHelp": "Ge den här koden till din återförsäljare för att aktivera NovaTube. Den ändras inte vid en uppdatering.",
   "novatubeCheckAccess": "Kontrollera min åtkomst",
   "novatubeStatusPending": "Licensen väntar på aktivering",

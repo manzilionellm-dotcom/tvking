@@ -1564,6 +1564,8 @@
   "novatubeAddM3u": "Add an M3U playlist",
   "novatubeXtreamLogin": "Sign in with Xtream Codes",
   "novatubeDeviceCodeLabel": "Device code",
+  "novatubeCopyCode": "Copy code",
+  "novatubeCopyCodeFailed": "Couldn’t copy the code. Try again.",
   "novatubeDeviceCodeHelp": "Give this code to your reseller to activate NovaTube. It stays the same after an update.",
   "novatubeCheckAccess": "Check my access",
   "novatubeStatusPending": "Licence awaiting activation",

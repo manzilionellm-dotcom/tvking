@@ -3246,6 +3246,8 @@
   "novatubeAddM3u": "Ku dar liis M3U",
   "novatubeXtreamLogin": "Ku gal Xtream Codes",
   "novatubeDeviceCodeLabel": "Koodhka qalabka",
+  "novatubeCopyCode": "Koobiyee koodhka",
+  "novatubeCopyCodeFailed": "Koodhka lama koobiyeyn. Isku day mar kale.",
   "novatubeDeviceCodeHelp": "Sii koodhkan iibiyahaaga si uu u hawlgeliyo NovaTube. Isma beddelo marka la cusboonaysiiyo.",
   "novatubeCheckAccess": "Hubi gelitaankayga",
   "novatubeStatusPending": "Shatigu wuxuu sugayaa hawlgelin",

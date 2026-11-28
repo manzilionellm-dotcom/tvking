@@ -2933,6 +2933,8 @@
   "novatubeAddM3u": "M3U listesi ekle",
   "novatubeXtreamLogin": "Xtream Codes ile giriş yap",
   "novatubeDeviceCodeLabel": "Cihaz kodu",
+  "novatubeCopyCode": "Kodu kopyala",
+  "novatubeCopyCodeFailed": "Kod kopyalanamadı. Tekrar deneyin.",
   "novatubeDeviceCodeHelp": "NovaTube'u etkinleştirmek için bu kodu bayinize verin. Güncellemeden sonra değişmez.",
   "novatubeCheckAccess": "Erişimimi kontrol et",
   "novatubeStatusPending": "Lisans etkinleştirme bekliyor",

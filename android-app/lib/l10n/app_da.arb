@@ -1496,6 +1496,8 @@
   "novatubeAddM3u": "Tilføj en M3U-playliste",
   "novatubeXtreamLogin": "Log ind med Xtream Codes",
   "novatubeDeviceCodeLabel": "Enhedskode",
+  "novatubeCopyCode": "Kopiér koden",
+  "novatubeCopyCodeFailed": "Koden kunne ikke kopieres. Prøv igen.",
   "novatubeDeviceCodeHelp": "Giv denne kode til din forhandler for at aktivere NovaTube. Den ændrer sig ikke ved en opdatering.",
   "novatubeCheckAccess": "Tjek min adgang",
   "novatubeStatusPending": "Licens afventer aktivering",

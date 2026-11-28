@@ -2933,6 +2933,8 @@
   "novatubeAddM3u": "Aggiungi una playlist M3U",
   "novatubeXtreamLogin": "Accedi con Xtream Codes",
   "novatubeDeviceCodeLabel": "Codice del dispositivo",
+  "novatubeCopyCode": "Copia il codice",
+  "novatubeCopyCodeFailed": "Impossibile copiare il codice. Riprova.",
   "novatubeDeviceCodeHelp": "Comunica questo codice al tuo rivenditore per attivare NovaTube. Non cambia dopo un aggiornamento.",
   "novatubeCheckAccess": "Verifica il mio accesso",
   "novatubeStatusPending": "Licenza in attesa di attivazione",

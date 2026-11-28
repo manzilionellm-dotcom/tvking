@@ -32,7 +32,9 @@
 //      n'est pas validé (exigence du propriétaire).
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../../core/app/app_platform.dart';
 import '../../../core/i18n/l10n_extension.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../device/data/device_identity.dart';
@@ -60,16 +62,15 @@ class TvNovatubeWelcomeScreen extends StatefulWidget {
 }
 
 class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
-  // « … » tant que l'identité n'est pas lue (quelques millisecondes).
-  String _mac = '…';
+  String? _deviceCode;
   bool _busy = false;
   bool _codeDialogOpen = false;
 
   @override
   void initState() {
     super.initState();
-    DeviceIdentity.instance.mac.then((String m) {
-      if (mounted) setState(() => _mac = m);
+    DeviceIdentity.instance.mac.then((String mac) {
+      if (mounted) setState(() => _deviceCode = displayMac(mac, showPrefix: true));
     });
     // Le statut est lu par la veille unique de l'app (RemoteActivationWatch),
     // avec ses délais progressifs. Cet écran ÉCOUTE seulement : il n'envoie
@@ -79,6 +80,21 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
 
   void _onStatus() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _copyDeviceCode(String code) async {
+    final AppLocalizations l10n = context.l10n;
+    String message;
+    try {
+      await Clipboard.setData(ClipboardData(text: code));
+      message = l10n.idCopied(code);
+    } on PlatformException {
+      message = l10n.novatubeCopyCodeFailed;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..removeCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -140,6 +156,7 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
     final TvAppTokens t = TvAppTokens.of(context);
     final AppLocalizations l10n = context.l10n;
     final _AccessLine access = _AccessLine.of(l10n);
+    final String? code = _deviceCode;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         // Deux boutons côte à côte sur une TV, l'un sous l'autre sur un
@@ -215,19 +232,33 @@ class _TvNovatubeWelcomeScreenState extends State<TvNovatubeWelcomeScreen> {
                         children: <Widget>[
                           TvSectionLabel(l10n.novatubeDeviceCodeLabel),
                           const SizedBox(height: 10),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              // Format complet demandé : MK:XX:XX:XX:XX:XX.
-                              displayMac(_mac, showPrefix: true),
-                              // Un code reste gauche → droite, même en arabe.
-                              textDirection: TextDirection.ltr,
-                              style: t.mono(
-                                34,
-                                color: t.accentBright,
-                                spacing: 2,
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 12,
+                            children: <Widget>[
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  code ?? '…',
+                                  // Un code reste gauche → droite, même en arabe.
+                                  textDirection: TextDirection.ltr,
+                                  style: t.mono(34, color: t.accentBright, spacing: 2),
+                                ),
                               ),
-                            ),
+                              // Sur téléphone, le bouton peut passer sous le code en portrait.
+                              if (!AppPlatform.isTv)
+                                OutlinedButton.icon(
+                                  key: const ValueKey<String>('novatube-welcome-copy-code'),
+                                  onPressed: code == null ? null : () => _copyDeviceCode(code),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: t.accentBright,
+                                    minimumSize: const Size(48, 48),
+                                  ),
+                                  icon: const Icon(Icons.copy_rounded),
+                                  label: Text(l10n.novatubeCopyCode),
+                                ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           Text(

@@ -2933,6 +2933,8 @@
   "novatubeAddM3u": "Добавить плейлист M3U",
   "novatubeXtreamLogin": "Войти через Xtream Codes",
   "novatubeDeviceCodeLabel": "Код устройства",
+  "novatubeCopyCode": "Скопировать код",
+  "novatubeCopyCodeFailed": "Не удалось скопировать код. Попробуйте ещё раз.",
   "novatubeDeviceCodeHelp": "Сообщите этот код продавцу, чтобы активировать NovaTube. Он не меняется после обновления.",
   "novatubeCheckAccess": "Проверить мой доступ",
   "novatubeStatusPending": "Лицензия ожидает активации",

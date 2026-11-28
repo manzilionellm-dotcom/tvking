@@ -2933,6 +2933,8 @@
   "novatubeAddM3u": "添加 M3U 播放列表",
   "novatubeXtreamLogin": "使用 Xtream Codes 登录",
   "novatubeDeviceCodeLabel": "设备代码",
+  "novatubeCopyCode": "复制代码",
+  "novatubeCopyCodeFailed": "无法复制代码，请重试。",
   "novatubeDeviceCodeHelp": "将此代码提供给您的经销商以激活 NovaTube。更新后代码不会改变。",
   "novatubeCheckAccess": "检查我的访问权限",
   "novatubeStatusPending": "许可证等待激活",

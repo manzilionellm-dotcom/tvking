@@ -10,9 +10,11 @@
 //  Données entièrement factices.
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/app/app_platform.dart';
 import 'package:tv_king/core/app/novatube_tv_edition.dart';
 import 'package:tv_king/features/device/data/novatube_identity.dart';
 import 'package:tv_king/features/playlists/domain/open_source_input.dart';
@@ -37,9 +39,20 @@ Widget _app(Widget child, Locale locale) => MaterialApp(
       home: Scaffold(body: child),
     );
 
-Future<void> _pumpWelcome(WidgetTester tester, {Locale locale = const Locale('fr')}) async {
-  // Taille d'une TV 720p : les deux boutons sont côte à côte.
-  tester.view.physicalSize = const Size(1280, 720);
+Future<void> _pumpWelcome(
+  WidgetTester tester, {
+  Locale locale = const Locale('fr'),
+  bool handset = false,
+}) async {
+  final bool previousTv = AppPlatform.isTv;
+  final bool previousZuno = AppPlatform.isZuno;
+  AppPlatform.configureZuno(isAndroidHandset: handset);
+  addTearDown(() {
+    AppPlatform.isTv = previousTv;
+    AppPlatform.isZuno = previousZuno;
+  });
+  tester.view.physicalSize =
+      handset ? const Size(800, 360) : const Size(1280, 720);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(_app(const TvNovatubeWelcomeScreen(), locale));
@@ -68,6 +81,7 @@ void main() {
     expect(find.text('Ajouter une liste M3U'), findsOneWidget);
     expect(find.text('Se connecter avec Xtream Codes'), findsOneWidget);
     expect(find.text(_mac), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('novatube-welcome-copy-code')), findsNothing);
     expect(find.text("Licence en attente d'activation"), findsOneWidget);
     expect(find.text('Vérifier mon accès'), findsOneWidget);
     expect(find.text('Code d’accès'), findsOneWidget);
@@ -75,6 +89,32 @@ void main() {
     expect(find.textContaining('Atlas'), findsNothing);
     expect(find.textContaining('http'), findsNothing);
     expect(find.textContaining('zuno8k'), findsNothing);
+  });
+
+  testWidgets('sur téléphone, toucher Copier envoie exactement le code MK affiché',
+      (WidgetTester tester) async {
+    final writes = <String>[];
+    final messenger = tester.binding.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') {
+        writes.add((call.arguments as Map)['text'] as String);
+      }
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await _pumpWelcome(tester, handset: true);
+    final copy = find.byKey(const ValueKey<String>('novatube-welcome-copy-code'));
+    expect(find.text(_mac), findsOneWidget);
+    expect(find.text('Copier le code'), findsOneWidget);
+    expect(writes, isEmpty);
+    await tester.ensureVisible(copy);
+    await tester.tap(copy);
+    await tester.pumpAndSettle();
+
+    expect(writes, <String>[_mac]);
+    expect(find.text('Identifiant copié : $_mac'), findsOneWidget);
+    expect(find.byType(TvNovatubeWelcomeScreen), findsOneWidget);
   });
 
   testWidgets('le code d’accès ouvre un formulaire vide, sans changer la licence',

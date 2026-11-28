@@ -1496,6 +1496,8 @@
   "novatubeAddM3u": "إضافة قائمة M3U",
   "novatubeXtreamLogin": "تسجيل الدخول باستخدام Xtream Codes",
   "novatubeDeviceCodeLabel": "رمز الجهاز",
+  "novatubeCopyCode": "نسخ الرمز",
+  "novatubeCopyCodeFailed": "تعذّر نسخ الرمز. حاول مرة أخرى.",
   "novatubeDeviceCodeHelp": "أعطِ هذا الرمز للموزّع لتفعيل NovaTube. لا يتغيّر بعد التحديث.",
   "novatubeCheckAccess": "التحقق من وصولي",
   "novatubeStatusPending": "الترخيص بانتظار التفعيل",

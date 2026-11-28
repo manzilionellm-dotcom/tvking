@@ -2,11 +2,12 @@ name: NovaTube LAB VPN · compilation et signature
 
 on:
   push:
-    branches: ['qa/novatube-lab-vpn-rapidite']
+    branches: ['qa/novatube-lab-vpn-rapidite', 'feature/novatube-lab-copie-code']
     paths:
       - 'android-app/lib/**'
       - 'android-app/packages/**'
       - 'android-app/test/**'
+      - 'android-app/ci/novatube_copy/**'
       - '.github/workflows/novatube-lab-vpn.yml'
   workflow_dispatch:
 
@@ -14,15 +15,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: novatube-lab-vpn-build
+  group: novatube-lab-vpn-build-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:
   CI: 'true'
   FLUTTER_SUPPRESS_ANALYTICS: 'true'
   SOURCE_SHA: ${{ github.sha }}
-  NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.tv.lab.retour.rec.vpn
-  NOVATUBE_TV_VERSION: '1.0.2'
+  NOVATUBE_TV_APP_ID: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && 'com.sevenmotion.novatube.tv.lab.copie' || 'com.sevenmotion.novatube.tv.lab.retour.rec.vpn' }}
+  NOVATUBE_TV_VERSION: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && '1.0.3' || '1.0.2' }}
+  NOVATUBE_LABEL: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && 'NovaTube LAB Copie' || 'NovaTube LAB VPN' }}
+  NOVATUBE_APK: ${{ github.ref_name == 'feature/novatube-lab-copie-code' && 'NovaTube-LAB-Copie.apk' || 'NovaTube-LAB-VPN.apk' }}
 
 jobs:
   build:
@@ -39,10 +42,6 @@ jobs:
       version-code: ${{ steps.build.outputs.version-code }}
       signing: ${{ steps.sign.outputs.signing }}
       cert-sha256: ${{ steps.verify.outputs.cert-sha256 }}
-    env:
-      # Les scripts TV existants lisent ces deux variables (ZUNO_ = historique).
-      ZUNO_APP_ID: com.sevenmotion.novatube.tv.lab.retour.rec.vpn
-      ZUNO_APP_LABEL: NovaTube LAB VPN
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,12 +72,15 @@ jobs:
         run: |
           set -e
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          export ZUNO_APP_ID="$NOVATUBE_TV_APP_ID" ZUNO_APP_LABEL="$NOVATUBE_LABEL"
+          echo "ZUNO_APP_ID=$NOVATUBE_TV_APP_ID" >> "$GITHUB_ENV"
+          echo "ZUNO_APP_LABEL=$NOVATUBE_LABEL" >> "$GITHUB_ENV"
           python3 ci/tv/patch_manifest.py android/app/src/main/AndroidManifest.xml
           cp ci/proguard-rules.pro android/app/proguard-rules.pro
           python3 ci/tv/patch_gradle.py android/app/build.gradle.kts
           python3 ci/novatube_tv/prepare_local_recording.py
-          grep -q 'applicationId = "com.sevenmotion.novatube.tv.lab.retour.rec.vpn"' android/app/build.gradle.kts
-          grep -q 'android:label="NovaTube LAB VPN"' android/app/src/main/AndroidManifest.xml
+          grep -Fq "applicationId = \"$NOVATUBE_TV_APP_ID\"" android/app/build.gradle.kts
+          grep -Fq "android:label=\"$NOVATUBE_LABEL\"" android/app/src/main/AndroidManifest.xml
 
       - name: Préférences compatibles box Android 5 (identique à Zuno TV)
         run: |
@@ -203,7 +205,7 @@ jobs:
         id: verify
         run: |
           set -euo pipefail
-          name="NovaTube-LAB-VPN.apk"
+          name="$NOVATUBE_APK"
           mkdir -p build/novatube_tv
           cp build/app/outputs/flutter-apk/app-release.apk "build/novatube_tv/$name"
           apk="build/novatube_tv/$name"
@@ -213,7 +215,7 @@ jobs:
           "$aapt" dump badging "$apk" > build/novatube_tv/badging.txt
           grep -E "^package:|^application-label:|leanback" build/novatube_tv/badging.txt
           grep -q "^package: name='${NOVATUBE_TV_APP_ID}'" build/novatube_tv/badging.txt
-          grep -q "^application-label:'NovaTube LAB VPN'" build/novatube_tv/badging.txt
+          grep -Fxq "application-label:'$NOVATUBE_LABEL'" build/novatube_tv/badging.txt
           grep -q "^launchable-activity:" build/novatube_tv/badging.txt
           grep -q "^leanback-launchable-activity:" build/novatube_tv/badging.txt
           "$bt/apksigner" verify --verbose --print-certs "$apk" > build/novatube_tv/signature.txt
@@ -236,3 +238,74 @@ jobs:
             android-app/build/novatube_tv/signature.txt
           if-no-files-found: error
           retention-days: 14
+
+  telephone:
+    name: Copier le code affiché et le coller sur Android
+    needs: build
+    if: github.ref_name == 'feature/novatube-lab-copie-code'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Installer le binaire signé et comparer le collage avec le code visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.build.outputs.apk-sha256 }}
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "novatube-tv-apk-$GITHUB_SHA" --dir apk
+          echo "$EXPECTED_SHA  apk/$NOVATUBE_APK" | sha256sum -c -
+          sudo chmod a+rw /dev/kvm
+          if ! ldconfig -p | grep -F libpulse.so.0 >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq libpulse0
+          fi
+          bash android-app/ci/novatube_copy/verify_phone.sh "apk/$NOVATUBE_APK" preuve "$NOVATUBE_TV_APP_ID"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: controle-copie-telephone-${{ github.sha }}
+          path: preuve/proof.json
+          if-no-files-found: warn
+
+  publier:
+    name: Publier et vérifier l’APK LAB Copie
+    if: github.ref_name == 'feature/novatube-lab-copie-code'
+    needs: [build, telephone]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_SHA: ${{ needs.build.outputs.apk-sha256 }}
+    steps:
+      - name: Comparer le téléchargement public au binaire testé
+        run: |
+          set -euo pipefail
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "novatube-tv-apk-$GITHUB_SHA" --dir apk
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "controle-copie-telephone-$GITHUB_SHA" --dir preuve
+          test -s preuve/proof.json
+          echo "$EXPECTED_SHA  apk/$NOVATUBE_APK" | sha256sum -c -
+          tag="novatube-lab-copie-${GITHUB_SHA:0:8}"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" "apk/$NOVATUBE_APK" apk/SHA256SUMS.txt preuve/proof.json \
+              --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --title "NovaTube LAB Copie $NOVATUBE_TV_VERSION" \
+              --notes "Sur téléphone, le bouton copie le code MK complet affiché sur l’accueil. Test sur Android : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Cette préversion s’installe séparément de la LAB VPN 1.0.2."
+          fi
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$tag/$NOVATUBE_APK"
+          curl -fsSL --retry 5 --retry-all-errors "$url" -o public.apk
+          cmp "apk/$NOVATUBE_APK" public.apk
+          echo "[$NOVATUBE_APK]($url)" >> "$GITHUB_STEP_SUMMARY"

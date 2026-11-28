@@ -1496,6 +1496,8 @@
   "novatubeAddM3u": "Ongeza orodha ya M3U",
   "novatubeXtreamLogin": "Ingia kwa Xtream Codes",
   "novatubeDeviceCodeLabel": "Msimbo wa kifaa",
+  "novatubeCopyCode": "Nakili msimbo",
+  "novatubeCopyCodeFailed": "Imeshindikana kunakili msimbo. Jaribu tena.",
   "novatubeDeviceCodeHelp": "Mpe muuzaji wako msimbo huu ili kuwasha NovaTube. Haubadiliki baada ya kusasisha.",
   "novatubeCheckAccess": "Angalia ufikiaji wangu",
   "novatubeStatusPending": "Leseni inasubiri kuwashwa",
