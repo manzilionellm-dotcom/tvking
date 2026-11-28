@@ -1,0 +1,113 @@
+name: ZUNO LAB — contre-épreuve du guide et du relais
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths:
+      - '.github/workflows/zuno-lab-guide.yml'
+      - 'android-app/packages/tvking_device/android/src/main/**'
+      - 'android-app/lib/core/blackbox/black_box.dart'
+      - 'android-app/lib/features/tv/presentation/tv_player_screen.dart'
+      - 'android-app/lib/features/tv/presentation/tv_live_screen.dart'
+      - 'android-app/lib/features/tv/presentation/tv_app.dart'
+      - 'android-app/lib/features/tv/presentation/tv_shell.dart'
+      - 'android-app/lib/features/tv/desktop/desktop_cast_controls.dart'
+      - 'android-app/lib/features/cast/data/cast_manager.dart'
+      - 'android-app/test/features/tv/desktop/zuno_mobile_cast_controls_test.dart'
+      - 'android-app/test/features/tv/zuno_tv_variant_focus_test.dart'
+
+permissions:
+  contents: read
+jobs:
+  guide:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Mesurer les requêtes SQLite du témoin et du candidat
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/guide"
+          flutter pub get && flutter gen-l10n
+          screen=lib/features/tv/presentation/tv_player_screen.dart
+          git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$screen" > "$screen"
+          options=(--no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789)
+          # Vérifier les trois retraits sur le vrai Navigator, puis rétablir
+          # le candidat. Une autre assertion rouge n’est pas une reproduction.
+          shell=lib/features/tv/presentation/tv_app.dart
+          git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$shell" > "$shell"
+          if flutter test "${options[@]}" --plain-name 'le lecteur actif retire sa surface' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/guide/droits-avant.txt" 2>&1; then
+            echo 'Absence de reproduction du défaut de politique pendant la lecture'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/droits-avant.txt"
+          for cause in frozen banned kids; do
+            grep -Fq "ZUNO_DROITS cause=$cause vuesNatives=1" "$RUNNER_TEMP/guide/droits-avant.txt"
+          done
+          grep -Fq 'ZUNO_DROITS_SURFACE_CONSERVEE' "$RUNNER_TEMP/guide/droits-avant.txt"
+          git restore -- "$shell"
+          # Deux OK avant la libération de l’aperçu ont empilé deux lecteurs
+          # sur le témoin. Une panne de compilation ne valide pas ce test rouge.
+          live=lib/features/tv/presentation/tv_live_screen.dart
+          git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$live" > "$live"
+          if flutter test "${options[@]}" --plain-name 'double OK dans Direct' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/guide/double-ok-avant.txt" 2>&1; then
+            echo 'Le témoin a laissé passer la contre-épreuve double OK'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/double-ok-avant.txt"
+          grep -Fq 'ZUNO_DOUBLE_OK routes=2' "$RUNNER_TEMP/guide/double-ok-avant.txt"
+          grep -Fq 'ZUNO_DOUBLE_OK_ROUTES' "$RUNNER_TEMP/guide/double-ok-avant.txt"
+          git restore -- "$live"
+          if flutter test "${options[@]}" --plain-name 'une seule lecture du guide' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/guide/avant.txt" 2>&1; then
+            echo 'Le témoin ne reproduit pas le défaut'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/avant.txt"
+          grep -q 'ZUNO_GUIDE_READ_COUNT\|ZUNO_GUIDE_STALE_CONTROL' "$RUNNER_TEMP/guide/avant.txt"
+          git restore -- "$screen"
+          flutter test "${options[@]}" test/features/tv/zuno_tv_variant_focus_test.dart test/features/player/hls_recording_test.dart test/features/player/relay_dead_stream_test.dart | tee "$RUNNER_TEMP/guide/apres.txt"
+      - name: Comparer le STOP Cast après révocation sur téléphone
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          options=(--no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789)
+          manager=lib/features/cast/data/cast_manager.dart
+          controls=lib/features/tv/desktop/desktop_cast_controls.dart
+          suite=test/features/tv/desktop/zuno_mobile_cast_controls_test.dart
+          for file in "$manager" "$controls"; do
+            git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$file" > "$file"
+          done
+          if flutter test "${options[@]}" --plain-name 'une révocation coupe le Cast établi sur téléphone' "$suite" > "$RUNNER_TEMP/guide/cast-droits-avant.txt" 2>&1; then
+            echo 'Le transport du témoin a envoyé STOP'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/cast-droits-avant.txt"
+          for cause in frozen banned kids; do
+            grep -Fq "ZUNO_DROITS_CAST cause=$cause stops=0" "$RUNNER_TEMP/guide/cast-droits-avant.txt"
+          done
+          grep -Fq 'ZUNO_DROITS_CAST_STOP' "$RUNNER_TEMP/guide/cast-droits-avant.txt"
+          git restore -- "$manager" "$controls"
+          flutter test "${options[@]}" --plain-name 'une révocation coupe le Cast établi sur téléphone' "$suite" | tee "$RUNNER_TEMP/guide/cast-droits-apres.txt"
+          for cause in frozen banned kids; do
+            grep -Fq "ZUNO_DROITS_CAST cause=$cause stops=1" "$RUNNER_TEMP/guide/cast-droits-apres.txt"
+          done
+      - name: Contre-épreuves des parcours partagés avec l'édition adaptative
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          flutter test --no-pub --concurrency=2 --reporter expanded \
+            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto \
+            --dart-define=BACKEND_URL=http://127.0.0.1:18789 \
+            test/core/blackbox test/features/profiles/profile_migration_test.dart \
+            test/features/tv/zuno_pip_service_test.dart test/features/tv/zuno_pip_player_widget_test.dart \
+            test/features/tv/desktop/zuno_mobile_cast_controls_test.dart test/features/tv/tv_channel_guide_replay_test.dart \
+            test/features/player/live_fallback_test.dart test/features/player/reconnect_plan_test.dart \
+            | tee "$RUNNER_TEMP/guide/parcours-partages.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: zuno-lab-guide
+          path: ${{ runner.temp }}/guide/

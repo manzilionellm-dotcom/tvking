@@ -1,0 +1,95 @@
+{
+  "kind": "modele_geometrique_sans_appareil",
+  "rows": [
+    {
+      "source": [
+        1920,
+        1080
+      ],
+      "bitmap": [
+        1280,
+        720
+      ],
+      "rectangle": [
+        320,
+        180,
+        1600,
+        900
+      ],
+      "corners": 0,
+      "source_fraction": 0.4444444444444444
+    },
+    {
+      "source": [
+        3840,
+        2160
+      ],
+      "bitmap": [
+        1280,
+        720
+      ],
+      "rectangle": [
+        1280,
+        720,
+        2560,
+        1440
+      ],
+      "corners": 0,
+      "source_fraction": 0.1111111111111111
+    },
+    {
+      "source": [
+        1440,
+        1080
+      ],
+      "bitmap": [
+        1280,
+        720
+      ],
+      "rectangle": [
+        80,
+        180,
+        1360,
+        900
+      ],
+      "corners": 0,
+      "source_fraction": 0.5925925925925926
+    },
+    {
+      "source": [
+        1080,
+        1920
+      ],
+      "bitmap": [
+        1080,
+        720
+      ],
+      "rectangle": [
+        0,
+        600,
+        1080,
+        1320
+      ],
+      "corners": 0,
+      "source_fraction": 0.375
+    },
+    {
+      "source": [
+        640,
+        360
+      ],
+      "bitmap": [
+        640,
+        360
+      ],
+      "rectangle": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "corners": 4,
+      "source_fraction": 1.0
+    }
+  ]
+}

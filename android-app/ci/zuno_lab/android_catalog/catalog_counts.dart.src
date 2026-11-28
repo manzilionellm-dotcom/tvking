@@ -1,0 +1,4 @@
+class CatalogCounts {
+  static final Set<String> focus = <String>{};
+  static int selections = 0, opens = 0, closes = 0, zapIntents = 0;
+}

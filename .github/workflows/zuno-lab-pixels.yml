@@ -1,0 +1,66 @@
+name: ZUNO LAB — pixels de la copie de coupure Android
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths: ['.github/workflows/zuno-lab-pixels.yml', 'android-app/ci/zuno_lab/HeldEdgesTest.kt']
+permissions:
+  contents: read
+jobs:
+  pixels:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [avant, apres]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Décoder, capturer puis comparer les quatre plages HD
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libpulse0
+          source android-app/ci/zuno_lab/boot_lab.sh 'system-images;android-29;google_apis;x86_64' "$PWD/pixels"
+          adb shell wm size 1080x1920
+          path=android-app/packages/native_video_player/android/src/main/kotlin/com/manzilionellm/native_video_player/NativeVideoView.kt
+          if [[ "$VERSION" == avant ]]; then git show "a096b2f85de082622ec232fa198069bdefbbccab:$path" > "$path"; fi
+          cd android-app
+          flutter create . --platforms=android --no-pub --project-name tv_king
+          flutter pub get
+          cp ci/zuno_lab/HeldEdgesTest.kt packages/native_video_player/android/src/androidTest/kotlin/com/manzilionellm/native_video_player/
+          assets=packages/native_video_player/android/src/androidTest/assets
+          mkdir -p "$assets"
+          pattern='color=c=gray:s=1920x1080:r=15:d=55,drawbox=x=0:y=0:w=320:h=200:c=red:t=fill,drawbox=x=1600:y=0:w=320:h=200:c=lime:t=fill,drawbox=x=0:y=880:w=320:h=200:c=blue:t=fill,drawbox=x=1600:y=880:w=320:h=200:c=yellow:t=fill'
+          ffmpeg -loglevel error -f lavfi -i "$pattern" -an -c:v libx264 -threads 2 -preset ultrafast -pix_fmt yuv420p "$assets/edges.mp4"
+          cd android
+          status=0
+          ./gradlew :native_video_player:connectedDebugAndroidTest '-Pandroid.testInstrumentationRunnerArguments.class=com.manzilionellm.native_video_player.HeldEdgesTest' -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true --max-workers=2 --no-daemon > "$RUNNER_TEMP/gradle.txt" 2>&1 || status=$?
+          tail -35 "$RUNNER_TEMP/gradle.txt"
+          cd ../..
+          adb pull /sdcard/Android/data/com.manzilionellm.native_video_player.test/files/held-edges/. pixels/
+          cat pixels/pixel-rgb.txt
+          if [[ "$VERSION" == avant ]]; then
+            test "$status" -ne 0
+            grep -R -q 'ZUNO_HELD_CORNERS' android-app/build/native_video_player/outputs/androidTest-results
+          else
+            test "$status" -eq 0
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: zuno-cadrage-${{ matrix.version }}
+          path: pixels/

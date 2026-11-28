@@ -1,0 +1,83 @@
+name: ZUNO LAB — localiser le délai avant et après la requête du lecteur
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths: ['.github/workflows/zuno-lab-phases-reprise.yml', 'android-app/ci/zuno_lab/phase_diag/reprise.py']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  optics:
+    env:
+      BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab.tracediag
+    strategy:
+      fail-fast: false
+      matrix:
+        charge: [film,sans-encodeur]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46092891215
+          name: trace-seul-46092891215
+          path: apk
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: optics-tools
+          persist-credentials: false
+          sparse-checkout: android-app/ci/novatube_tv
+      - name: Encoder deux mires pour le pilote tactile et la télécommande
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil
+          python3 optics-tools/android-app/ci/novatube_tv/pilot_live_source.py prepare "$RUNNER_TEMP/fixtures"
+      - name: Ouvrir l'application, ajouter la liste par l'écran et observer les compteurs
+        run: |
+          set -euo pipefail
+          export OMP_THREAD_LIMIT=1
+          export PYTHONPATH="$PWD/optics-tools/android-app/ci/novatube_tv"
+          out="$PWD/zuno-optics"
+          mkdir -p "$out/source"
+          python3 android-app/ci/zuno_lab/path_trace/source.py "$PYTHONPATH/pilot_live_source.py" "$RUNNER_TEMP/fixtures" "$out/source" >"$RUNNER_TEMP/fixture.log" 2>&1 &
+          (cd apk && sha256sum -c SHA256SUMS)
+          out="$PWD/zuno-optics"
+          source android-app/ci/zuno_lab/boot_lab.sh 'system-images;android-36;android-tv;x86_64' "$out"
+          # Une fenêtre de bienvenue du lanceur peut intercepter HOME sur un AVD
+          # neuf. Le parcours vidéo possède ses propres preuves et n'impose pas
+          # la réussite d'une campagne HOME distincte avant le premier appui.
+          adb shell input keyevent KEYCODE_BACK
+          adb install apk/ZUNO-TRACE.apk
+          installed="$(adb shell pm path "$BENCH_PACKAGE" | tr -d '\r' | sed -n 's/^package://p')"
+          test -n "$installed"
+          adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-before.sha256"
+          test "$(cat "$out/installed-before.sha256")" = "$(sha256sum apk/ZUNO-TRACE.apk | awk '{print $1}')"
+          component="$BENCH_PACKAGE/com.example.tv_king.MainActivity"
+          adb reverse tcp:18471 tcp:18471
+          adb logcat -c
+          python3 android-app/ci/zuno_lab/phase_diag/observe.py "$out/phases-runtime.jsonl" & tracer=$!
+          adb shell am start -n "$component"
+          sleep 10
+          adb reverse tcp:18471 tcp:18471
+          curl -fsS --retry 5 http://127.0.0.1:18471/A/index.m3u8 >/dev/null
+          status=0
+          python3 android-app/ci/zuno_lab/phase_diag/reprise.py "$out/optical" "${{ matrix.charge }}" || status=$?
+          kill "$tracer" 2>/dev/null || true
+          python3 android-app/ci/zuno_lab/path_trace/summarize.py "$out"
+          adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-after.sha256"
+          cmp "$out/installed-before.sha256" "$out/installed-after.sha256"
+          exit "$status"
+      - name: Conserver uniquement les résultats expurgés
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: phases-android-${{ matrix.charge }}
+          path: zuno-optics/
+          retention-days: 14
+          if-no-files-found: error

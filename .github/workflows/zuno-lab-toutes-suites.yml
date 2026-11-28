@@ -1,0 +1,191 @@
+# Réexécuter les jobs de lecture seule de quality-zuno et mobile-panel-sync-tests aux SHA du candidat.
+name: ZUNO LAB — suites complètes et contrôles des autres éditions au SHA livré
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths: ['.github/workflows/zuno-lab-toutes-suites.yml']
+permissions:
+  contents: read
+jobs:
+  video_logic:
+    name: Vidéo native — logique et reprise
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: daba06b196754e4fff9dbfd8a454bd804b752be6
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '21'
+    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+      with:
+        gradle-version: 8.11.1
+        cache-read-only: true
+    - name: Tester la logique native sans flux fournisseur
+      working-directory: android-app/packages/native_video_player/logic-test
+      run: gradle test --no-daemon
+  zuno_device_capabilities:
+    name: ZUNO — séparation Cast téléphone et TV
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: daba06b196754e4fff9dbfd8a454bd804b752be6
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Vérifier le matériel sans appareil ni réseau fournisseur
+      run: bash android-app/ci/test-zuno-device-capabilities.sh
+    - name: Vérifier le type physique transmis au panel
+      run: bash android-app/ci/test-device-hardware-kind.sh
+  flutter:
+    name: flutter analyze + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: daba06b196754e4fff9dbfd8a454bd804b752be6
+    - name: Setup Flutter
+      uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+        cache: true
+    - name: Vérifier tous les catalogues de traduction
+      run: python3 tool/check_l10n.py
+    - name: Install dependencies
+      run: flutter pub get
+    - name: Analyze
+      run: flutter analyze --no-fatal-infos --no-fatal-warnings
+    - name: Run tests
+      run: flutter test --reporter expanded
+    - name: Vérifier la connexion au panel sur un serveur local
+      run: flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_test.dart
+    - name: Mesurer le push par défaut et la reprise après coupure
+      run: flutter test --reporter expanded --dart-define=RUN_PANEL_CONNECTION=true --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/features/subscription/panel_connection_websocket_test.dart
+  worker:
+    name: tests Worker (sécurité)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: daba06b196754e4fff9dbfd8a454bd804b752be6
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      with:
+        node-version: 24.21.0
+        package-manager-cache: false
+    - name: Smoke + sécurité
+      run: |
+        node android-app/cloudflare/worker_security.smoke.mjs
+        node android-app/cloudflare/zuno_security.test.mjs
+  configuration:
+    name: Protections de configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: daba06b196754e4fff9dbfd8a454bd804b752be6
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      with:
+        node-version: 24.21.0
+        package-manager-cache: false
+    - run: node --test .github/security-config.test.mjs .github/app-release-guard.test.mjs .github/release-cleanup.test.mjs
+    - name: Vérifier le patch additif de passation sur le vrai document
+      run: git apply --unidiff-zero --check docs/patches/handoff-securite-20261010.patch
+  regression_mobile:
+    strategy:
+      fail-fast: false
+      matrix:
+        edition:
+        - reviewed
+        - play
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        path: mission
+        persist-credentials: false
+        ref: daba06b196754e4fff9dbfd8a454bd804b752be6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: 37fdf3305c5de9d35e20fd6567df38008fc7a7ee
+        path: phone
+        persist-credentials: false
+    - name: Récupérer le candidat mobile déjà testé sur Android
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ matrix.edition == 'play' && '8ea5a55075d8b5ad334643b780067c486a917f61' || '69eee01d24f50d5e516935b94a189f791de0837c' }}
+        path: mobile-reviewed
+        persist-credentials: false
+    - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+      with:
+        flutter-version: 3.47.7
+        channel: stable
+    - name: Préparer le code mobile sans fusionner la lignée TV
+      working-directory: phone
+      run: |
+        if [[ "${{ matrix.edition }}" == "play" ]]; then
+          bash ../mission/android-app/ci/mobile/prepare-production-video.sh ../mobile-reviewed
+        else
+          bash ../mission/android-app/ci/mobile/prepare-reviewed-source.sh ../mobile-reviewed
+        fi
+        python3 ../mission/android-app/ci/mobile/prepare_novatube_video.py
+        if [[ "${{ matrix.edition }}" == "play" ]]; then
+          flutter pub get --enforce-lockfile
+        else
+          flutter pub get
+        fi
+        flutter gen-l10n
+    - name: Vérifier la numérotation des APK publiés
+      working-directory: phone
+      run: bash ci/build_label_test.sh
+    - name: Vérifier la classification du matériel sans appareil client
+      if: matrix.edition == 'reviewed'
+      working-directory: phone
+      run: bash ci/test-device-hardware-kind.sh
+    - name: Analyser le code mobile complet
+      working-directory: phone
+      run: flutter analyze --no-fatal-infos --no-fatal-warnings
+    - name: Vérifier les gestes et les actions utilisateur corrigés
+      if: matrix.edition == 'reviewed'
+      working-directory: phone
+      run: flutter test --reporter expanded test/core/settled_page_view_test.dart test/features/playlists/library_refresh_test.dart test/features/playlists/import_return_test.dart
+    - name: Vérifier les régressions et la suite mobile complète
+      working-directory: phone
+      run: |
+        mkdir -p build/premium-captures
+        flutter test --reporter expanded --dart-define=PREMIUM_CAPTURE_DIR=build/premium-captures
+    - name: Vérifier le lecteur gratuit, ses sources et la communication avec le panel
+      if: matrix.edition == 'play'
+      working-directory: phone
+      run: |
+        bash ../mission/android-app/ci/mobile/free/prepare-sources.sh
+        flutter gen-l10n
+        flutter analyze --no-fatal-infos --no-fatal-warnings
+        bash ../mission/android-app/ci/mobile/free/test-release.sh
+    - name: Conserver les captures du vrai accueil mobile
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: 7motion-premium-preview-${{ matrix.edition }}
+        path: phone/build/premium-captures/*.png
+        if-no-files-found: ignore
+        retention-days: 14

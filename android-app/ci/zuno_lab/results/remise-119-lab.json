@@ -1,0 +1,22 @@
+{
+  "utc": "2026-11-28T02:30:04.704556+00:00",
+  "source": "daba06b196754e4fff9dbfd8a454bd804b752be6",
+  "build": 46095717223,
+  "opens": 46095766247,
+  "delivery": 46098199811,
+  "public_url": "https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-lab-119-daba06b19675-46095717223/ZUNO-LAB.apk",
+  "public_bytes": 125948180,
+  "public_sha256": "ef566b3405666f6692feae771652537f6f1ee7bca760244f92bf2594a5ba51ab",
+  "android_before_after": {
+    "tv": [
+      "ef566b3405666f6692feae771652537f6f1ee7bca760244f92bf2594a5ba51ab",
+      "ef566b3405666f6692feae771652537f6f1ee7bca760244f92bf2594a5ba51ab"
+    ],
+    "phone": [
+      "ef566b3405666f6692feae771652537f6f1ee7bca760244f92bf2594a5ba51ab",
+      "ef566b3405666f6692feae771652537f6f1ee7bca760244f92bf2594a5ba51ab"
+    ]
+  },
+  "apk_signature": "v2,v3",
+  "certificate_sha256": "ea96f1dd463152de56f5998903b7eee77e0724f0855130e020946fc59703673d"
+}

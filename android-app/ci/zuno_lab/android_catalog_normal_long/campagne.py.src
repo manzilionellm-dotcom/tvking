@@ -1,0 +1,66 @@
+ # Fin de la saisie initiale, début de la fenêtre de navigation datée.
+ origin_pid=pid()
+ adb('shell','dumpsys','gfxinfo',pkg,'reset',check=False)
+ timeline_start=time.monotonic()
+ note('long_start',pid=origin_pid,planned_s=1800)
+ stop=threading.Event()
+ def resources():
+  while not stop.is_set():
+   try:
+    current=pid()
+    mem=adb('shell','dumpsys','meminfo',current,check=False) if current else ''
+    ps=adb('shell','ps','-p',current,'-o','%CPU,THR',check=False).splitlines() if current else []
+    values=ps[-1].split() if len(ps)>1 else []
+    def number(rx):
+     found=re.search(rx,mem)
+     return int(found[1]) if found else None
+    note('resources',pid=current,pss_kib=number(r'TOTAL PSS:\s*(\d+)'),rss_kib=number(r'TOTAL RSS:\s*(\d+)'),
+         cpu_ps=float(values[0]) if values and values[0].replace('.','',1).isdigit() else None,
+         threads=int(values[1]) if len(values)>1 and values[1].isdigit() else None)
+   except Exception as error:note('resource_read_error',error_type=type(error).__name__)
+   stop.wait(15)
+ observer=threading.Thread(target=resources,daemon=True);observer.start()
+ pattern=[22,20,23,166,167,4]
+ n=0;next_view=60;views=0
+ try:
+  while time.monotonic()-timeline_start<1800:
+   at_key=time.monotonic();key(pattern[n%len(pattern)]);n+=1
+   if n%6==0:
+    seen=pid()
+    if seen!=origin_pid:raise RuntimeError('PID absent ou remplacé pendant la navigation')
+   if time.monotonic()-timeline_start>=next_view:
+    try:
+     labels,focused,action,point=labelshot()
+     views+=1;note('long_visual',ordinal=views,action=action)
+     if views in (1,10,20,29):screen_evidence(out,'long-'+str(views))
+     if action=='live' and 'movies' in labels and 'server' in labels:
+      for _ in range(5):key(21);time.sleep(.16)
+      key(23);note('reopened_live_after_hub',ordinal=views)
+    except Exception as error:
+     note('long_visual_read_error',error_type=type(error).__name__)
+    next_view+=60
+   time.sleep(max(0,1.2-(time.monotonic()-at_key)))
+ finally:
+  stop.set();observer.join(12)
+  gfx=adb('shell','dumpsys','gfxinfo',pkg,check=False)
+  (out/'gfx-navigation.txt').write_text(gfx.split('View hierarchy:')[0])
+  note('long_end',elapsed=time.monotonic()-timeline_start,commands=n,views=views,pid=pid(),
+       distinct_media=len([k for k in srcs.copy() if k.startswith('media.')]),requests=srcs.copy())
+ # Refuser les nouvelles réponses catalogue avant le redémarrage. La vue qui suit ne peut pas être reconstruite depuis le réseau.
+ catalog_locked=True;note('catalog_locked',current_streams_served=srcs.get('get_live_streams',0))
+ adb('shell','am','force-stop',pkg)
+ adb('shell','am','start','-n',pkg+'/com.example.tv_king.MainActivity')
+ restart=time.monotonic();restored=False;new_pid=pid();last_open=-100
+ while time.monotonic()-restart<140:
+  new_pid=pid() or new_pid
+  labels,focused,action,point=labelshot()
+  if any(x in labels for x in ('mire a','mire b')) or any(x.startswith('cat ') for x in labels):
+   restored=True;break
+  if action=='live' and time.monotonic()-last_open>12:
+   for _ in range(5):key(21);time.sleep(.16)
+   key(23);last_open=time.monotonic()
+  elif action in ('english','notifications') and point:tap(*point)
+  time.sleep(1)
+ note('restored_offline_catalog',visible=restored,pid=new_pid,previous_pid=origin_pid,
+      current_streams_served=srcs.get('get_live_streams',0),requests_blocked=srcs.get('blocked_catalog',0))
+ if not restored or not new_pid or new_pid==origin_pid:raise RuntimeError('persistance du catalogue après redémarrage non confirmée')

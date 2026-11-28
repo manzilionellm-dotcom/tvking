@@ -90,7 +90,7 @@ class DesktopCastControlsState extends State<DesktopCastControls> {
       if (_dead || !identical(controller, widget.controller)) return;
       if (_localHandoff) {
         await _suspendLocal(controller);
-      } else {
+      } else if (_manager.mayResumeLocalAfterCast) {
         await _resumeLocal(controller);
       }
     });

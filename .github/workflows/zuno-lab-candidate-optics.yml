@@ -1,0 +1,88 @@
+name: ZUNO LAB • lecture filmée et zapping sur le candidat signé
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths: ['.github/workflows/zuno-lab-candidate-optics.yml']
+
+env:
+  BUILD_RUN: '46091822042'
+  BUILD_SHA: 926377d224daf77b14b775981adfe1590e5d113a
+  BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  optics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Attendre la réussite du constructeur exact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in {1..65}; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" > "$RUNNER_TEMP/build.json"
+            jq -e --arg sha "$BUILD_SHA" '.head_sha==$sha and .path==".github/workflows/zuno-lab-build.yml" and .head_branch=="lab/zuno-119-qualification-20261128"' "$RUNNER_TEMP/build.json" >/dev/null
+            if [[ "$(jq -r .status "$RUNNER_TEMP/build.json")" == completed ]]; then break; fi
+            sleep 15
+          done
+          jq -e '.conclusion=="success"' "$RUNNER_TEMP/build.json" >/dev/null
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN }}
+          name: zuno-lab-${{ env.BUILD_SHA }}
+          path: apk
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: optics-tools
+          persist-credentials: false
+          sparse-checkout: android-app/ci/novatube_tv
+      - name: Encoder deux mires pour le pilote tactile et la télécommande
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil
+          python3 optics-tools/android-app/ci/novatube_tv/pilot_live_source.py prepare "$RUNNER_TEMP/fixtures"
+      - name: Ouvrir l'application, ajouter la liste par l'écran et observer les compteurs
+        run: |
+          set -euo pipefail
+          export OMP_THREAD_LIMIT=1
+          export PYTHONPATH="$PWD/optics-tools/android-app/ci/novatube_tv"
+          python3 "$PYTHONPATH/pilot_live_source.py" serve "$RUNNER_TEMP/fixtures" --duration 3000 >"$RUNNER_TEMP/fixture.log" 2>&1 &
+          (cd apk && sha256sum -c SHA256SUMS)
+          out="$PWD/zuno-optics"
+          source android-app/ci/zuno_lab/boot_lab.sh 'system-images;android-36;android-tv;x86_64' "$out"
+          # Une fenêtre de bienvenue du lanceur peut intercepter HOME sur un AVD
+          # neuf. Le parcours vidéo possède ses propres preuves et n'impose pas
+          # la réussite d'une campagne HOME distincte avant le premier appui.
+          adb shell input keyevent KEYCODE_BACK
+          adb install apk/ZUNO-LAB.apk
+          installed="$(adb shell pm path "$BENCH_PACKAGE" | tr -d '\r' | sed -n 's/^package://p')"
+          test -n "$installed"
+          adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-before.sha256"
+          test "$(cat "$out/installed-before.sha256")" = "$(sha256sum apk/ZUNO-LAB.apk | awk '{print $1}')"
+          component="$BENCH_PACKAGE/com.example.tv_king.MainActivity"
+          adb shell am start -n "$component"
+          sleep 10
+          adb reverse tcp:18471 tcp:18471
+          curl -fsS --retry 5 http://127.0.0.1:18471/A/index.m3u8 >/dev/null
+          status=0
+          python3 android-app/ci/zuno_lab/optical_witness.py "$out/optical" --count 100 || status=$?
+          adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-after.sha256"
+          cmp "$out/installed-before.sha256" "$out/installed-after.sha256"
+          exit "$status"
+      - name: Conserver uniquement les résultats expurgés
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: zuno-candidate-119-optical
+          path: zuno-optics/
+          retention-days: 14
+          if-no-files-found: error

@@ -307,14 +307,13 @@ class _TvBlackBoxScreenState extends State<TvBlackBoxScreen> {
   /// Titre de la carte « dernière fermeture », traduit (la boîte noire elle-
   /// même ne connaît pas la langue : elle expose des données, l'écran formate).
   String _headline(BuildContext context, BlackBoxLastExit x) {
-    if (!x.brutal) return context.l10n.tvBlackBoxCleanExit;
-    final String r = x.nativeReason.isEmpty
-        ? context.l10n.tvBlackBoxUnknownReason
-        : x.nativeReason;
     final String mem = x.pssMb > 0
         ? ' · ${context.l10n.tvBlackBoxMemory(x.pssMb.toString())}'
         : '';
-    return context.l10n.tvBlackBoxBrutal('$r$mem');
+    // Le motif Android concordant fait foi, y compris après un passage en arrière-plan.
+    if (x.nativeReason.isNotEmpty) return '${x.nativeReason}$mem';
+    final String unavailable = context.l10n.tvCheckUnavailable;
+    return x.brutal ? context.l10n.tvBlackBoxBrutal(unavailable) : unavailable;
   }
 
   String _fmt(DateTime d) => tvDateTime(context, d);

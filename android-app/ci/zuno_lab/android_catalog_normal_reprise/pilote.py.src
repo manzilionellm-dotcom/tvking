@@ -1,0 +1,134 @@
+ # Un intervalle n'est accepté qu'entre vérifications optiques et après un nouveau GET de l'identifiant attendu.
+ from optical_witness import read_marker
+ from zuno_ui_path import control
+ import subprocess
+ def have_grid():
+  try:ns=visible_nodes(pkg);im=screen();txt=words(im);sz=im.size
+  except Exception as exc:
+   note('grid_observer_unavailable',type=type(exc).__name__);return False,{},'wait',None
+  pts={ch:control(ns,txt,sz,('mire '+ch.lower(),)) for ch in ('A','B')}
+  # Les deux lignes doivent être visibles et verticalement distinctes.
+  confirmed=all(pts.values()) and abs(pts['A'][1]-pts['B'][1])>.015*sz[1]
+  if not confirmed:
+   # Certains arbres décrivent les deux textes comme des lignes fusionnées. Les coordonnées sémantiques exactes restent disponibles.
+   for ch in ('A','B'):
+    hit=next(((v[1],v[2]) for v in ns if re.search(r'\bmire '+ch.lower()+r'\b',normalized(v[0])) and .20*sz[0]<v[1]<.75*sz[0]),None)
+    if hit:pts[ch]=hit
+   confirmed=all(pts.values()) and abs(pts['A'][1]-pts['B'][1])>.015*sz[1]
+  action,spot=next_step(ns,txt,sz,'after-submit',False,False)
+  note('examined_grid',confirmed=bool(confirmed),action=action,focus=[k for k in pts if pts[k]],rgb_sha=hashlib.sha256(im.tobytes()).hexdigest())
+  return bool(confirmed),pts,action,spot
+ def frame(timeout,target=None):
+  start_frame=time.monotonic();last_ch=None;last_counter=None
+  while time.monotonic()-start_frame<timeout:
+   try:im=screen();ch,n,box=read_marker(im)
+   except Exception as exc:note('frame_missed',type=type(exc).__name__);continue
+   t=time.monotonic()
+   if ch in ('A','B'):
+    if (not target or ch==target) and last_ch==ch and 0<(n-last_counter)%200<100:
+     return ch,[last_counter,n],t
+    last_ch,last_counter=ch,n
+   else:last_ch=last_counter=None
+   time.sleep(.18)
+  return None,None,time.monotonic()
+ def expected_request(ch,after):
+  number='media.'+('1' if ch=='A' else '2')
+  return 'nouveau_get' if any(k==number and t>=after for k,t in media_history) else ('octets_socket_existant' if media_tx.get(number,0)>=after else None)
+ def enter_a():
+  # Les écrans inconnus sont relevés avant toute action et ne contribuent jamais à l'exposition.
+  last_hub=-1e6;attempt=0
+  until=time.monotonic()+100
+  while time.monotonic()<until:
+   ch,c,when=frame(1.1)
+   if ch in ('A','B'):return ch
+   grid,pts,action,spot=have_grid()
+   if grid:
+    attempt+=1
+    if attempt==1:
+     key(22);time.sleep(.3);key(19);time.sleep(.3);key(23);note('enter_grid_by_keys')
+    elif pts['A']:
+     tap(*pts['A']);note('recovery_tap_on_visible_row',channel='A')
+    ch,c,when=frame(9)
+    if ch:return ch
+   elif action=='live':
+    if time.monotonic()-last_hub>10:
+     if last_hub<0:
+      for _ in range(5):key(21);time.sleep(.16)
+      key(23);note('recovery_hub_dpad')
+     elif spot:tap(*spot);note('recovery_hub_tap')
+     last_hub=time.monotonic()
+   elif action in ('english','notifications') and spot:tap(*spot)
+   time.sleep(.6)
+  raise RuntimeError('Aucun lecteur en mouvement après les récupérations contrôlées')
+ def restore_grid():
+  # BACK part d'un lecteur plein écran confirmé. Après échec, garder les secondes de récupération hors exposition.
+  for i in range(2):
+   previous=frame(2)[0]
+   if previous:key(4);note('verified_player_back',channel=previous,ordinal=i+1)
+   until=time.monotonic()+12
+   while time.monotonic()<until:
+    grid,pts,action,spot=have_grid()
+    if grid:return True
+    if action=='live':return False
+    time.sleep(.6)
+  return False
+ def periodic():
+  while not stop.is_set():
+   try:
+    current=pid()
+    mem=adb('shell','dumpsys','meminfo',current,check=False) if current else ''
+    cpu=adb('shell','ps','-p',current,'-o','%CPU',check=False).splitlines() if current else []
+    thr=adb('shell','cat','/proc/'+current+'/status',check=False) if current else ''
+    def val(rx,data):
+     m=re.search(rx,data);return int(m[1]) if m else None
+    note('resources',pid=current,pss_kib=val(r'TOTAL PSS:\s*(\d+)',mem),rss_kib=val(r'TOTAL RSS:\s*(\d+)',mem),
+         cpu_ps=float(cpu[-1]) if len(cpu)>1 and cpu[-1].strip().replace('.','',1).isdigit() else None,
+         threads=val(r'Threads:\s*(\d+)',thr))
+   except Exception as exc:note('resource_read_error',error_type=type(exc).__name__)
+   stop.wait(15)
+ origin_pid=pid();current=enter_a()
+ adb('shell','dumpsys','gfxinfo',pkg,'reset',check=False)
+ started=time.monotonic();credit=0.;switches=grid_returns=errors=0;next_grid=55.;last_progress=started
+ note('long_start',pid=origin_pid,planned_s=1800,first_channel=current)
+ stop=threading.Event();observer=threading.Thread(target=periodic,daemon=True);observer.start()
+ try:
+  while credit<1800 and time.monotonic()-started<2950:
+   if pid()!=origin_pid:raise RuntimeError('PID perdu dans la fenêtre active')
+   if time.monotonic()-last_progress>200:raise RuntimeError('Aucune alternance confirmée depuis 200 secondes')
+   if credit>=next_grid:
+    begin_return=time.monotonic()
+    if restore_grid():
+     grid_returns+=1;note('grid_return_confirmed',ordinal=grid_returns)
+     # Navigation de grille par D-pad. Le retour ultérieur au lecteur est contrôlé en pixels.
+     key(22);time.sleep(.25);key(20);time.sleep(.6);key(19);time.sleep(.6)
+     grid,spots,ui,_=have_grid();note('dpad_grid_traversal',held_grid=bool(grid))
+    current=enter_a()
+    note('reader_reopened',channel=current,recovery_or_grid_seconds=time.monotonic()-begin_return)
+    next_grid+=55.
+   active,c,first=frame(4)
+   if not active:
+    errors+=1;note('uncredited',reason='initial-full-marker');current=enter_a();continue
+   target='B' if active=='A' else 'A'
+   t=time.monotonic();key(166 if active=='B' else 167)
+   # Le lecteur ZUNO doit choisir le bon sens. En INDEX ZUNO, CHANNEL_DOWN = suivant.
+   found,values,when=frame(14,target)
+   request_ok=expected_request(target,t)
+   if not found or not request_ok:
+    errors+=1;note('uncredited',reason='target-or-origin',origin=active,target=target,seen=found,request=request_ok)
+    # A et B occupent les deux premières lignes. Un résultat d'un autre identifiant ne peut pas valoir B.
+    if found and not request_ok:
+     if restore_grid():current=enter_a()
+    continue
+   time.sleep(3.5)
+   kept,last,last_t=frame(5,target)
+   if not kept:
+    errors+=1;note('uncredited',reason='target-lost',target=target);continue
+   seconds=last_t-first;credit+=seconds;switches+=1;last_progress=time.monotonic();current=kept
+   note('verified_switch',ordinal=switches,previous=active,target=target,source_id=1 if target=='A' else 2,
+        key_mono=t,visible_mono=when,media_proof=request_ok,first_pair=values,last_pair=last,credited_s=seconds,verified_total_s=credit)
+  if credit<1800 or grid_returns<6 or switches<20:raise RuntimeError('Exposition Direct/lecteur contrôlée incomplète')
+ finally:
+  stop.set();observer.join(10)
+  (out/'gfx-navigation.txt').write_text(adb('shell','dumpsys','gfxinfo',pkg,check=False).split('View hierarchy:')[0])
+  note('long_end',elapsed=time.monotonic()-started,verified_s=credit,verified_switches=switches,grid_returns=grid_returns,
+       failed_trials=errors,pid=pid(),requests=srcs.copy())

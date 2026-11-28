@@ -581,26 +581,28 @@ class _TvLiveScreenState extends State<TvLiveScreen> {
     int index, {
     required bool fromRail,
   }) async {
-    if (index < 0 || index >= list.length) return;
+    if (_playerOpen || index < 0 || index >= list.length) return;
     final String chId = list[index].id;
-    // On REND le décodeur de l'aperçu AVANT le plein écran, et on attend.
-    // Un simple setState laissait les deux lecteurs vivants une frame :
-    // sur une box à un seul décodeur l'image restait noire, et un
-    // abonnement « 1 connexion » refusait la chaîne (logo sans fin).
-    await TvLivePreview.releaseActive();
-    if (!mounted) return;
+    // Réserver l’ouverture dès l’appui : le deuxième OK peut arriver avant
+    // qu’Android ait fini de libérer le décodeur et la connexion de l’aperçu.
     setState(() => _playerOpen = true);
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
-      ),
-    );
-    if (!mounted) return;
-    setState(() {
-      _playerOpen = false;
-      _restoreFocusId = chId;
-      _restoreFromRail = fromRail;
-    });
+    try {
+      await TvLivePreview.releaseActive();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => TvPlayerScreen(channels: list, startIndex: index),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _playerOpen = false;
+          _restoreFocusId = chId;
+          _restoreFromRail = fromRail;
+        });
+      }
+    }
   }
 
   Future<void> _openPlayer(int index) =>

@@ -1,3 +1,9 @@
+import 'package:tv_king/features/tv/presentation/tv_app.dart';
+import 'package:tv_king/features/tv/presentation/tv_activation_screen.dart';
+import 'package:tv_king/features/subscription/data/subscription_state.dart';
+import 'package:tv_king/features/security/data/parental_controls.dart';
+import 'package:tv_king/core/update/build_flags.dart';
+import 'package:native_video_player/native_video_player.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,11 +14,16 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// Le journal SQL n'est utilisé que dans ce banc de widget.
+// ignore: depend_on_referenced_packages
+import 'package:sqflite_common/sqflite_logger.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:tv_king/features/epg/data/epg_repository.dart';
 import 'package:tv_king/core/app/app_platform.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/core/tv_provider_channel_name.dart';
+import 'package:tv_king/features/tv/core/tv_focusable.dart';
 import 'package:tv_king/features/playlists/data/favorites_repository.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
@@ -25,22 +36,44 @@ import 'fixtures/ahem_fonts.dart';
 
 const names = ['Mire Sport', 'Mire Sport RAW', 'Mire Sport UHD'];
 
+class _RouteCounter extends NavigatorObserver {
+  int playerPushes = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) playerPushes++;
+    super.didPush(route, previousRoute);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory dir;
+  final guideReads = <String>[];
   setUpAll(() async {
     AppPlatform.configureZuno(isAndroidHandset: false);
     installAhemFonts();
     GoogleFonts.config.allowRuntimeFetching = false;
     SharedPreferences.setMockInitialValues({});
     sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    // Le journal SQL expérimental est utilisé uniquement par ce banc local.
+    // ignore: experimental_member_use
+    databaseFactory = SqfliteDatabaseFactoryLogger(
+      databaseFactoryFfiNoIsolate,
+      options: SqfliteLoggerOptions(log: (event) {
+        if (event is SqfliteLoggerSqlEvent &&
+            event.sql.contains('FROM epg_programs WHERE channel_id = ? AND start_time <= ?')) {
+          guideReads.add((event.arguments as List).first as String);
+        }
+      }),
+    );
     FlavorConfig.setCurrent(FlavorConfig.sevenMotion);
     dir = await Directory.systemTemp.createTemp('direct-variantes-');
     PlaylistDatabase.debugFilePath = '${dir.path}/catalogue.db';
     // Comme au démarrage de ZUNO, la migration des favoris est terminée
     // avant d'ouvrir le lecteur avec la télécommande.
     await FavoritesRepository.instance.initialize();
+    await EpgRepository.instance.initialize();
     final server = MockClient((req) async {
       final action = req.url.queryParameters['action'];
       final Object payload = switch (action) {
@@ -84,13 +117,15 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  Future<void> show(WidgetTester tester, Widget screen) async {
+  Future<void> show(WidgetTester tester, Widget screen, {NavigatorObserver? observer}) async {
+
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1920, 1080);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('fr'),
+        navigatorObservers: [if (observer != null) observer],
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         home: Scaffold(body: screen),
@@ -117,6 +152,47 @@ void main() {
     }
     expect(tvProviderChannelName(channel('قناة HD'), 'Chaîne'), 'قناة HD');
   });
+
+  testWidgets('une seule lecture du guide par chaîne ouverte au zapping', (tester) async {
+    final channels = PlaylistRepository.instance.currentChannels;
+    await tester.runAsync(() async {
+      final db = await PlaylistDatabase.instance.database;
+      final now = DateTime.now();
+      for (final ch in channels) {
+        await db.insert('epg_programs', {
+          'channel_id': ch.id,
+          'start_time': now.subtract(const Duration(days: 1)).millisecondsSinceEpoch,
+          'stop_time': now.add(const Duration(days: 1)).millisecondsSinceEpoch,
+          'title': 'Programme de ${ch.name}',
+        });
+      }
+    });
+    guideReads.clear();
+    try {
+      await show(tester, TvPlayerScreen(channels: channels, startIndex: 0));
+      await tester.pump();
+      expect(find.textContaining('Programme de ${channels[0].name}'), findsOneWidget);
+      expect(find.text('Suivre'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      expect(find.textContaining('Programme de '), findsNothing);
+      final ancienneCommandeVisible = find.text('Suivre').evaluate().isNotEmpty;
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.textContaining('Programme de ${channels[2].name}'), findsOneWidget);
+      expect(find.text('Suivre'), findsOneWidget);
+      final indexes = guideReads.map((id) => channels.indexWhere((c) => c.id == id)).toList();
+      debugPrint('ZUNO_GUIDE_TRACE reads=$indexes staleControl=$ancienneCommandeVisible');
+      expect(indexes, [0, 2], reason: 'ZUNO_GUIDE_READ_COUNT');
+      expect(ancienneCommandeVisible, isFalse, reason: 'ZUNO_GUIDE_STALE_CONTROL');
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 10));
+    }
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
 
   testWidgets(
     'le Direct distingue les variantes sélectionnables à la télécommande',
@@ -161,6 +237,54 @@ void main() {
     },
   );
   testWidgets(
+    'double OK dans Direct ouvre un seul lecteur et autorise sa réouverture',
+    (tester) async {
+      final observer = _RouteCounter();
+      await show(tester, const TvLiveScreen(), observer: observer);
+      try {
+        final row = find.descendant(
+          of: find.byType(ListView).last,
+          matching: find.text(names[1]),
+        );
+        // Le test précédent couvre la traduction de la touche en sélection.
+        // Ici, appeler deux fois de suite la commande de la vraie ligne isole
+        // la fenêtre entre la sélection et la fermeture asynchrone de l’aperçu.
+        void pressOk() {
+          final control = find.ancestor(of: row, matching: find.byType(TvFocusBuilder)).first;
+          tester.widget<TvFocusBuilder>(control).onSelect!();
+        }
+
+        pressOk();
+        pressOk();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        final players = find.byType(TvPlayerScreen, skipOffstage: false);
+        debugPrint('ZUNO_DOUBLE_OK routes=${observer.playerPushes}');
+        expect(observer.playerPushes, 1, reason: 'ZUNO_DOUBLE_OK_ROUTES');
+        expect(players, findsOneWidget);
+        final player = tester.widget<TvPlayerScreen>(players);
+        expect(player.channels[player.startIndex].name, names[1]);
+
+        Navigator.of(tester.element(players)).pop();
+        // La route peut rester dans le sous-arbre hors écran pendant sa
+        // transition inverse puis être démontée au cadre suivant.
+        for (int i = 0; i < 24 && players.evaluate().isNotEmpty; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(players, findsNothing);
+        Focus.of(tester.element(row)).requestFocus();
+        await tester.pump();
+        pressOk();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(players, findsOneWidget);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 10));
+      }
+    },
+  );
+  testWidgets(
     'la recherche de la chaîne conserve chaque variante sur ZUNO TV',
     (tester) async {
       await show(tester, const TvSearchScreen(initialQuery: 'Mire Sport'));
@@ -176,4 +300,67 @@ void main() {
       }
     },
   );
+
+  // L’essai emprunte le Navigator installé par TvApp et le véritable écran
+  // du lecteur. Les deux chaînes sont des mires locales sans contenu protégé.
+  for (final cause in ['frozen', 'banned', 'kids']) {
+    testWidgets('le lecteur actif retire sa surface après ${cause}', (tester) async {
+      expect(kFreeZunoPlayer, isTrue, reason: 'Utiliser les defines du build officiel');
+      final subscription = SubscriptionState.instance;
+      await subscription.resetForTesting();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('subscription.block');
+      await subscription.initialize();
+      await ParentalControls.instance.setKidsMode(false);
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1920, 1080);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(const TvApp());
+      await tester.pump();
+      try {
+        final navigator = Navigator.of(tester.element(find.byType(TvGate)));
+        final probe = Channel(
+          id: 'mire-autorisation',
+          name: cause == 'kids' ? 'Mire 18+' : 'Mire A',
+          isLive: true,
+          category: cause == 'kids' ? 'Adult' : 'Fixtures',
+          streamUrl: 'http://127.0.0.1:18471/A/index.m3u8',
+        );
+        navigator.push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => TvPlayerScreen(channels: [probe], startIndex: 0),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.byType(TvPlayerScreen), findsOneWidget);
+        expect(find.byType(NativeVideoView), findsOneWidget);
+        if (cause == 'kids') {
+          await ParentalControls.instance.setKidsMode(true);
+          expect(ParentalControls.instance.kidsMode.value, isTrue);
+        } else {
+          // Le cache local de test passe par le même notifier que la lecture
+          // du statut distant. Aucune commande administrative ne sort de ce test.
+          await subscription.resetForTesting();
+          await prefs.setString('subscription.block', cause);
+          await subscription.initialize();
+          expect(subscription.status.name, cause);
+        }
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        final nativeAlive = find.byType(NativeVideoView, skipOffstage: false).evaluate().length;
+        debugPrint('ZUNO_DROITS cause=$cause vuesNatives=$nativeAlive');
+        expect(nativeAlive, 0, reason: 'ZUNO_DROITS_SURFACE_CONSERVEE');
+        if (cause != 'kids') {
+          expect(find.byType(TvActivationScreen), findsOneWidget);
+        }
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 10));
+        await ParentalControls.instance.setKidsMode(false);
+        await prefs.remove('subscription.block');
+        await subscription.resetForTesting();
+      }
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !kFreeZunoPlayer);
+  }
 }

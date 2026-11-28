@@ -146,7 +146,9 @@ class TvApp extends StatelessWidget {
               child: TvRemoteShortcuts(
                 child: TvScaledViewport(
                   designWidth: kTvDesignWidth,
-                  child: child,
+                  child: kFreeZunoPlayer
+                      ? _TvSubscriptionBoundary(child: child)
+                      : child,
                 ),
               ),
             );
@@ -483,6 +485,33 @@ class _DialogBtn extends StatelessWidget {
       },
     );
   }
+}
+
+/// Une suspension confirmée démonte le navigateur de lecture, y compris une
+/// route déjà poussée. Son propre navigateur garde les actions d’activation.
+class _TvSubscriptionBoundary extends StatelessWidget {
+  const _TvSubscriptionBoundary({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: SubscriptionState.instance,
+    child: child,
+    builder: (context, navigator) {
+      final status = SubscriptionState.instance.status;
+      if (status != SubscriptionStatus.frozen &&
+          status != SubscriptionStatus.banned) {
+        return navigator!;
+      }
+      return Navigator(
+        key: const ValueKey<String>('zuno-suspension'),
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (_) => const TvShell(child: TvActivationScreen()),
+        ),
+      );
+    },
+  );
 }
 
 /// Porte d'entrée. L'app s'ouvre si :

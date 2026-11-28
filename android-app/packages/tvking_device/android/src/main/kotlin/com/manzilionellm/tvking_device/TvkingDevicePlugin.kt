@@ -173,12 +173,23 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                 }
                 try {
                     val ctx = appContext
-                    val am = ctx?.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                    if (ctx == null) {
+                        result.success(emptyList<Any>())
+                        return
+                    }
+                    val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
                     val list = am?.getHistoricalProcessExitReasons(ctx.packageName, 0, 5)
                         ?: emptyList()
                     result.success(
                         list.map { info ->
                             hashMapOf(
+                                "isFault" to (info.reason in setOf(
+                                    ApplicationExitInfo.REASON_LOW_MEMORY, ApplicationExitInfo.REASON_CRASH,
+                                    ApplicationExitInfo.REASON_CRASH_NATIVE, ApplicationExitInfo.REASON_ANR,
+                                    ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,
+                                )),
+                                "pid" to info.pid,
+                                "isMainProcess" to (info.processName == ctx.packageName),
                                 "reason" to info.reason,
                                 "reasonName" to reasonName(info.reason),
                                 "description" to (info.description ?: ""),

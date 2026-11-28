@@ -1,0 +1,131 @@
+name: ZUNO LAB — catalogue et fermetures sur le même APK Android TV 1 Go
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths:
+      - '.github/workflows/zuno-lab-android-cycles.yml'
+      - 'android-app/ci/zuno_lab/android_catalog_cycles/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Préparer ZUNO 119 adaptatif avec l'identité LAB
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zuno-tools"
+          "$RUNNER_TEMP/zuno-tools/bin/pip" install --only-binary=:all: Pillow==12.1.1 PyYAML==6.0.3
+          "$RUNNER_TEMP/zuno-tools/bin/python" ci/zuno_lab/prepare_lab.py
+          flutter pub get
+          "$RUNNER_TEMP/zuno-tools/bin/python" ci/zuno_lab/prepare_lab.py --after-pub
+          flutter gen-l10n
+          dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
+          "$RUNNER_TEMP/zuno-tools/bin/python" ci/play_editions/branding/apply.py
+      - name: Distinguer ce diagnostic des APK livrables
+        run: |
+          python3 ci/zuno_lab/android_catalog/prepare.py
+      - name: Compiler et signer le diagnostic uniquement
+        run: |
+          set -euo pipefail
+          umask 077
+          pw=$(openssl rand -hex 24)
+          keytool -genkeypair -keystore android/app/lab.p12 -storetype PKCS12 -alias zuno-lab -keyalg RSA -keysize 3072 -validity 365 -storepass "$pw" -keypass "$pw" -dname 'CN=ZUNO LAB, O=Qualification'
+          printf 'storeFile=lab.p12\nstorePassword=%s\nkeyAlias=zuno-lab\nkeyPassword=%s\n' "$pw" "$pw" > android/key.properties
+          mkdir -p "$HOME/.gradle/init.d"
+          cp ci/zuno_lab/android_catalog_cycles/mirror.gradle "$HOME/.gradle/init.d/lab-central.gradle"
+          compile() {
+            flutter build apk --target-platform=android-x64 --release --no-tree-shake-icons --android-skip-build-dependency-validation \
+            --build-number=1794559152 --build-name=119-catdiag --obfuscate --split-debug-info=build/symbols-lab \
+            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto \
+            --dart-define=BACKEND_URL=http://127.0.0.1:18789 --dart-define=GIT_SHA="$GITHUB_SHA" \
+            --dart-define=APP_BUILD_TS="$(date +%s)" --target=lib/main_tv.dart
+          }
+          if ! compile >"$RUNNER_TEMP/zuno-compile.log" 2>&1; then
+            tail -100 "$RUNNER_TEMP/zuno-compile.log"
+            grep -E '429|Too Many Requests|timed out|unable to resolve host' "$RUNNER_TEMP/zuno-compile.log"
+            sleep 45
+            compile
+          fi
+          mkdir -p build/lab
+          cp build/app/outputs/flutter-apk/app-release.apk build/lab/ZUNO-DIAGNOSTIC.apk
+          bash ci/mobile/verify_work_database.sh build/lab/ZUNO-DIAGNOSTIC.apk
+          cd build/lab
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$bt/apksigner" verify --verbose --print-certs ZUNO-DIAGNOSTIC.apk > signature.txt
+          "$bt/aapt" dump badging ZUNO-DIAGNOSTIC.apk > badging.txt
+          grep -F "package: name='com.sevenmotion.tv.seven_tv.lab.catalog' versionCode='1794559152' versionName='119-catdiag'" badging.txt
+          grep -F "application-label:'ZUNO LAB'" badging.txt
+          grep -F "sdkVersion:'24'" badging.txt
+          sha256sum ZUNO-DIAGNOSTIC.apk > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: bits-catalog-diagnostic-${{ github.run_id }}
+          path: android-app/build/lab/
+          if-no-files-found: error
+          retention-days: 7
+  exercises:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: navigation
+            driver: android_catalog
+          - kind: cycles
+            driver: android_catalog_cycles
+    name: Android 1 Go - ${{ matrix.kind }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: bits-catalog-diagnostic-${{ github.run_id }}
+          path: android-app/build/lab/
+      - name: Exécuter le scénario sur AVD isolé
+        run: |
+          set -euo pipefail
+          (cd build/lab && sha256sum --check SHA256SUMS)
+          root="$PWD"
+          out="$root/build/cycles-android"
+          mkdir -p "$out"
+          cp build/lab/{SHA256SUMS,signature.txt,badging.txt} "$out"
+          echo "$GITHUB_SHA" > "$out/git-commit.txt"
+          sudo apt-get -qy install ffmpeg >/dev/null
+          ffmpeg -v error -f lavfi -i testsrc2=size=480x270:rate=15 -f lavfi -i sine=440 -t 4 -c:v mpeg2video -c:a mp2 -f mpegts "$RUNNER_TEMP/catalog.ts"
+          sed 's/-memory 1536/-memory 1024/' ci/zuno_lab/boot_lab.sh > "$RUNNER_TEMP/boot1g.sh"
+          source "$RUNNER_TEMP/boot1g.sh" 'system-images;android-36;android-tv;x86_64' "$out"
+          python3 ci/zuno_lab/${{ matrix.driver }}/run.py "$out" "$root/build/lab/ZUNO-DIAGNOSTIC.apk" "$RUNNER_TEMP/catalog.ts"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: android-${{ matrix.kind }}-${{ github.run_id }}
+          path: android-app/build/cycles-android/
+          if-no-files-found: warn
+          retention-days: 14

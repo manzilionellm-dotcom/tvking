@@ -1,0 +1,15 @@
+// Miroir public Google des mêmes coordonnées Maven Central.
+// Le portail de plugins, Google Maven et Maven Central restent disponibles.
+beforeSettings { s ->
+    s.pluginManagement.repositories {
+        maven { url = uri('https://maven-central.storage-download.googleapis.com/maven2/') }
+        google()
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+gradle.beforeProject { p ->
+    p.buildscript.repositories {
+        maven { url = uri('https://maven-central.storage-download.googleapis.com/maven2/') }
+    }
+}

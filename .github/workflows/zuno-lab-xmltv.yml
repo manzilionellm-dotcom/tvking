@@ -1,0 +1,45 @@
+name: ZUNO LAB — XMLTV sur 30 000 chaînes et lecture du guide pendant la synchronisation
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths: ['.github/workflows/zuno-lab-xmltv.yml','android-app/ci/zuno_lab/catalog/xmltv_load_test.dart']
+permissions:
+  contents: read
+jobs:
+  guide:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Importer et relire sur le même hôte en ordre ABBA
+        run: |
+          set -euo pipefail
+          base=a096b2f85de082622ec232fa198069bdefbbccab
+          git worktree add --detach "$RUNNER_TEMP/a" "$base"
+          oracle=ci/zuno_lab/catalog/xmltv_load_test.dart
+          mkdir -p "$RUNNER_TEMP/a/android-app/ci/zuno_lab/catalog" "$GITHUB_WORKSPACE/resultats-xmltv"
+          cp "android-app/$oracle" "$RUNNER_TEMP/a/android-app/$oracle"
+          for tree in "$RUNNER_TEMP/a" "$GITHUB_WORKSPACE"; do
+            (cd "$tree/android-app" && flutter pub get && flutter gen-l10n)
+          done
+          i=0
+          for variant in A B B A; do
+            ((i+=1))
+            tree="$GITHUB_WORKSPACE"
+            if [[ "$variant" == A ]]; then tree="$RUNNER_TEMP/a"; fi
+            out="$GITHUB_WORKSPACE/resultats-xmltv/$i-$variant"
+            git -C "$tree" rev-parse HEAD > "$out.commit"
+            (cd "$tree/android-app" && ZUNO_EPG_RESULT="$out.json" flutter test --no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto "$oracle")
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: xmltv-30k-abba
+          path: resultats-xmltv/

@@ -1,0 +1,58 @@
+name: ZUNO LAB — endurance 80 minutes sur les octets signés du candidat
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths: ['.github/workflows/zuno-lab-endurance-signee.yml','android-app/ci/zuno_lab/endurance_signee/**']
+permissions:
+  actions: read
+  contents: read
+env:
+  BUILD_RUN: '46095717223'
+  BUILD_SHA: daba06b196754e4fff9dbfd8a454bd804b752be6
+jobs:
+  observation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 132
+    strategy:
+      fail-fast: false
+      matrix:
+        route: [direct, tunnel]
+        scenario: [stable, degraded, lowram]
+    env:
+      ROUTE: ${{ matrix.route }}
+      SCENARIO: ${{ matrix.scenario }}
+      DURATION: '4800'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: original
+          sparse-checkout: android-app/ci/novatube_tv
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN }}
+          name: zuno-lab-${{ env.BUILD_SHA }}
+          path: apk
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Préparer les outils de mesure hôte
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil
+          /usr/bin/python3 -c 'import PIL'
+          python3 -c 'import PIL' || python3 -m pip install Pillow==12.1.1
+      - name: Initialiser le Worker purement local
+        run: npm ci --no-audit --no-fund --prefix android-app/cloudflare
+      - name: Observer 80 minutes après mouvement confirmé
+        run: bash android-app/ci/zuno_lab/endurance_signee/run.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: endurance-apk-signe-${{ matrix.route }}-${{ matrix.scenario }}
+          path: observations/
+          if-no-files-found: error
+          retention-days: 14

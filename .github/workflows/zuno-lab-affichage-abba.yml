@@ -1,0 +1,118 @@
+name: ZUNO LAB — images du témoin intermédiaire et du livrable sur le même AVD
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths: ['.github/workflows/zuno-lab-affichage-abba.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  comparer:
+    name: Ordre ${{ matrix.order }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    strategy:
+      fail-fast: false
+      matrix:
+        order: [AB,BA]
+    env:
+      ORDER: ${{ matrix.order }}
+      BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: d58c1b79409e99c152170bacc3d399bf2130b925
+          path: pilote
+          sparse-checkout: android-app/ci/zuno_lab
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: origine
+          sparse-checkout: android-app/ci/novatube_tv
+          persist-credentials: false
+      - name: Attendre le constructeur du nouveau candidat
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in {1..90}; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/46095717223" > "$RUNNER_TEMP/constructeur.json"
+            if [[ "$(jq -r .status "$RUNNER_TEMP/constructeur.json")" == completed ]]; then break; fi
+            sleep 15
+          done
+          jq -e '.conclusion=="success" and .head_sha=="daba06b196754e4fff9dbfd8a454bd804b752be6"' "$RUNNER_TEMP/constructeur.json"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46091822042
+          name: zuno-lab-926377d224daf77b14b775981adfe1590e5d113a
+          path: AppliA
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46095717223
+          name: zuno-lab-daba06b196754e4fff9dbfd8a454bd804b752be6
+          path: AppliB
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Rejouer la même série 100 + 100 et le même mode de capture
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg tesseract-ocr python3-pil
+          export PYTHONPATH="$PWD/origine/android-app/ci/novatube_tv" OMP_THREAD_LIMIT=1
+          base="$PWD/resultats"
+          fixture="$RUNNER_TEMP/mire-abba"
+          mkdir -p "$base/source"
+          python3 "$PYTHONPATH/pilot_live_source.py" prepare "$fixture"
+          python3 android-app/ci/zuno_lab/path_trace/source.py "$PYTHONPATH/pilot_live_source.py" "$fixture" "$base/source" >"$RUNNER_TEMP/origine.log" 2>&1 &
+          kit="$PWD/pilote/android-app/ci/zuno_lab"
+          source "$kit/boot_lab.sh" 'system-images;android-36;android-tv;x86_64' "$base/appareil"
+          test "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" = 1
+          adb shell input keyevent KEYCODE_BACK
+          adb reverse tcp:18471 tcp:18471
+          previous=""
+          rc=0
+          for ((i=0;i<2;i++)); do
+            which=${ORDER:i:1}
+            trial="$base/$i-$which"
+            mkdir -p "$trial/optical"
+            if [[ -n "$previous" ]]; then
+              # Cet AVD vierge est réservé aux deux paquets LAB de l’expérience.
+              test "$BENCH_PACKAGE" = com.sevenmotion.tv.seven_tv.lab
+              test "$(adb shell sha256sum "$previous" | awk '{print $1}')" = "$last"
+              adb uninstall "$BENCH_PACKAGE"
+            fi
+            (cd "Appli$which" && sha256sum -c SHA256SUMS)
+            file="Appli$which/ZUNO-LAB.apk"
+            expected=$(sha256sum "$file" | cut -d' ' -f1)
+            if [[ "$which" == A ]]; then test "$expected" = 24f0e56b3fcc09a788acb367c97ef482c6e011a4ff507462d0a9e865506e75d9; fi
+            adb install "$file"
+            path=$(adb shell pm path "$BENCH_PACKAGE" | tr -d '\r' | sed 's/^package://')
+            adb shell sha256sum "$path" | awk '{print $1}' > "$trial/installed-before.sha256"
+            test "$(cat "$trial/installed-before.sha256")" = "$expected"
+            adb shell am start -n "$BENCH_PACKAGE/com.example.tv_king.MainActivity"
+            sleep 10
+            status=0
+            python3 "$kit/optical_witness.py" "$trial/optical" --count 100 || status=$?
+            if [[ "$status" != 0 ]]; then rc=1; fi
+            ln -s "$base/source" "$trial/source"
+            if [[ -s "$trial/optical/trials.json" ]]; then
+              python3 android-app/ci/zuno_lab/path_trace/summarize.py "$trial"
+              if [[ -f "$base/source/phases.csv" ]]; then mv "$base/source/phases.csv" "$trial/phases.csv"; fi
+            fi
+            rm "$trial/source"
+            adb shell sha256sum "$path" | awk '{print $1}' > "$trial/installed-after.sha256"
+            cmp "$trial/installed-before.sha256" "$trial/installed-after.sha256"
+            last="$expected"
+            previous="$path"
+          done
+          exit "$rc"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: affichage-${{ matrix.order }}
+          path: resultats/
+          retention-days: 14

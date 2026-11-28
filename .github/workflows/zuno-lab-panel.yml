@@ -1,0 +1,66 @@
+name: ZUNO LAB — accusé du panel après import SQLite
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths:
+      - '.github/workflows/zuno-lab-panel.yml'
+      - 'android-app/ci/zuno_lab/panel/**'
+      - 'android-app/lib/features/playlists/data/remote_source_repository.dart'
+      - 'android-app/lib/features/subscription/data/remote_activation_watch.dart'
+permissions:
+  contents: read
+jobs:
+  panel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version: '3.47.7'
+      - name: Préparer les dépendances du client et du Worker local
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          python3 ci/play_editions/prepare.py --edition auto
+          flutter pub get
+          flutter gen-l10n
+          npm ci --prefix cloudflare --no-audit --no-fund
+          flutter test --no-pub test/features/subscription/order_ack_test.dart
+      - name: Rejouer les deux versions dans un réseau limité à la boucle locale
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          kit="$PWD/ci/zuno_lab/panel"
+          out="$RUNNER_TEMP/panel-proof"
+          mkdir -p "$out"
+          sudo ip netns add zuno-panel
+          trap 'sudo ip netns delete zuno-panel' EXIT
+          sudo ip -n zuno-panel link set lo up
+          isolated() {
+            sudo ip netns exec zuno-panel sudo -u "$(id -un)" -H env PATH="$PATH" \
+              python3 "$kit/offline.py" "$@"
+          }
+          anchor=a096b2f85de082622ec232fa198069bdefbbccab
+          files=(lib/features/playlists/data/remote_source_repository.dart lib/features/subscription/data/remote_activation_watch.dart)
+          for path in "${files[@]}"; do
+            cp "$path" "$RUNNER_TEMP/$(basename "$path").candidate"
+            git show "$anchor:android-app/$path" > "$path"
+          done
+          if isolated bash "$kit/run.sh" "$PWD" "$PWD/cloudflare" "$out/before.json" >"$out/before.log" 2>&1; then
+            echo 'Le témoin a réussi les assertions destinées au candidat'; exit 1
+          fi
+          python3 "$kit/expect_red.py" "$out/before.json"
+          for path in "${files[@]}"; do cp "$RUNNER_TEMP/$(basename "$path").candidate" "$path"; done
+          isolated bash "$kit/run.sh" "$PWD" "$PWD/cloudflare" "$out/after.json" >"$out/after.log" 2>&1
+          isolated python3 "$kit/server_contract.py" "$PWD/cloudflare" "$PWD/cloudflare" "$out/worker.json"
+          isolated flutter test --no-pub --concurrency=1 --reporter expanded test/features/subscription/order_ack_test.dart test/features/subscription/panel_order_handlers_test.dart
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: zuno-lab-panel-proof
+          path: ${{ runner.temp }}/panel-proof/*.json

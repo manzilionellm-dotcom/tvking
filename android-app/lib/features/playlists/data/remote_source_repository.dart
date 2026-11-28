@@ -323,10 +323,15 @@ abstract final class RemoteSourceRepository {
         _lastConfigRev = null;
         _lastError = null;
         _lastKeptPrevious = false;
+        _incompleteRevision = false;
         final RemoteSyncResult r = await _syncBody(force: force);
         // Rapport de CETTE lecture, lu par l'accusé de l'ordre (order_ack.dart).
         lastReport = SourceSyncReport(
-          result: r.name,
+          // Une liste valide reste utilisable même si une autre a échoué.
+          // L'accusé porte sur la révision entière, pas sur sa meilleure liste.
+          result: r == RemoteSyncResult.loaded && _incompleteRevision
+              ? RemoteSyncResult.sourceFailed.name
+              : r.name,
           atMs: DateTime.now().millisecondsSinceEpoch,
           configRev: _lastConfigRev,
           error: _lastError,
@@ -346,6 +351,7 @@ abstract final class RemoteSourceRepository {
   static int? _lastConfigRev;
   static String? _lastError;
   static bool _lastKeptPrevious = false;
+  static bool _incompleteRevision = false;
 
   /// Mémoire des listes refusées (empreinte → dernier refus, compte).
   static const String failuresKey = 'zuno.source.failures.v1';
@@ -425,7 +431,11 @@ abstract final class RemoteSourceRepository {
       if (body['sources'] is! List && !body.containsKey('source')) {
         return RemoteSyncResult.networkError;
       }
-      _lastConfigRev = (body['rev'] as num?)?.toInt() ?? (body['updated_at'] as num?)?.toInt();
+      // source_rev est le champ du Worker ZUNO. Les autres noms restent
+      // acceptés pour les configurations d'anciennes versions du panel.
+      _lastConfigRev = (body['source_rev'] as num?)?.toInt() ??
+          (body['rev'] as num?)?.toInt() ??
+          (body['updated_at'] as num?)?.toInt();
 
       // Ce que le panel a RETIRÉ est calculé maintenant (après un HTTP 200 :
       // une coupure ne vide pas la box) mais effacé APRÈS l'import des
@@ -479,10 +489,12 @@ abstract final class RemoteSourceRepository {
             '(${plan.tryNow.length} à tenter)',
           );
         }
+        _incompleteRevision = plan.skipped.isNotEmpty;
         RemoteSyncResult agg = RemoteSyncResult.noSource;
         for (final int index in plan.tryNow) {
           final Map<String, dynamic> item = items[index];
           final RemoteSyncResult r = await _applySource(item);
+          if (r != RemoteSyncResult.loaded) _incompleteRevision = true;
           final String? fp = SourceFingerprint.fromMap(item);
           if (fp != null && r != RemoteSyncResult.networkError) {
             failures = noteSourceOutcome(
