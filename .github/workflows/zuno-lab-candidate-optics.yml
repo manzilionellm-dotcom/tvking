@@ -58,10 +58,26 @@ jobs:
           (cd apk && sha256sum -c SHA256SUMS)
           out="$PWD/zuno-optics"
           source android-app/ci/zuno_lab/boot_lab.sh 'system-images;android-36;android-tv;x86_64' "$out"
-          python3 android-app/ci/zuno_lab/device_smoke.py --apk apk/ZUNO-LAB.apk --package "$BENCH_PACKAGE" --out "$out" --count 2
+          # Une fenêtre de bienvenue du lanceur peut intercepter HOME sur un AVD
+          # neuf. Le parcours vidéo possède ses propres preuves et n'impose pas
+          # la réussite d'une campagne HOME distincte avant le premier appui.
+          adb shell pm disable-user --user 0 com.google.android.tvlauncher/.dialog.ShowDialogsActivity >/dev/null || true
+          adb install apk/ZUNO-LAB.apk
+          installed="$(adb shell pm path "$BENCH_PACKAGE" | tr -d '\r' | sed -n 's/^package://p')"
+          test -n "$installed"
+          adb exec-out cat "$installed" | sha256sum | awk '{print $1}' > "$out/installed-before.sha256"
+          test "$(cat "$out/installed-before.sha256")" = "$(sha256sum apk/ZUNO-LAB.apk | awk '{print $1}')"
+          component="$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER "$BENCH_PACKAGE" | tr -d '\r' | tail -1)"
+          [[ "$component" == "$BENCH_PACKAGE/"* ]]
+          adb shell am start -n "$component"
+          sleep 10
           adb reverse tcp:18471 tcp:18471
           curl -fsS --retry 5 http://127.0.0.1:18471/A/index.m3u8 >/dev/null
-          python3 android-app/ci/zuno_lab/optical_witness.py "$out/optical" --count 100
+          status=0
+          python3 android-app/ci/zuno_lab/optical_witness.py "$out/optical" --count 100 || status=$?
+          adb exec-out cat "$installed" | sha256sum | awk '{print $1}' > "$out/installed-after.sha256"
+          cmp "$out/installed-before.sha256" "$out/installed-after.sha256"
+          exit "$status"
       - name: Conserver uniquement les résultats expurgés
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
