@@ -2,7 +2,7 @@ name: ZUNO LAB — 30 passages aperçu vers plein écran
 on:
   push:
     branches: [lab/zuno-119-qualification-20261128]
-    paths: ['.github/workflows/zuno-lab-preview.yml', 'android-app/ci/zuno_lab/preview_*.py']
+    paths: ['android-app/ci/zuno_lab/hub_remote.py', '.github/workflows/zuno-lab-preview.yml', 'android-app/ci/zuno_lab/preview_*.py']
 
 env:
   BUILD_RUN: '46095717223'

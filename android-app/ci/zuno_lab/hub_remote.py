@@ -39,3 +39,17 @@ def dpad_to_server(nodes, words, image, focused):
         index=ranked[0];evidence='chip-fill'
     key='DPAD_LEFT' if index>3 else ('DPAD_RIGHT' if index<3 else 'DPAD_CENTER')
     return key, (NAMES[index][0],evidence)
+
+def live_row_visible(nodes, words, size):
+    """Exiger cinq entrées distinctes du vrai hub sur la même ligne."""
+    height = size[1]
+    for items, optical in (([], words), (nodes, [])):
+        anchor = control(items, optical, size, NAMES[3])
+        if anchor is None:
+            continue
+        row_nodes = [v for v in items if abs(v[2] - anchor[1]) <= .022 * height]
+        row_words = [v for v in optical if abs(v[2] - anchor[1]) <= .022 * height]
+        chips = [control(row_nodes, row_words, size, names) for names in NAMES]
+        if all(chips) and all(a[0] < b[0] for a, b in zip(chips, chips[1:])):
+            return True
+    return False

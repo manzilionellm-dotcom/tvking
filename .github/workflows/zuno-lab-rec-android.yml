@@ -2,7 +2,7 @@ name: ZUNO LAB — REC sur télécommande, 10 minutes HD et décodage après reb
 on:
   push:
     branches: [lab/zuno-119-qualification-20261128]
-    paths: ['.github/workflows/zuno-lab-rec-android.yml', 'android-app/ci/zuno_lab/record_on_device/**']
+    paths: ['android-app/ci/zuno_lab/hub_remote.py', '.github/workflows/zuno-lab-rec-android.yml', 'android-app/ci/zuno_lab/record_on_device/**']
 
 env:
   BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab

@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from android_ui import visible_nodes
-from hub_remote import dpad_to_server
+from hub_remote import dpad_to_server, live_row_visible
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -119,7 +119,25 @@ def open_fixture(folder, stop_at_grid=False, observer=None):
     remote_steps = 0
     remote_positions = set()
     hub_focus_attempts = 0
+    live_keys_at = None
+    last_restore = 0.0
     while time.monotonic() < deadline:
+        if phase == "after-submit":
+            # Le lanceur système offre aussi des entrées Live/Settings.
+            # N'envoyer le D-pad/Pointeur qu'à cette activité ZUNO.
+            try:
+                activity = adb("shell", "dumpsys", "activity", "activities", timeout=6).decode(errors="replace")
+            except (OSError, subprocess.SubprocessError):
+                event(folder, "foreground-unavailable"); time.sleep(.5); continue
+            tops = [s for s in activity.splitlines() if re.search(r"topResumedActivity|mResumedActivity", s)]
+            if not tops:
+                event(folder, "foreground-unavailable"); time.sleep(.5); continue
+            if not any(APK_PACKAGE + "/" in s for s in tops):
+                if time.monotonic() - last_restore >= 12:
+                    adb("shell", "am", "start", "-n", APK_PACKAGE + "/com.example.tv_king.MainActivity")
+                    event(folder, "setup-restore-foreground")
+                    last_restore = time.monotonic()
+                time.sleep(1.5); continue
         def classify(ns, ts, size):
             return next_step(ns, ts, size, phase, via_sources, backed_out)
         ns, ts, size, image, focus = observe_ui(folder, phase, classify, retry=previous is not None)
@@ -133,6 +151,21 @@ def open_fixture(folder, stop_at_grid=False, observer=None):
         else:
             action, point = classify(ns, ts, size)
         now = time.monotonic()
+        if phase == "after-submit" and action == "live":
+            # Le vrai hub place ces cinq libellés dans la même rangée. Un
+            # assistant système qui les disperse ne doit déclencher aucune touche.
+            if not live_row_visible(ns, ts, size):
+                event(folder, "unconfirmed-hub-row"); time.sleep(.5); continue
+            if live_keys_at is None:
+                for _ in range(5):
+                    key("KEYCODE_DPAD_LEFT"); time.sleep(.16)
+                key("KEYCODE_DPAD_CENTER")
+                event(folder, "setup-open-live-dpad", left=5, center=1)
+                live_keys_at = time.monotonic()
+                previous = action
+                time.sleep(2); continue
+            if now - live_keys_at < 15:
+                time.sleep(.5); continue
         if action == previous == "server" and image is not None:
             move, selected = dpad_to_server(ns, ts, image, focus)
             if move and selected not in remote_positions and remote_steps < 8:
