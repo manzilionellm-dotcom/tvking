@@ -241,7 +241,9 @@ class CastManager extends ChangeNotifier {
     if (_device != null && _device!.kind != CastDeviceKind.chromecast && _device!.kind != CastDeviceKind.googleCast) return;
     if (evt.kind == 'ended' && _state == CastState.connecting) return;
     if ((evt.kind == 'resumed' || evt.kind == 'resumed_at_boot') &&
-        (_zunoSuspended || _stoppedForRights)) {
+        (_zunoSuspended || _stoppedForRights ||
+            (kFreeZunoPlayer && CastPlatform.isAndroidHandset &&
+                _transport == null && ParentalControls.instance.kidsMode.value))) {
       // Un callback retardé de l’ancien récepteur ne rétablit pas la session.
       // Si aucun transport Dart ne l’a adoptée, fermer la session du SDK.
       unawaited(_endUnownedNativeSession());

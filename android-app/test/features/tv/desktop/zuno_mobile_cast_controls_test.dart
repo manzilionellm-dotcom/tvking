@@ -545,5 +545,12 @@ void main() {
     await tester.pump();
     expect(manager.hasActiveSession, isFalse);
     expect(calls.where((name) => name == 'disconnect').length, 2);
+    // Après redémarrage du processus, aucune provenance du flux restauré.
+    final freshManager = managerFor(Receiver(<String>[]));
+    addTearDown(freshManager.dispose);
+    freshManager.debugNativeSessionEvent(const CastNativeSessionEvent('resumed_at_boot'));
+    await tester.pump();
+    expect(freshManager.hasActiveSession, isFalse);
+    expect(calls.where((name) => name == 'disconnect').length, 3);
   }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !kFreeZunoPlayer);
 }
