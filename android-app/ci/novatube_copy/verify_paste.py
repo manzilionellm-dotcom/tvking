@@ -8,7 +8,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from source_keyboard import verify_source_keyboard
+from source_keyboard import SAMPLE, verify_source_keyboard
 
 serial, package, apk, output, component = sys.argv[1:]
 out = Path(output)
@@ -46,8 +46,13 @@ def wait_for(find, description, timeout=50):
         time.sleep(.35)
     # Pour diagnostiquer une variante d'Android, conserver les contrôles et
     # leur géométrie sans enregistrer le texte de l'appareil dans l'artefact.
-    controls = [{k: n.get(k, "") for k in ("package", "class", "resource-id", "bounds")}
-                for n in last]
+    public_keys = ("package", "class", "resource-id", "bounds", "enabled",
+                   "focused", "focusable", "clickable", "scrollable")
+    controls = [{k: n.get(k, "") for k in public_keys} for n in last]
+    for node, control in zip(last, controls):
+        if node.get("class") == "android.widget.EditText":
+            control["value_kind"] = ("synthetic_uri" if node.get("text", "") in (SAMPLE, SAMPLE + "8")
+                                     else "nonempty" if node.get("text") else "empty")
     (out / "last-controls.json").write_text(json.dumps(controls, indent=2) + "\n")
     raise RuntimeError(description)
 
@@ -151,6 +156,9 @@ proof = {
     "paste_destination": field["package"] + "/" + field["class"],
     "pasted_text_equals_displayed_code": True,
 }
-proof["source_keyboard"] = verify_source_keyboard(serial, package, component, shell, wait_for, tap)
+# Conserver la preuve indépendante du collage même si le test de rotation échoue.
+(out / "progress-clipboard.json").write_text(json.dumps(proof, ensure_ascii=False, indent=2) + "\n")
+print("Le code MK affiché a été collé à l'identique dans les paramètres Android.", flush=True)
+proof["source_keyboard"] = verify_source_keyboard(serial, package, component, shell, wait_for, tap, out)
 (out / "proof.json").write_text(json.dumps(proof, ensure_ascii=False, indent=2) + "\n")
 shell("rm", "-f", tree_path)

@@ -46,6 +46,7 @@ features="$("${device[@]}" shell pm list features)"
 [[ "$features" == *android.hardware.touchscreen* && "$features" != *android.software.leanback* ]]
 "${device[@]}" shell input keyevent KEYCODE_WAKEUP
 "${device[@]}" shell wm dismiss-keyguard
+"${device[@]}" shell wm user-rotation lock 1
 "${device[@]}" shell settings put global window_animation_scale 0
 "${device[@]}" shell settings put global transition_animation_scale 0
 "${device[@]}" shell settings put system accelerometer_rotation 0

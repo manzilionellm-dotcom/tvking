@@ -1,0 +1,102 @@
+name: NovaTube LAB 1.0.4 · vérifier et livrer l’APK signé
+on:
+  push:
+    branches: ['qa/novatube-1-0-4-verification']
+    paths:
+      - 'android-app/ci/novatube_copy/**'
+      - '.github/workflows/novatube-lab-clavier-livraison.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  APP_SHA: 3b0a1ffe8b4340f64a3a1b5431170bb668511169
+  BUILD_RUN: '46135465430'
+  BUILD_JOB: '140949757961'
+  NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.tv.lab.copie
+  NOVATUBE_TV_VERSION: '1.0.4'
+  NOVATUBE_APK: NovaTube-LAB-Copie.apk
+  EXPECTED_SHA: efa519b7c4f1ece075f168b0d4b45375a42a078ba7c7e782b55639158fbd29d4
+
+jobs:
+  telephone:
+    name: Tester la copie du MK et la saisie au clavier sur téléphone Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Installer le binaire signé et comparer le collage avec le code visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$BUILD_JOB" | jq -e --arg sha "$APP_SHA" --argjson run "$BUILD_RUN" '.conclusion=="success" and .run_id==$run and .head_sha==$sha' >/dev/null
+          gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name "novatube-tv-apk-$APP_SHA" --dir apk
+          echo "$EXPECTED_SHA  apk/$NOVATUBE_APK" | sha256sum -c -
+          sudo chmod a+rw /dev/kvm
+          if ! ldconfig -p | grep -F libpulse.so.0 >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq libpulse0
+          fi
+          bash android-app/ci/novatube_copy/verify_phone.sh "apk/$NOVATUBE_APK" preuve "$NOVATUBE_TV_APP_ID"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: controle-copie-telephone-${{ github.sha }}
+          path: |
+            preuve/proof.json
+            preuve/clipboard.json
+            preuve/last-controls.json
+            preuve/emulator.txt
+            preuve/diagnostic*.png
+            preuve/diagnostic*.json
+            preuve/diagnostic*.txt
+            preuve/progress*.json
+          if-no-files-found: warn
+
+  publier:
+    name: Publier et vérifier l’APK LAB Copie
+    needs: telephone
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Comparer le téléchargement public au binaire testé
+        run: |
+          set -euo pipefail
+          gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name "novatube-tv-apk-$APP_SHA" --dir apk
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "controle-copie-telephone-$GITHUB_SHA" --dir preuve
+          jq -e --arg sha "$EXPECTED_SHA" --arg pkg "$NOVATUBE_TV_APP_ID" '
+            .verified and .apk_sha256 == $sha and .package == $pkg
+            and .pasted_text_equals_displayed_code
+            and (.source_keyboard | .rotation_preserved_text and .welcome_restored_landscape
+                 and all(.landscape, .portrait; .ime_visible and .field_clear_of_ime and .text_preserved_after_back))
+          ' preuve/proof.json >/dev/null
+          echo "$EXPECTED_SHA  apk/$NOVATUBE_APK" | sha256sum -c -
+          tag="novatube-lab-copie-${APP_SHA:0:8}"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" "apk/$NOVATUBE_APK" apk/SHA256SUMS.txt preuve/proof.json \
+              --target "$APP_SHA" --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --title "NovaTube LAB $NOVATUBE_TV_VERSION – Clavier et copie du code" \
+              --notes "Sur téléphone, le bouton copie le code MK complet affiché sur l’accueil. Le formulaire d’ajout de source adapte la saisie M3U et Xtream au clavier du téléphone. Test sur Android : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Cette préversion s’installe séparément de la LAB VPN 1.0.2."
+          fi
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$tag/$NOVATUBE_APK"
+          curl -fsSL --retry 5 --retry-all-errors "$url" -o public.apk
+          cmp "apk/$NOVATUBE_APK" public.apk
+          echo "[$NOVATUBE_APK]($url)" >> "$GITHUB_STEP_SUMMARY"
