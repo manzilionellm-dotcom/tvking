@@ -17,6 +17,7 @@ from display_capture import capture_png
 LABELS = {
     "home": {"live", "movies", "series", "guide", "server", "settings", "direct", "films", "serveur", "réglages"},
     "source": {"m3u", "xtream", "portal", "url", "playlist", "connect", "source", "liste", "portail"},
+    "source_title": {"source", "sources", "add", "ajouter", "my", "ma", "own", "list", "liste"},
     "language": {"english", "français", "deutsch", "español", "italiano"},
 }
 
@@ -40,7 +41,11 @@ def screen_evidence(out, phase):
         x, y, w, h = [int(row[key]) for key in ("left", "top", "width", "height")]
         masked.paste(image.crop((x, y, x+w, y+h)), (x, y))
         labels.add(word)
-    page = next((key for key, choices in LABELS.items() if len(choices & labels) >= 2), None)
+    page = next((key for key, choices in LABELS.items() if key != "source_title"
+                 and len(choices & labels) >= 2), None)
+    # Libellés littéraux du premier écran adaptatif, lisibles même sur téléphone.
+    if {"add", "my", "source"} <= labels or {"ajouter", "ma", "source"} <= labels:
+        page = "add_source"
     # Une miniature de 16 colonnes permet de reconnaître une surface uniforme
     # en cas d’échec sans rendre de texte ni d’identifiants lisibles.
     thumb = image.resize((16, 9), Image.Resampling.BOX)

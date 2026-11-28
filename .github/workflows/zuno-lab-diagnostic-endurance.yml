@@ -1,0 +1,126 @@
+name: ZUNO LAB — endurance sur APK diagnostic et mire contrôlée
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths:
+      - '.github/workflows/zuno-lab-diagnostic-endurance.yml'
+      - 'android-app/ci/zuno_lab/endurance/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: false
+          pub-cache: false
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Préparer ZUNO 119 adaptatif avec l'identité LAB
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zuno-tools"
+          "$RUNNER_TEMP/zuno-tools/bin/pip" install --only-binary=:all: Pillow==12.1.1 PyYAML==6.0.3
+          "$RUNNER_TEMP/zuno-tools/bin/python" ci/zuno_lab/prepare_lab.py
+          flutter pub get
+          "$RUNNER_TEMP/zuno-tools/bin/python" ci/zuno_lab/prepare_lab.py --after-pub
+          flutter gen-l10n
+          dart run flutter_launcher_icons -f flutter_launcher_icons_zuno_tv.yaml
+          "$RUNNER_TEMP/zuno-tools/bin/python" ci/play_editions/branding/apply.py
+      - name: Distinguer ce diagnostic des APK livrables
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          p=Path('android/app/build.gradle.kts')
+          s=p.read_text()
+          old='applicationId = "com.sevenmotion.tv.seven_tv.lab"'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,'applicationId = "com.sevenmotion.tv.seven_tv.lab.diagnostic"'))
+          PYCODE
+      - name: Compiler et signer le diagnostic uniquement
+        run: |
+          set -euo pipefail
+          umask 077
+          pw=$(openssl rand -hex 24)
+          keytool -genkeypair -keystore android/app/lab.p12 -storetype PKCS12 -alias zuno-lab -keyalg RSA -keysize 3072 -validity 365 -storepass "$pw" -keypass "$pw" -dname 'CN=ZUNO LAB, O=Qualification'
+          printf 'storeFile=lab.p12\nstorePassword=%s\nkeyAlias=zuno-lab\nkeyPassword=%s\n' "$pw" "$pw" > android/key.properties
+          flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation \
+            --build-number=1794559152 --build-name=119-diag --obfuscate --split-debug-info=build/symbols-lab \
+            --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto \
+            --dart-define=BACKEND_URL=http://127.0.0.1:18789 --dart-define=ZUNO_PLAYER_PROBE_URL=http://127.0.0.1:18470/start.m3u8 --dart-define=GIT_SHA="$GITHUB_SHA" \
+            --dart-define=APP_BUILD_TS="$(date +%s)" --target=lib/main_tv.dart
+          mkdir -p build/lab
+          cp build/app/outputs/flutter-apk/app-release.apk build/lab/ZUNO-DIAGNOSTIC.apk
+          bash ci/mobile/verify_work_database.sh build/lab/ZUNO-DIAGNOSTIC.apk
+          cd build/lab
+          bt=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$bt/apksigner" verify --verbose --print-certs ZUNO-DIAGNOSTIC.apk > signature.txt
+          "$bt/aapt" dump badging ZUNO-DIAGNOSTIC.apk > badging.txt
+          grep -F "package: name='com.sevenmotion.tv.seven_tv.lab.diagnostic' versionCode='1794559152' versionName='119-diag'" badging.txt
+          grep -F "application-label:'ZUNO LAB'" badging.txt
+          grep -F "sdkVersion:'24'" badging.txt
+          sha256sum ZUNO-DIAGNOSTIC.apk > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: diagnostic-seul-${{ github.run_id }}
+          path: android-app/build/lab/
+          if-no-files-found: error
+          retention-days: 14
+
+  observation:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 125
+    strategy:
+      fail-fast: false
+      matrix:
+        route: [direct, tunnel]
+        scenario: [stable, degraded, lowram]
+    env:
+      ROUTE: ${{ matrix.route }}
+      SCENARIO: ${{ matrix.scenario }}
+      DURATION: '4800'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: original
+          sparse-checkout: android-app/ci/novatube_tv
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: diagnostic-seul-${{ github.run_id }}
+          path: apk
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Préparer les outils de mesure hôte
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg python3-pil
+          /usr/bin/python3 -c 'import PIL'
+          python3 -c 'import PIL' || python3 -m pip install Pillow==12.1.1
+      - name: Observer 80 minutes après mouvement confirmé
+        run: bash android-app/ci/zuno_lab/endurance/run.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: endurance-diagnostic-${{ matrix.route }}-${{ matrix.scenario }}
+          path: observations/
+          if-no-files-found: error
+          retention-days: 14

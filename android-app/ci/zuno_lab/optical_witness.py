@@ -82,30 +82,39 @@ def event(folder, state, **details):
 
 
 def observe_ui(folder, state, classify=None):
-    ns = []
+    ns, ts, im = [], [], None
     try:
         im = screen()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         event(folder, "screen-unavailable", stage=state, reason=type(exc).__name__)
-        raise
-    try:
-        ts = words(im)
-    except (OSError, subprocess.SubprocessError):
-        event(folder, "ocr-unavailable", stage=state)
-        ts = []
+    if im is not None:
+        size = im.size
+        try:
+            ts = words(im)
+        except (OSError, subprocess.SubprocessError):
+            event(folder, "ocr-unavailable", stage=state)
+    else:
+        # La phase de configuration peut employer les coordonnées exactes
+        # d’un contrôle accessible. La mesure vidéo ultérieure exige des pixels.
+        raw_size = adb("shell", "wm", "size", timeout=4, check=False)
+        matches = re.findall(rb"(?:Physical|Override) size:\s*(\d+)x(\d+)", raw_size)
+        if not matches:
+            event(folder, "display-size-unavailable", stage=state)
+            raise RuntimeError("Dimensions de la sortie Android indisponibles")
+        size = tuple(map(int, matches[-1]))
     # Le dump de l’émulateur peut attendre une interface idle. Un contrôle
     # OCR déjà reconnu évite tout appel à uiautomator sur cet écran.
-    if classify is None or classify([], ts, im.size)[0] == "wait":
+    if im is None or classify is None or classify([], ts, size)[0] == "wait":
         try:
             ns = nodes()
         except (OSError, subprocess.SubprocessError):
             event(folder, "semantics-unavailable", stage=state)
     # Ne conserver que des mots d'interface connus et une empreinte des pixels.
-    event(folder, state, ocr=[(w,int(x),int(y)) for w,x,y in ts], size=im.size,
-          sha256_rgb=hashlib.sha256(im.tobytes()).hexdigest(),
+    event(folder, state, ocr=[(w,int(x),int(y)) for w,x,y in ts], size=size,
+          sha256_rgb=hashlib.sha256(im.tobytes()).hexdigest() if im is not None else None,
           semantics=[(sorted(set(re.findall(r"[a-z]+", t)) & ALLOWED), int(x), int(y), c.endswith("EditText"))
                      for t,x,y,c in ns if (set(re.findall(r"[a-z]+", t)) & ALLOWED or c.endswith("EditText"))])
-    return ns, ts, im.size
+    return ns, ts, size
 
 
 def open_fixture(folder):

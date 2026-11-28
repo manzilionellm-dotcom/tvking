@@ -260,8 +260,11 @@ void main() {
         expect(player.channels[player.startIndex].name, names[1]);
 
         Navigator.of(tester.element(players)).pop();
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 350));
+        // La route peut rester dans le sous-arbre hors écran pendant sa
+        // transition inverse puis être démontée au cadre suivant.
+        for (int i = 0; i < 24 && players.evaluate().isNotEmpty; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
         expect(players, findsNothing);
         Focus.of(tester.element(row)).requestFocus();
         await tester.pump();
