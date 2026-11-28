@@ -173,7 +173,11 @@ class TvkingDevicePlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activ
                 }
                 try {
                     val ctx = appContext
-                    val am = ctx?.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                    if (ctx == null) {
+                        result.success(emptyList<Any>())
+                        return
+                    }
+                    val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
                     val list = am?.getHistoricalProcessExitReasons(ctx.packageName, 0, 5)
                         ?: emptyList()
                     result.success(

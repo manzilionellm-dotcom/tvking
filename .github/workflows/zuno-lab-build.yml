@@ -4,6 +4,7 @@ on:
     branches: ['lab/zuno-119-qualification-20261128']
     paths:
       - '.github/workflows/zuno-lab-build.yml'
+      - 'android-app/packages/tvking_device/android/src/main/**'
       - 'android-app/ci/zuno_lab/prepare_lab.py'
       - 'android-app/ci/play_editions/prepare.py'
       - 'android-app/ci/mobile/verify_work_database.sh'

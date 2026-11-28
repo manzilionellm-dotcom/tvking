@@ -4,6 +4,7 @@ on:
     branches: ['lab/zuno-119-qualification-20261128']
     paths:
       - '.github/workflows/zuno-lab-guide.yml'
+      - 'android-app/packages/tvking_device/android/src/main/**'
       - 'android-app/lib/core/blackbox/black_box.dart'
       - 'android-app/lib/features/tv/presentation/tv_player_screen.dart'
       - 'android-app/lib/features/tv/presentation/tv_live_screen.dart'
