@@ -52,7 +52,7 @@ jobs:
       - name: Encoder deux mires de référence
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq pulseaudio pulseaudio-utils ffmpeg tesseract-ocr python3-pil python3-numpy
+          sudo apt-get install -y -qq protobuf-compiler libprotobuf-dev python3-protobuf python3-grpcio pulseaudio pulseaudio-utils ffmpeg tesseract-ocr python3-pil python3-numpy
           python3 optics-tools/android-app/ci/novatube_tv/pilot_live_source.py prepare "$RUNNER_TEMP/fixtures"
       - name: Ouvrir l'application, ajouter la liste par l'écran et observer les compteurs
         run: |
@@ -62,14 +62,21 @@ jobs:
           python3 "$PYTHONPATH/pilot_live_source.py" serve "$RUNNER_TEMP/fixtures" --duration 3000 >"$RUNNER_TEMP/fixture.log" 2>&1 &
           (cd apk && sha256sum -c SHA256SUMS)
           out="$PWD/zuno-optics"
+          export ZUNO_EMU_GRPC_PORT=18654
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/zuno-avd-runtime"
+          install -d -m 700 "$XDG_RUNTIME_DIR"
+          export ZUNO_PROTO="$RUNNER_TEMP/zuno-proto"
+          mkdir -p "$ZUNO_PROTO"
           source android-app/ci/zuno_lab/synchronisme/pulse_prive.sh
           # Changer seulement les drapeaux audio de ce démarrage jetable.
-          sed 's/-no-window -no-audio /-no-window -audio pa /' android-app/ci/zuno_lab/boot_lab.sh > "$RUNNER_TEMP/boot-avec-son.sh"
+          sed 's/-no-window -no-audio /-no-window -audio pa -grpc 18654 -grpc-use-token /' android-app/ci/zuno_lab/boot_lab.sh > "$RUNNER_TEMP/boot-avec-son.sh"
           grep -q -- '-audio pa ' "$RUNNER_TEMP/boot-avec-son.sh"
           source "$RUNNER_TEMP/boot-avec-son.sh" 'system-images;android-36;android-tv;x86_64' "$out"
           # Une fenêtre de bienvenue du lanceur peut intercepter HOME sur un AVD
           # neuf. Le parcours vidéo possède ses propres preuves et n'impose pas
           # la réussite d'une campagne HOME distincte avant le premier appui.
+          protoc --proto_path="$ANDROID_HOME/emulator/lib" --proto_path=/usr/include --python_out="$ZUNO_PROTO" "$ANDROID_HOME/emulator/lib/emulator_controller.proto"
+          /usr/bin/python3 -c 'import grpc,google.protobuf,numpy,PIL'
           adb shell settings put system sound_effects_enabled 0
           adb shell cmd media_session volume --stream 3 --set 12 >/dev/null || true
           adb shell input keyevent KEYCODE_BACK
@@ -105,7 +112,7 @@ jobs:
           fi
           echo "$ZUNO_PRELOADED_BY_PANEL" > "$out/preloaded-by-panel.txt"
           status=0
-          python3 android-app/ci/zuno_lab/synchronisme/observe.py "$out/public" || status=$?
+          /usr/bin/python3 android-app/ci/zuno_lab/synchronisme/observe.py "$out/public" || status=$?
           kill "$worker" 2>/dev/null || true
           adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-after.sha256"
           cmp "$out/installed-before.sha256" "$out/installed-after.sha256"

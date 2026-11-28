@@ -9,6 +9,7 @@ from optical_film import clocked_key
 from android_film_clock import decode
 from real_film import ocr
 from sonde import owners,PulseProbe
+from emulateur_audio import EmulatorAudio,private_endpoint
 
 def scr():
     # L'image et le titre viennent du même screencap.
@@ -72,7 +73,7 @@ def main(out):
     result={'support':'émulateur Android TV, sink virtuel privé, FFT 100 ms ; aucune sortie micro ni onde publiée','scenes':[]}
     def save():(out/'synchronisme.json').write_text(json.dumps(result,indent=2,ensure_ascii=False))
     save();open_fixture(private)
-    deadline=time.monotonic()+26
+    deadline=time.monotonic()+8
     while time.monotonic()<deadline:
         try:
             good,n=owners()
@@ -80,8 +81,15 @@ def main(out):
         if good:break
         time.sleep(.5)
     result.update(sink_zuno_proprietaire_emulateur=good,n_entrees_sink=n);save()
-    if not good:raise RuntimeError('Flux du processus émulateur non attribué au sink privé')
-    probe=PulseProbe();probe.start()
+    if good:
+        probe=PulseProbe();result['source_audio']='monitor Pulse privé du processus QEMU'
+    else:
+        result['source_audio']='sortie numérique du seul AVD du banc par streamAudio'
+        try:private_endpoint()
+        except (OSError,ValueError) as err:
+            result['erreur_endpoint']=type(err).__name__;save();raise
+        probe=EmulatorAudio()
+    save();probe.start()
     try:
         for idx,ch in enumerate(('A','B','A')):
             record=dict(target=ch,captures=[]);result['scenes'].append(record)
@@ -99,7 +107,8 @@ def main(out):
                 prev=n if channel==ch else None
                 title_ch,box=title(im)
                 time.sleep(.18)
-                auth,_=owners()
+                if isinstance(probe,PulseProbe):auth,_=owners()
+                else:auth=not probe.errors and probe.received>0
                 sound=auth and joined(probe,lo,hi,ch)
                 record['captures'].append(dict(hote_min=lo,hote_max=hi,marqueur=channel,compteur=n,methode=method,titre=title_ch,zone_titre=box,
                     ton_destination_autour_de_capture=sound,proprietaire_verifie=auth))
@@ -115,6 +124,9 @@ def main(out):
         probe.stop()
         with (out/'frequences-sortie.csv').open('w') as f:
             writer=csv.DictWriter(f,fieldnames=['read_start','read_end','tone','hz','energy_fraction']);writer.writeheader();writer.writerows(probe.rows)
-        result['n_fenetres_pcm']=len(probe.rows);save()
+        result['n_fenetres_pcm']=len(probe.rows)
+        result['paquets_api_sortie']=getattr(probe,'received',None)
+        result['erreurs_sonde']=[e for e in probe.errors if e!='CANCELLED']
+        save()
     if len(result['scenes'])!=3 or not all(r['accord_simultane'] for r in result['scenes']):raise RuntimeError('Correspondance audiovisuelle incomplète')
 if __name__=='__main__':main(Path(sys.argv[1]))
