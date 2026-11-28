@@ -14,6 +14,8 @@ import time
 from PIL import Image
 from device_smoke import is_foreground, diagnostics
 from display_capture import capture_png
+from android_ui import visible_nodes
+from zuno_ui_path import normalized
 
 LABELS = {
     "home": {"live", "movies", "series", "guide", "server", "settings", "direct", "films", "serveur", "réglages"},
@@ -63,6 +65,38 @@ def screen_evidence(out, phase):
             "screen_sha256": hashlib.sha256(data).hexdigest(), "labels": sorted(labels)}
 
 
+def verify_form_interaction(pkg):
+    """Vérifier une action sans saisir ni publier de données de liste."""
+    before = visible_nodes(pkg)
+    def form(nodes):
+        labels = {normalized(line) for label, _, _, _ in nodes for line in label.splitlines()}
+        return (bool(labels & {"add my source", "ajouter ma source"}) or
+                (bool(labels & {"paste", "coller"}) and bool(labels & {"file", "fichier"})))
+    def inputs(nodes):
+        return sum(kind.endswith("EditText") for _, _, _, kind in nodes)
+    if not form(before):
+        return None
+    n = inputs(before)
+    modes = {3: ({"m3u url"}, 1), 1: ({"xtream codes", "codes xtream"}, 3)}
+    if n not in modes:
+        return None
+    targets, expected = modes[n]
+    for label, x, y, _ in before:
+        if not any(normalized(line) in targets for line in label.splitlines()):
+            continue
+        command("adb","shell","input","tap",str(round(x)),str(round(y)))
+        for _ in range(3):
+            if not is_foreground(pkg):
+                return None
+            after = visible_nodes(pkg)
+            if form(after) and inputs(after) == expected:
+                return {"page":"add_source","evidence":"form_interaction",
+                        "fields_before":n,"fields_after":expected}
+            time.sleep(.5)
+        break
+    return None
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("out", type=Path)
@@ -86,6 +120,15 @@ def main():
             except (subprocess.SubprocessError, OSError, ValueError) as error:
                 item = {"utc": datetime.now(timezone.utc).isoformat(), "page": None,
                         "foreground": False, "capture_error": type(error).__name__}
+            if item["page"]:
+                item["evidence"] = "ocr_pixels"
+            elif item["foreground"] and len(rows) >= 2:
+                try:
+                    confirmed = verify_form_interaction(pkg)
+                    if confirmed:
+                        item.update(confirmed)
+                except (subprocess.SubprocessError, OSError, ValueError) as error:
+                    item["interaction_error"] = type(error).__name__
             rows.append(item)
             (out / f"{phase}.json").write_text(json.dumps(rows, indent=2))
             if item["page"] and item["foreground"] and command("adb","shell","pidof",pkg).strip():
@@ -102,7 +145,7 @@ def main():
                 symbols = re.findall(r"(?:[a-zA-Z0-9_.$]+(?:Exception|Error)|#[0-9]+\s+[a-zA-Z0-9_.$<>]+)", log)
                 (out / f"{phase}-symboles.json").write_text(json.dumps(sorted(set(symbols))[:120]))
             raise SystemExit(f"{phase} : aucun écran ZUNO reconnu")
-    print("Deux écrans interactifs ZUNO reconnus par leurs libellés sur la sortie Android.")
+    print("Deux ouvertures de ZUNO vérifiées. Le JSON distingue lecture des pixels et action sur le formulaire.")
 
 
 if __name__ == "__main__":

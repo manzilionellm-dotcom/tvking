@@ -2,6 +2,9 @@
 //  tv_shell.dart — Conteneur racine 10-foot (safe area + fond Maison Noir)
 // =========================================================
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+
+import '../../../core/update/build_flags.dart';
 
 import '../core/tv_ambient.dart';
 import '../core/tv_ambient_director.dart';
@@ -25,6 +28,7 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
     vsync: this,
     duration: TvAmbientDirector.blend,
   );
+  bool _blendScheduled = false;
   TvAmbientLook? _from;
   TvAmbientLook? _to;
 
@@ -38,7 +42,26 @@ class _TvShellState extends State<TvShell> with SingleTickerProviderStateMixin {
 
   void _onAmbient() {
     if (!mounted) return;
+    // Lors du montage ou du démontage du lecteur, Flutter verrouille
+    // l’arbre. Déclencher le fondu ici redessinerait un frère en cours de
+    // construction. Relire la dernière ambiance après cette seule frame.
+    if (kFreeZunoPlayer &&
+        SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      if (!_blendScheduled) {
+        _blendScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _blendScheduled = false;
+          if (mounted) _applyAmbient();
+        });
+      }
+      return;
+    }
+    _applyAmbient();
+  }
+
+  void _applyAmbient() {
     final TvAmbientLook? next = TvAmbientDirector.instance.look;
+    if (kFreeZunoPlayer && next == _to) return;
     _from = _to;
     _to = next;
     _blend.duration = TvAmbientDirector.instance.animates

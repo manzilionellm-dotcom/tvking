@@ -7,6 +7,10 @@ on:
       - 'android-app/lib/features/tv/presentation/tv_player_screen.dart'
       - 'android-app/lib/features/tv/presentation/tv_live_screen.dart'
       - 'android-app/lib/features/tv/presentation/tv_app.dart'
+      - 'android-app/lib/features/tv/presentation/tv_shell.dart'
+      - 'android-app/lib/features/tv/desktop/desktop_cast_controls.dart'
+      - 'android-app/lib/features/cast/data/cast_manager.dart'
+      - 'android-app/test/features/tv/desktop/zuno_mobile_cast_controls_test.dart'
       - 'android-app/test/features/tv/zuno_tv_variant_focus_test.dart'
 
 permissions:
@@ -64,6 +68,30 @@ jobs:
           grep -q 'ZUNO_GUIDE_READ_COUNT\|ZUNO_GUIDE_STALE_CONTROL' "$RUNNER_TEMP/guide/avant.txt"
           git restore -- "$screen"
           flutter test "${options[@]}" test/features/tv/zuno_tv_variant_focus_test.dart test/features/player/hls_recording_test.dart test/features/player/relay_dead_stream_test.dart | tee "$RUNNER_TEMP/guide/apres.txt"
+      - name: Comparer le STOP Cast après révocation sur téléphone
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          options=(--no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789)
+          manager=lib/features/cast/data/cast_manager.dart
+          controls=lib/features/tv/desktop/desktop_cast_controls.dart
+          suite=test/features/tv/desktop/zuno_mobile_cast_controls_test.dart
+          for file in "$manager" "$controls"; do
+            git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$file" > "$file"
+          done
+          if flutter test "${options[@]}" --plain-name 'une révocation coupe le Cast établi sur téléphone' "$suite" > "$RUNNER_TEMP/guide/cast-droits-avant.txt" 2>&1; then
+            echo 'Le transport du témoin a envoyé STOP'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/cast-droits-avant.txt"
+          for cause in frozen banned kids; do
+            grep -Fq "ZUNO_DROITS_CAST cause=$cause stops=0" "$RUNNER_TEMP/guide/cast-droits-avant.txt"
+          done
+          grep -Fq 'ZUNO_DROITS_CAST_STOP' "$RUNNER_TEMP/guide/cast-droits-avant.txt"
+          git restore -- "$manager" "$controls"
+          flutter test "${options[@]}" --plain-name 'une révocation coupe le Cast établi sur téléphone' "$suite" | tee "$RUNNER_TEMP/guide/cast-droits-apres.txt"
+          for cause in frozen banned kids; do
+            grep -Fq "ZUNO_DROITS_CAST cause=$cause stops=1" "$RUNNER_TEMP/guide/cast-droits-apres.txt"
+          done
       - name: Contre-épreuves des parcours partagés avec l'édition adaptative
         working-directory: android-app
         run: |

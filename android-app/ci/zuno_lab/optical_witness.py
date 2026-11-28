@@ -9,13 +9,14 @@ import re
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
+from android_ui import visible_nodes
 from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image
 from read_display_capture import decode
 from display_capture import capture_png
+from optical_film import Recorder, clocked_key, score as score_film
 from zuno_ui_path import next_step, normalized
 
 APK_PACKAGE = os.environ.get("BENCH_PACKAGE", "com.sevenmotion.tv.seven_tv")
@@ -54,30 +55,6 @@ def words(im):
     return items
 
 
-def nodes():
-    # Le dump via /dev/tty peut perdre sa fin quand ADB est chargé. Une
-    # copie privée sur cet AVD vierge évite de mélanger XML et notification.
-    private = "/data/local/tmp/zuno-optics-ui.xml"
-    adb("shell", "rm", "-f", private, timeout=4, check=False)
-    adb("shell", "uiautomator", "dump", private, timeout=14, check=False)
-    data = adb("exec-out", "cat", private, timeout=6, check=False)
-    start, end = data.find(b"<hierarchy"), data.rfind(b"</hierarchy>")
-    if start < 0 or end < start:
-        return []
-    try:
-        root = ET.fromstring(data[start:end+12])
-    except ET.ParseError:
-        return []
-    items = []
-    for node in root.iter("node"):
-        if node.get("package") != APK_PACKAGE:
-            continue
-        box = [int(i) for i in re.findall(r"\d+", node.get("bounds", ""))]
-        if len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
-            continue
-        label = " ".join([node.get("content-desc", ""), node.get("text", "")]).lower().strip()
-        items.append((label, (box[0]+box[2])/2, (box[1]+box[3])/2, node.get("class","")))
-    return items
 
 
 def event(folder, state, **details):
@@ -111,7 +88,7 @@ def observe_ui(folder, state, classify=None):
     # OCR déjà reconnu évite tout appel à uiautomator sur cet écran.
     if im is None or classify is None or classify([], ts, size)[0] == "wait":
         try:
-            ns = nodes()
+            ns = visible_nodes(APK_PACKAGE)
         except (OSError, subprocess.SubprocessError):
             event(folder, "semantics-unavailable", stage=state)
     # Ne conserver que des mots d'interface connus et une empreinte des pixels.
@@ -209,6 +186,7 @@ def run(folder, count):
     open_fixture(folder)
     rows=[]
     cases=[]
+    recorder=None
     def persist():
         with (folder/"samples.csv").open("w",newline="") as f:
             w=csv.writer(f);w.writerow(["trial","host_before_s","host_after_s","channel","counter"]);w.writerows(rows)
@@ -224,6 +202,8 @@ def run(folder, count):
         event(folder,"first-moving-channel",channel="A")
         # Suite prédéfinie, même ordre quel que soit le résultat. Les délais sont des bornes hautes.
         last_confirmed="A"
+        recorder=Recorder(folder/"films-android")
+        recorder.start()
         for i in range(count*2):
             phase="spaced" if i<count else "burst"
             target="B" if i%2==0 else "A"
@@ -237,7 +217,8 @@ def run(folder, count):
             cases.append(attempt)
             persist()
             try:
-                key(code)
+                before,after=clocked_key(code)
+                attempt.update(key_elapsed_min=before,key_elapsed_max=after)
                 attempt["status"] = "command-returned"
                 end=motion(folder,str(i+1),target,9,rows,i<2)
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
@@ -256,6 +237,14 @@ def run(folder, count):
                 time.sleep(max(0,dispatch+5-time.monotonic()))
     finally:
         persist()
+        if recorder is not None:
+            complete=recorder.finish()
+            verified_film=score_film(recorder.out,cases)
+            if not complete:
+                event(folder,"continuous-film-incomplete")
+            if sys.exc_info()[0] is None and (not complete or len(verified_film) != count*2 or
+                    any(row.get("movement_hi_ms") is None for row in verified_film)):
+                raise RuntimeError("La totalité des commandes doit aussi être visible sur le film")
 
 
 if __name__ == "__main__":

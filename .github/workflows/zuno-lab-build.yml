@@ -51,11 +51,21 @@ jobs:
           pw=$(openssl rand -hex 24)
           keytool -genkeypair -keystore android/app/lab.p12 -storetype PKCS12 -alias zuno-lab -keyalg RSA -keysize 3072 -validity 365 -storepass "$pw" -keypass "$pw" -dname 'CN=ZUNO LAB, O=Qualification'
           printf 'storeFile=lab.p12\nstorePassword=%s\nkeyAlias=zuno-lab\nkeyPassword=%s\n' "$pw" "$pw" > android/key.properties
+          mkdir -p "$HOME/.gradle/init.d"
+          cp ci/zuno_lab/android_catalog_cycles/mirror.gradle "$HOME/.gradle/init.d/lab-central.gradle"
+          compile() {
           flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation \
             --build-number=1794559152 --build-name=119-lab --obfuscate --split-debug-info=build/symbols-lab \
             --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto \
             --dart-define=BACKEND_URL=http://127.0.0.1:18789 --dart-define=GIT_SHA="$GITHUB_SHA" \
             --dart-define=APP_BUILD_TS="$(date +%s)" --target=lib/main_tv.dart
+          }
+          if ! compile >"$RUNNER_TEMP/build-lab.log" 2>&1; then
+            tail -100 "$RUNNER_TEMP/build-lab.log"
+            grep -Eq '429|Too Many Requests|timed out|unable to resolve host' "$RUNNER_TEMP/build-lab.log"
+            sleep 40
+            compile
+          fi
           mkdir -p build/lab
           cp build/app/outputs/flutter-apk/app-release.apk build/lab/ZUNO-LAB.apk
           bash ci/mobile/verify_work_database.sh build/lab/ZUNO-LAB.apk

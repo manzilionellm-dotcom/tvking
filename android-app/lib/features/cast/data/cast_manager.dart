@@ -22,7 +22,10 @@ import '../../../core/crash/crash_reporting.dart';
 import '../../../core/i18n/l10n_now.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/observability/structured_logger.dart';
+import '../../../core/update/build_flags.dart';
 import '../../channels/domain/channel.dart';
+import '../../security/data/parental_controls.dart';
+import '../../subscription/data/subscription_state.dart';
 import '../../player/data/pip_service.dart';
 import '../../player/data/xtream_url_variants.dart';
 import '../../subscription/data/subscription_backend.dart'
@@ -137,6 +140,7 @@ enum CastState {
 
 class CastManager extends ChangeNotifier {
   CastManager._() {
+    _watchZunoRights();
     _subscribeToNativeEvents();
   }
   static final CastManager instance = CastManager._();
@@ -147,7 +151,52 @@ class CastManager extends ChangeNotifier {
     required CastTransport Function(CastDevice) transportFactory,
     required Future<StreamProbeResult> Function(String) probe,
     Duration timeout = const Duration(seconds: 1),
-  }) : _testTransportFactory = transportFactory, _testProbe = probe, _testTimeout = timeout;
+  }) : _testTransportFactory = transportFactory, _testProbe = probe, _testTimeout = timeout {
+    _watchZunoRights();
+  }
+
+  bool _wasKids = false;
+  bool _stoppedForRights = false;
+
+  /// Un arrêt imposé ne doit pas rendre le son à l’ancienne chaîne locale.
+  bool get mayResumeLocalAfterCast => !_stoppedForRights;
+
+  bool get _zunoSuspended {
+    if (!kFreeZunoPlayer || !CastPlatform.isAndroidHandset) return false;
+    final status = SubscriptionState.instance.status;
+    return status == SubscriptionStatus.frozen || status == SubscriptionStatus.banned;
+  }
+
+  void _watchZunoRights() {
+    if (!kFreeZunoPlayer) return;
+    _wasKids = ParentalControls.instance.kidsMode.value;
+    ParentalControls.instance.kidsMode.addListener(_onZunoRights);
+    SubscriptionState.instance.addListener(_onZunoRights);
+  }
+
+  void _onZunoRights() {
+    final kids = ParentalControls.instance.kidsMode.value;
+    final enteringKids = kids && !_wasKids;
+    _wasKids = kids;
+    if (!CastPlatform.isAndroidHandset || !hasActiveSession) return;
+    if (!enteringKids && !_zunoSuspended) return;
+    _stoppedForRights = true;
+    // Le transport appartient au gestionnaire. La commande STOP doit encore
+    // partir même si la personne a quitté le lecteur alors que la TV jouait.
+    // Après restauration par le SDK, la session peut n’avoir aucun
+    // transport Dart attaché. Le SDK reste alors le propriétaire du STOP.
+    final sdkOwnsSession = _transport == null && (isCasting || _nativeSessionSuspended);
+    unawaited(disconnect());
+    if (sdkOwnsSession) unawaited(_endUnownedNativeSession());
+  }
+
+  Future<void> _endUnownedNativeSession() async {
+    try {
+      await GoogleCastApi.instance.disconnect();
+    } catch (_) {
+      // Le SDK peut être devenu indisponible avant sa réponse.
+    }
+  }
 
   CastTransport Function(CastDevice)? _testTransportFactory;
   Future<StreamProbeResult> Function(String)? _testProbe;
@@ -191,6 +240,13 @@ class CastManager extends ChangeNotifier {
     // Une fermeture Google tardive ne concerne jamais le nouveau Roku/DLNA.
     if (_device != null && _device!.kind != CastDeviceKind.chromecast && _device!.kind != CastDeviceKind.googleCast) return;
     if (evt.kind == 'ended' && _state == CastState.connecting) return;
+    if ((evt.kind == 'resumed' || evt.kind == 'resumed_at_boot') &&
+        (_zunoSuspended || _stoppedForRights)) {
+      // Un callback retardé de l’ancien récepteur ne rétablit pas la session.
+      // Si aucun transport Dart ne l’a adoptée, fermer la session du SDK.
+      unawaited(_endUnownedNativeSession());
+      return;
+    }
     StructuredLogger.instance.info(
       domain: 'cast',
       event: 'native.session_event',
@@ -370,6 +426,10 @@ class CastManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (kFreeZunoPlayer) {
+      ParentalControls.instance.kidsMode.removeListener(_onZunoRights);
+      SubscriptionState.instance.removeListener(_onZunoRights);
+    }
     _nativeSessionSub?.cancel();
     _nativeMediaSub?.cancel();
     super.dispose();
@@ -656,6 +716,10 @@ class CastManager extends ChangeNotifier {
     String? channelGenre,
     String? imageUrl,
   }) async {
+    if (_zunoSuspended) {
+      throw StateError('Lecture distante suspendue pour cet appareil.');
+    }
+    _stoppedForRights = false;
     final int mySeq = ++_sessionSeq;
     _nativeSessionSuspended = false;
     final Duration timeout = _testTimeout ?? (device.kind == CastDeviceKind.dlna ? kCastTotalTimeoutDlna : kCastTotalTimeout);

@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tv_king/core/update/build_flags.dart';
+import 'package:tv_king/features/security/data/parental_controls.dart';
+import 'package:tv_king/features/subscription/data/subscription_state.dart';
 import 'package:native_video_player/native_video_player.dart';
 import 'package:tv_king/l10n/generated/app_localizations.dart';
 import 'package:tv_king/features/cast/data/cast_manager.dart';
@@ -456,4 +460,90 @@ void main() {
       expect(tester.takeException(), isNull);
     }, variant: TargetPlatformVariant.only(TargetPlatform.android));
   }
+
+  for (final cause in ['frozen', 'banned', 'kids']) {
+    testWidgets('une révocation coupe le Cast établi sur téléphone ($cause)', (tester) async {
+      await CastPlatform.initializeZuno();
+      expect(CastPlatform.isAndroidHandset, isTrue);
+      SharedPreferences.setMockInitialValues({});
+      final subscription = SubscriptionState.instance;
+      await subscription.resetForTesting();
+      await subscription.initialize();
+      await ParentalControls.instance.setKidsMode(false);
+      final events = <String>[];
+      final receiver = Receiver(events);
+      final manager = managerFor(receiver);
+      final local = LocalPlayer(events);
+      addTearDown(() async {
+        await manager.disconnect();
+        manager.dispose();
+        local.dispose();
+        await ParentalControls.instance.setKidsMode(false);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('subscription.block');
+        await subscription.resetForTesting();
+      });
+      await manager.castTo(google, streamUrl: originalUrl, title: 'Mire autorisée');
+      await showControls(tester, local: local, manager: manager);
+      await tester.pumpAndSettle();
+      expect(manager.isCasting, isTrue);
+      if (cause != 'kids') {
+        // La fermeture ordinaire de la route conserve le Cast à dessein.
+        await tester.pumpWidget(const SizedBox());
+        expect(manager.hasActiveSession, isTrue);
+        expect(events.where((event) => event == 'remote-stop'), isEmpty);
+        await subscription.resetForTesting();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('subscription.block', cause);
+        await subscription.initialize();
+        expect(subscription.status.name, cause);
+      } else {
+        // Route encore ouverte : le téléphone doit lui aussi rester silencieux.
+        await ParentalControls.instance.setKidsMode(true);
+        expect(ParentalControls.instance.kidsMode.value, isTrue);
+      }
+      await tester.pump();
+      final stops = events.where((value) => value == 'remote-stop').length;
+      debugPrint('ZUNO_DROITS_CAST cause=$cause stops=$stops');
+      expect(stops, 1, reason: 'ZUNO_DROITS_CAST_STOP');
+      expect(manager.hasActiveSession, isFalse);
+      expect(events, isNot(contains('local-resume')));
+      manager.debugNativeSessionEvent(const CastNativeSessionEvent('resumed'));
+      expect(manager.hasActiveSession, isFalse);
+      await tester.pumpWidget(const SizedBox());
+    }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !kFreeZunoPlayer);
+  }
+
+  testWidgets('une session restaurée par le SDK est arrêtée à la révocation', (tester) async {
+    await CastPlatform.initializeZuno();
+    const native = MethodChannel('com.manzilionellm.tvking/cast');
+    final calls = <String>[];
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(native, (call) async {
+      calls.add(call.method);
+      return null;
+    });
+    SharedPreferences.setMockInitialValues({});
+    final subscription = SubscriptionState.instance;
+    await subscription.resetForTesting();
+    await subscription.initialize();
+    await ParentalControls.instance.setKidsMode(false);
+    final manager = managerFor(Receiver(<String>[]));
+    addTearDown(() async {
+      manager.dispose();
+      messenger.setMockMethodCallHandler(native, null);
+      await ParentalControls.instance.setKidsMode(false);
+    });
+    manager.debugNativeSessionEvent(const CastNativeSessionEvent('resumed_at_boot'));
+    expect(manager.isCasting, isTrue);
+    // Une session restaurée n’a aucun transport Dart. Le SDK reçoit la commande.
+    await ParentalControls.instance.setKidsMode(true);
+    await tester.pump();
+    expect(calls.where((name) => name == 'disconnect').length, 1);
+    expect(manager.hasActiveSession, isFalse);
+    manager.debugNativeSessionEvent(const CastNativeSessionEvent('resumed'));
+    await tester.pump();
+    expect(manager.hasActiveSession, isFalse);
+    expect(calls.where((name) => name == 'disconnect').length, 2);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android), skip: !kFreeZunoPlayer);
 }
