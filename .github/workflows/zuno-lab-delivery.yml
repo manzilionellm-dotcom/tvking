@@ -9,8 +9,8 @@ permissions:
   actions: read
 
 env:
-  BUILD_RUN: '46087049284'
-  BUILD_SHA: c9f0153fae358aaef2e45d83c3f2e27383d3e0a0
+  BUILD_RUN: '46089281538'
+  BUILD_SHA: 408119fc4d58f51a125a468dfae28bf264decf60
   LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 jobs:
@@ -104,3 +104,36 @@ jobs:
         with:
           name: zuno-lab-${{ matrix.kind }}-preuves
           path: qa/
+
+  deliver:
+    needs: launch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN }}
+          name: zuno-lab-${{ env.BUILD_SHA }}
+          path: apk
+      - name: Créer une nouvelle préversion LAB et relire son fichier
+        working-directory: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
+          tag="zuno-lab-119-${BUILD_SHA:0:12}-$BUILD_RUN"
+          expected=$(awk '{print $1}' SHA256SUMS)
+          if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" ZUNO-LAB.apk SHA256SUMS signature.txt --target "$BUILD_SHA" --prerelease --latest=false \
+              -R "$GITHUB_REPOSITORY" --title "ZUNO LAB 119 — essai téléphone et TV" \
+              --notes "Paquet $LAB_PACKAGE. Base ZUNO 119. Clé de test propre à la compilation $BUILD_RUN. Les listes personnelles sont disponibles. Le panel de cette édition vise la boucle locale du banc."
+          fi
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/ZUNO-LAB.apk"
+          curl -fsSL --retry 8 --retry-all-errors "$url" -o "$RUNNER_TEMP/recu.apk"
+          echo "$expected  $RUNNER_TEMP/recu.apk" | sha256sum -c -
+          echo "[APK vérifié]($url) — $expected" >> "$GITHUB_STEP_SUMMARY"

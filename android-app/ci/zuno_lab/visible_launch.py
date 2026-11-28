@@ -12,6 +12,7 @@ import time
 
 from PIL import Image
 from device_smoke import is_foreground, diagnostics
+from display_capture import capture_png
 
 LABELS = {
     "home": {"live", "movies", "series", "guide", "server", "settings", "direct", "films", "serveur", "réglages"},
@@ -25,7 +26,7 @@ def command(*args, timeout=25):
 
 
 def screen_evidence(out, phase):
-    data = command("adb", "exec-out", "screencap", "-p")
+    data = capture_png()
     image = Image.open(io.BytesIO(data)).convert("RGB")
     tsv = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11", "tsv"],
                          input=data, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -40,6 +41,10 @@ def screen_evidence(out, phase):
         masked.paste(image.crop((x, y, x+w, y+h)), (x, y))
         labels.add(word)
     page = next((key for key, choices in LABELS.items() if len(choices & labels) >= 2), None)
+    # Une miniature de 16 colonnes permet de reconnaître une surface uniforme
+    # en cas d’échec sans rendre de texte ni d’identifiants lisibles.
+    thumb = image.resize((16, 9), Image.Resampling.BOX)
+    thumb.resize((256, 144), Image.Resampling.NEAREST).save(out / f"{phase}-couleurs.png")
     if page:
         masked.save(out / f"{phase}-anonyme.png")
     return {"utc": datetime.now(timezone.utc).isoformat(), "page": page,
@@ -63,15 +68,27 @@ def main():
         rows = []
         deadline = time.monotonic() + 70
         while time.monotonic() < deadline:
-            item = screen_evidence(out, phase)
+            try:
+                item = screen_evidence(out, phase)
+                item["foreground"] = is_foreground(pkg)
+            except (subprocess.SubprocessError, OSError, ValueError) as error:
+                item = {"utc": datetime.now(timezone.utc).isoformat(), "page": None,
+                        "foreground": False, "capture_error": type(error).__name__}
             rows.append(item)
-            item["foreground"] = is_foreground(pkg)
+            (out / f"{phase}.json").write_text(json.dumps(rows, indent=2))
             if item["page"] and item["foreground"] and command("adb","shell","pidof",pkg).strip():
                 break
             time.sleep(1)
         (out / f"{phase}.json").write_text(json.dumps(rows, indent=2))
         if not rows[-1]["page"] or not rows[-1]["foreground"]:
             diagnostics(out, pkg, "", phase)
+            pid = subprocess.run(["adb", "shell", "pidof", "-s", pkg], capture_output=True, text=True, timeout=10).stdout.strip()
+            if pid.isdigit():
+                log = subprocess.run(["adb", "logcat", "-d", "--pid="+pid, "-t", "1500"],
+                                     capture_output=True, text=True, errors="replace", timeout=15).stdout
+                # Uniquement les types et noms de symboles, jamais les messages libres.
+                symbols = re.findall(r"(?:[a-zA-Z0-9_.$]+(?:Exception|Error)|#[0-9]+\s+[a-zA-Z0-9_.$<>]+)", log)
+                (out / f"{phase}-symboles.json").write_text(json.dumps(sorted(set(symbols))[:120]))
             raise SystemExit(f"{phase} : aucun écran ZUNO reconnu")
     print("Deux écrans interactifs ZUNO reconnus par leurs libellés sur la sortie Android.")
 

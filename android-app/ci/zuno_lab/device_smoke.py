@@ -171,11 +171,15 @@ def main():
                 f.flush()
                 if i in (1, args.count) and ok:
                     # Seul le condensat de l'écran est exporté. Une vue de démarrage peut afficher une MAC.
-                    png = subprocess.check_output(["adb", "exec-out", "screencap", "-p"], timeout=20)
-                    if not png.startswith(b"\x89PNG\r\n\x1a\n"):
-                        raise RuntimeError("Capture Android illisible")
-                    (out / f"frame-{kind}-{i}.json").write_text(json.dumps({"utc": datetime.now(timezone.utc).isoformat(),
-                        "sha256_png": hashlib.sha256(png).hexdigest(), "bytes": len(png), "screen_content": "unclassified"}))
+                    from display_capture import capture_png
+                    try:
+                        png = capture_png()
+                        sample = {"sha256_png": hashlib.sha256(png).hexdigest(), "bytes": len(png),
+                                  "screen_content": "unclassified"}
+                    except (OSError, ValueError, subprocess.SubprocessError) as error:
+                        sample = {"capture_error": type(error).__name__}
+                    sample["utc"] = datetime.now(timezone.utc).isoformat()
+                    (out / f"frame-{kind}-{i}.json").write_text(json.dumps(sample))
     result = {}
     for kind in ["cold", "warm"]:
         subset = [r for r in rows if r["kind"] == kind]
