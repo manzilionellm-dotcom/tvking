@@ -1,0 +1,102 @@
+name: ZUNO LAB — installation et double ouverture du candidat
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths: ['.github/workflows/zuno-lab-delivery.yml']
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BUILD_RUN: '46085894777'
+  BUILD_SHA: f90de79c2a0ab177a222b12ef70a86695ec92e97
+  LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
+
+jobs:
+  exact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Attendre le constructeur signé de cette révision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for i in {1..60}; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" > "$RUNNER_TEMP/run.json"
+            jq -e --arg expected "$BUILD_SHA" '.head_sha==$expected and .path==".github/workflows/zuno-lab-build.yml" and .head_branch=="lab/zuno-119-qualification-20261128"' "$RUNNER_TEMP/run.json" >/dev/null
+            if [[ "$(jq -r .status "$RUNNER_TEMP/run.json")" == completed ]]; then break; fi
+            sleep 20
+          done
+          jq -e '.conclusion=="success"' "$RUNNER_TEMP/run.json" >/dev/null
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN }}
+          name: zuno-lab-${{ env.BUILD_SHA }}
+          path: apk
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45710084378
+          artifact-ids: 15068980205
+          merge-multiple: true
+          path: original
+      - name: Vérifier les empreintes de la chaîne native de lecture
+        run: |
+          (cd apk && sha256sum -c SHA256SUMS)
+          echo "43fcccd171434d18961a2c27aeed8064ab2f08aeffcf7364f0ae439560fa149d  original/ZUNO-auto-119.aab" | sha256sum -c -
+          python3 android-app/ci/zuno_lab/engine_bytes.py original/ZUNO-auto-119.aab apk/ZUNO-LAB.apk moteurs.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: inventaire-natif-ZUNO
+          path: moteurs.json
+
+  launch:
+    needs: exact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 33
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {kind: tv, image: 'system-images;android-36;android-tv;x86_64'}
+          - {kind: phone, image: 'system-images;android-30;google_apis;x86_64'}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BUILD_RUN }}
+          name: zuno-lab-${{ env.BUILD_SHA }}
+          path: apk
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Lire le premier écran et chronométrer les activités
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          (cd apk && sha256sum -c SHA256SUMS)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libpulse0 tesseract-ocr python3-pil
+          source android-app/ci/zuno_lab/boot_lab.sh "$IMAGE" "$PWD/qa"
+          adb install -g apk/ZUNO-LAB.apk
+          source_path=$(adb shell pm path "$LAB_PACKAGE" | tr -d '\r' | sed 's/^package://')
+          adb shell sha256sum "$source_path" | cut -d' ' -f1 > qa/installed.before
+          test "$(cat qa/installed.before)" = "$(awk '{print $1}' apk/SHA256SUMS)"
+          python3 android-app/ci/zuno_lab/visible_launch.py qa
+          python3 android-app/ci/zuno_lab/device_smoke.py --apk apk/ZUNO-LAB.apk --package "$LAB_PACKAGE" --out qa/launches --count 30
+          adb shell sha256sum "$source_path" | cut -d' ' -f1 > qa/installed.after
+          cmp qa/installed.before qa/installed.after
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: zuno-lab-${{ matrix.kind }}-preuves
+          path: qa/
