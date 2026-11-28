@@ -32,7 +32,10 @@ mkdir -p "$ANDROID_AVD_HOME"
 finish() {
   status=$?
   adb -s "$serial" logcat -d -v threadtime PlaybackFgSvc:I AndroidRuntime:E '*:S' > "$out/service-logcat.txt" 2>/dev/null || true
-  adb -s "$serial" exec-out screencap -p > "$out/99-emulator.png" 2>/dev/null || true
+  if [[ ! -f "$(dirname "$out")/private-input-active" ]]; then
+    timeout 60 adb -s "$serial" exec-out screencap -p > "$out/99-emulator.png" 2>/dev/null || true
+    if [[ -f "$(dirname "$out")/private-input-active" ]]; then rm -f "$out/99-emulator.png"; fi
+  fi
   printf '%s\n' "$status" > "$out/exit-code.txt"
   for process in "$receiver_pid" "$ssdp_pid"; do
     if [[ -n "$process" ]]; then kill "$process" >/dev/null 2>&1 || true; fi
@@ -111,6 +114,15 @@ adb -s "$serial" shell svc power stayon true
 adb -s "$serial" shell wm size 1920x1080
 adb -s "$serial" shell wm density 320
 adb -s "$serial" shell input keyevent 82
+if [[ "$pkg" == com.sevenmotion.novatube.tv.lab.retour.rec ]]; then
+  # Amorcer la lecture du compositeur sur l'accueil système avant installation.
+  # Les octets de cette capture sont seulement jetés.
+  for attempt in 1 2 3; do
+    if timeout 60 adb -s "$serial" exec-out screencap -p > /dev/null; then break; fi
+    timeout 12 adb -s "$serial" wait-for-device || true
+    sleep 1
+  done
+fi
 
 python3 -u "$scripts/dlna_receiver.py" --out "$out" --media "$out/media" --serial "$serial" > "$out/receiver-console.txt" 2>&1 &
 receiver_pid=$!

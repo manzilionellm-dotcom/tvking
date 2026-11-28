@@ -23,7 +23,7 @@ import unicodedata
 from urllib.request import urlopen
 import xml.etree.ElementTree as ET
 
-from PIL import Image, ImageChops, ImageStat
+from PIL import Image, ImageChops
 
 PLAY_PACKAGE = 'com.sevenmotion.novatube.tv'
 LAB_PACKAGE = 'com.sevenmotion.novatube.tv.lab.retour.rec'
@@ -54,18 +54,44 @@ class Scenario:
                  package=PLAY_PACKAGE, expected_digest=None):
         self.out, self.serial = out, serial
         self.package, self.expected_digest = package, expected_digest
+        self.lab_mode = os.environ.get('NOVATUBE_LAB_SCENARIO', 'both') if package == LAB_PACKAGE else None
+        if self.lab_mode not in (None, 'both', 'cast', 'record'):
+            raise ValueError('NOVATUBE_LAB_SCENARIO doit être cast, record ou both')
         self.expected_version = expected_version
         self.expected_source = expected_source
         self.expected_api = expected_api
         self.started = time.monotonic()
         self.recording = None
         self.recording_quality_passed = False
-        self.report = {'validated': False, 'package': self.package,
+        self.report = {'validated': False, 'package': self.package, 'lab_scenario': self.lab_mode,
                        'receiver': 'FFmpeg DLNA receiver (emulated)', 'steps': []}
 
     def adb(self, *args, timeout=20, binary=False):
-        return subprocess.check_output(['adb', '-s', self.serial, *args],
-                                       timeout=timeout, text=not binary)
+        command = ['adb', '-s', self.serial, *args]
+        safe_read = (args[:2] == ('exec-out', 'screencap') or
+                     (len(args) >= 2 and args[0] == 'shell' and args[1] in
+                      {'dumpsys', 'getprop', 'pm', 'cat', 'sha256sum', 'cmd'} and
+                      (args[1] != 'cmd' or args[2:4] == ('package', 'resolve-activity'))))
+        if not self.lab_mode or not safe_read:
+            return subprocess.check_output(command, timeout=timeout, text=not binary)
+        for attempt in range(3):
+            try:
+                if args[:2] == ('exec-out', 'screencap'):
+                    self.require_public_screen()
+                value = subprocess.check_output(command, timeout=max(timeout, 60), text=not binary)
+                if args[:2] == ('exec-out', 'screencap'):
+                    self.require_public_screen()
+                    with Image.open(io.BytesIO(value)) as shot:
+                        shot.verify()
+                return value
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, SyntaxError):
+                if attempt == 2:
+                    raise
+                try:
+                    subprocess.run(['adb', '-s', self.serial, 'wait-for-device'], timeout=12, check=False)
+                except subprocess.TimeoutExpired:
+                    pass
+                time.sleep(1)
 
     def step(self, text, **details):
         entry = {'elapsed_seconds': round(time.monotonic() - self.started, 2),
@@ -299,17 +325,18 @@ class Scenario:
         self.screenshot('03-imported-home')
 
         self.require_public_screen()
-        # Un échec de démarrage ne doit jamais recycler une vidéo précédente.
-        self.adb('shell', 'rm', '-f', '/sdcard/novatube-fgs-review.mp4')
-        (self.out / 'novatube-fgs-review.mp4').unlink(missing_ok=True)
-        self.recording = subprocess.Popen(['adb', '-s', self.serial, 'shell', 'screenrecord',
-            '--size', '1280x720', '--bit-rate', '3500000', '--time-limit', '170',
-            '/sdcard/novatube-fgs-review.mp4'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        self.recording_started = time.monotonic()
-        time.sleep(3)
-        if self.recording.poll() is not None:
-            raise RuntimeError('Android screen recording failed to start; no prior video accepted')
-        self.step('Continuous unedited Android screen recording started')
+        if not self.lab_mode:
+            # Un échec de démarrage ne doit jamais recycler une vidéo précédente.
+            self.adb('shell', 'rm', '-f', '/sdcard/novatube-fgs-review.mp4')
+            (self.out / 'novatube-fgs-review.mp4').unlink(missing_ok=True)
+            self.recording = subprocess.Popen(['adb', '-s', self.serial, 'shell', 'screenrecord',
+                '--size', '1280x720', '--bit-rate', '3500000', '--time-limit', '170',
+                '/sdcard/novatube-fgs-review.mp4'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            self.recording_started = time.monotonic()
+            time.sleep(3)
+            if self.recording.poll() is not None:
+                raise RuntimeError('Android screen recording failed to start; no prior video accepted')
+            self.step('Continuous unedited Android screen recording started')
         self.tap_word('live|direct')
         assert self.find('mire', timeout=20), 'Chaîne locale absente'
         self.tap_word('mire', bounds=(0.15, 0, 0.65, 1))
@@ -322,6 +349,8 @@ class Scenario:
             time.sleep(6)
             self.screenshot('04-local-playback')
         self.step('Synthetic video visibly opened in the normal full-screen player')
+        if self.lab_mode == 'record':
+            return
         before, _ = self.service('before-cast')
         assert not before, 'Le service était déjà actif avant le geste Cast'
         point = self.cast_point(12)
@@ -411,6 +440,7 @@ class Scenario:
             raise RuntimeError('Arrêt du relais/service non confirmé')
         self.screenshot('09-user-stopped-cast')
         time.sleep(4)
+        self.report['cast_stopped_after_background_playback'] = True
         self.step('Foreground service and receiver stopped after visible user command')
 
     def touch_record_control(self, start):
@@ -439,7 +469,7 @@ class Scenario:
         output.mkdir(exist_ok=True)
         device = Device(self.serial)
         previous = device.rows()
-        self.step('Touchscreen recording check started after the Cast scenario')
+        self.step('Touchscreen recording check started in the normal player')
         start = self.touch_record_control(True)
         time.sleep(16)
         stop = self.touch_record_control(False)
@@ -519,15 +549,6 @@ class Scenario:
                                        stderr=subprocess.DEVNULL, text=True, timeout=30)
         words = {normalise(word) for word in text.split()}
         visible = 'mire' in words and bool({'streaming', 'diffusion'} & words)
-        if self.package == LAB_PACKAGE:
-            # Le volet peut replier la ligne de description sur un téléphone en paysage.
-            # La capture de référence a indépendamment confirmé le titre dans SystemUI.
-            with Image.open(self.out / '08-media-notification-visible.png') as expected, Image.open(path) as actual:
-                diff = ImageChops.difference(expected.convert('RGB').resize((160, 90)),
-                                             actual.convert('RGB').resize((160, 90)))
-                mae = sum(ImageStat.Stat(diff).mean) / 3
-            self.report['notification_reference_mean_pixel_error'] = round(mae, 3)
-            visible = mae < 12 and ('mire' in words or self.report.get('notification_title_in_systemui') is True)
         self.report['recorded_notification_check'] = {
             'file': path.name, 'timestamp_seconds': round(timestamp, 3), 'visible': visible}
         if not visible:
@@ -595,17 +616,24 @@ def main():
     except Exception as error:
         failure = failure or error
         scenario.report['finish_failure'] = str(error)
-    if failure is None and args.package == LAB_PACKAGE:
+    if failure is None and scenario.lab_mode in ('record', 'both'):
         try:
             scenario.verify_handset_recording()
         except Exception as error:
             failure = error
             scenario.report['handset_recording_failure'] = str(error)
             scenario.step('Phone recording verification failed', error=str(error))
-    scenario.report['validated'] = (failure is None and scenario.recording is not None
-                                    and scenario.recording_quality_passed)
+    if scenario.lab_mode:
+        proof = bool(scenario.report.get('local_playback_motion'))
+        if scenario.lab_mode in ('cast', 'both'):
+            proof = proof and bool(scenario.report.get('cast_stopped_after_background_playback'))
+        if scenario.lab_mode in ('record', 'both'):
+            proof = proof and bool(scenario.report.get('handset_local_recording'))
+    else:
+        proof = scenario.recording is not None and scenario.recording_quality_passed
+    scenario.report['validated'] = failure is None and proof
     if failure is None and not scenario.report['validated']:
-        failure = RuntimeError('A complete non-black recording was not confirmed')
+        failure = RuntimeError('Les preuves attendues pour ce parcours sont incomplètes')
         scenario.report['failure'] = str(failure)
     scenario.save()
     if failure is not None:

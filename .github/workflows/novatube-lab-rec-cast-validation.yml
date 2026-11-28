@@ -153,7 +153,11 @@ jobs:
           if-no-files-found: warn
 
   cast:
-    name: Vérifier le Cast DLNA et l’enregistrement sur téléphone Android 14
+    name: Téléphone Android 14 · ${{ matrix.scenario }}
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [cast, record]
     needs: source
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -174,6 +178,7 @@ jobs:
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Diffuser la mire vers le récepteur de test et la décoder en arrière-plan
         env:
+          NOVATUBE_LAB_SCENARIO: ${{ matrix.scenario }}
           NOVATUBE_REVIEW_PACKAGE: ${{ env.NOVATUBE_TV_APP_ID }}
           NOVATUBE_REVIEW_VERSION_CODE: '1795827527'
           NOVATUBE_REVIEW_APK_SHA256: ${{ env.EXPECTED_APK_SHA }}
@@ -189,7 +194,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: preuve-cast-telephone-${{ github.sha }}
+          name: preuve-telephone-${{ matrix.scenario }}-${{ github.sha }}
           path: |
             preuve-cast/*.json
             preuve-cast/*.xml
