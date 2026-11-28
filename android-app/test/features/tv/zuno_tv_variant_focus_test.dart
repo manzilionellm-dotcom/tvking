@@ -17,6 +17,7 @@ import 'package:tv_king/core/app/app_platform.dart';
 import 'package:tv_king/core/flavor/flavor.dart';
 import 'package:tv_king/features/channels/domain/channel.dart';
 import 'package:tv_king/features/tv/core/tv_provider_channel_name.dart';
+import 'package:tv_king/features/tv/core/tv_focusable.dart';
 import 'package:tv_king/features/playlists/data/favorites_repository.dart';
 import 'package:tv_king/features/playlists/data/playlist_database.dart';
 import 'package:tv_king/features/playlists/data/playlist_repository.dart';
@@ -28,6 +29,16 @@ import 'package:tv_king/l10n/generated/app_localizations.dart';
 import 'fixtures/ahem_fonts.dart';
 
 const names = ['Mire Sport', 'Mire Sport RAW', 'Mire Sport UHD'];
+
+class _RouteCounter extends NavigatorObserver {
+  int playerPushes = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) playerPushes++;
+    super.didPush(route, previousRoute);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -100,13 +111,15 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  Future<void> show(WidgetTester tester, Widget screen) async {
+  Future<void> show(WidgetTester tester, Widget screen, {NavigatorObserver? observer}) async {
+
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1920, 1080);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('fr'),
+        navigatorObservers: [if (observer != null) observer],
         supportedLocales: AppLocalizations.supportedLocales,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         home: Scaffold(body: screen),
@@ -220,32 +233,19 @@ void main() {
   testWidgets(
     'double OK dans Direct ouvre un seul lecteur et autorise sa réouverture',
     (tester) async {
-      await show(tester, const TvLiveScreen());
+      final observer = _RouteCounter();
+      await show(tester, const TvLiveScreen(), observer: observer);
       try {
-        final row = find.text(names[1]).first;
-        Focus.of(tester.element(row)).requestFocus();
-        await tester.pump();
-
-        // Deux paires appui/relâchement avant la fin de la libération
-        // asynchrone de l’aperçu. Le système de focus les envoie à la vraie
-        // ligne du Direct, même si aucun nouveau frame n’a encore été tracé.
+        final row = find.descendant(
+          of: find.byType(ListView).last,
+          matching: find.text(names[1]),
+        );
+        // Le test précédent couvre la traduction de la touche en sélection.
+        // Ici, appeler deux fois de suite la commande de la vraie ligne isole
+        // la fenêtre entre la sélection et la fermeture asynchrone de l’aperçu.
         void pressOk() {
-          const key = LogicalKeyboardKey.select;
-          const physical = PhysicalKeyboardKey.select;
-          HardwareKeyboard.instance.handleKeyEvent(
-            const KeyDownEvent(
-              logicalKey: key,
-              physicalKey: physical,
-              timeStamp: Duration.zero,
-            ),
-          );
-          HardwareKeyboard.instance.handleKeyEvent(
-            const KeyUpEvent(
-              logicalKey: key,
-              physicalKey: physical,
-              timeStamp: Duration.zero,
-            ),
-          );
+          final control = find.ancestor(of: row, matching: find.byType(TvFocusBuilder)).first;
+          tester.widget<TvFocusBuilder>(control).onSelect!();
         }
 
         pressOk();
@@ -253,8 +253,9 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 350));
         final players = find.byType(TvPlayerScreen, skipOffstage: false);
-        debugPrint('ZUNO_DOUBLE_OK routes=${players.evaluate().length}');
-        expect(players, findsOneWidget, reason: 'ZUNO_DOUBLE_OK_ROUTES');
+        debugPrint('ZUNO_DOUBLE_OK routes=${observer.playerPushes}');
+        expect(observer.playerPushes, 1, reason: 'ZUNO_DOUBLE_OK_ROUTES');
+        expect(players, findsOneWidget);
         final player = tester.widget<TvPlayerScreen>(players);
         expect(player.channels[player.startIndex].name, names[1]);
 
