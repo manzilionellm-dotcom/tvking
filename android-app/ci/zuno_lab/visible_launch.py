@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -29,8 +30,14 @@ def command(*args, timeout=25):
 def screen_evidence(out, phase):
     data = capture_png()
     image = Image.open(io.BytesIO(data)).convert("RGB")
+    # Le profil téléphone ancien a une sortie de 640×320. Reconnaître les
+    # petits caractères à taille suffisante, sans modifier les pixels sources.
+    scale = 2 if max(image.size) < 1300 else 1
+    ocr_image = image.resize((image.width * scale, image.height * scale), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    ocr_image.save(buffer, "PNG")
     tsv = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "11", "tsv"],
-                         input=data, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                         input=buffer.getvalue(), env={**os.environ, "OMP_THREAD_LIMIT": "1"}, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                          timeout=25, check=True).stdout.decode(errors="replace")
     masked = Image.new("RGB", image.size, "black")
     labels = set()
@@ -38,7 +45,7 @@ def screen_evidence(out, phase):
         word = (row.get("text") or "").lower().strip("·|()[] .:/")
         if not any(word in choices for choices in LABELS.values()) or float(row["conf"]) < 42:
             continue
-        x, y, w, h = [int(row[key]) for key in ("left", "top", "width", "height")]
+        x, y, w, h = [int(row[key]) // scale for key in ("left", "top", "width", "height")]
         masked.paste(image.crop((x, y, x+w, y+h)), (x, y))
         labels.add(word)
     page = next((key for key, choices in LABELS.items() if key != "source_title"

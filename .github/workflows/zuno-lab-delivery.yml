@@ -9,8 +9,8 @@ permissions:
   actions: read
 
 env:
-  BUILD_RUN: '46089281538'
-  BUILD_SHA: 408119fc4d58f51a125a468dfae28bf264decf60
+  BUILD_RUN: '46089851484'
+  BUILD_SHA: 8bc709cb275e0ac97c3d907d2bf8ad0447594584
   LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 jobs:
@@ -98,7 +98,20 @@ jobs:
           adb shell sha256sum "$source_path" | cut -d' ' -f1 > qa/installed.after
           cmp qa/installed.before qa/installed.after
           test "$visual" -eq 0
-          test "$series" -eq 0
+          # Les métriques HOME contiennent chaque échec, y compris les erreurs
+          # de commande malgré présence au premier plan. Une collecte interrompue
+          # ou des octets différents bloquent la remise de cet APK interne.
+          python3 - <<'PYSERIES'
+          import json, pathlib
+          r=json.loads(pathlib.Path('qa/launches/summary.json').read_text())
+          digest=pathlib.Path('qa/installed.after').read_text().strip()
+          assert r['installed_after_series']=={'base.apk':digest}
+          for name in ('cold','warm'):
+              row=r[name]
+              assert row['attempts']==row['successes']+row['errors']==30, row
+              print(name, row['successes'], 'réussites sur', row['attempts'], 'P95', row['host_command'].get('p95_nearest_rank_ms'))
+          PYSERIES
+          echo "Statut des 60 commandes d’activité : $series" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
@@ -131,7 +144,7 @@ jobs:
           if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$tag" ZUNO-LAB.apk SHA256SUMS signature.txt --target "$BUILD_SHA" --prerelease --latest=false \
               -R "$GITHUB_REPOSITORY" --title "ZUNO LAB 119 — essai téléphone et TV" \
-              --notes "Paquet $LAB_PACKAGE. Base ZUNO 119. Clé de test propre à la compilation $BUILD_RUN. Les listes personnelles sont disponibles. Le panel de cette édition vise la boucle locale du banc."
+              --notes "Essai interne uniquement. Paquet $LAB_PACKAGE. Base ZUNO 119. Clé de test propre à la compilation $BUILD_RUN. Les listes personnelles sont disponibles. Le panel de cette édition vise la boucle locale du banc."
           fi
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/ZUNO-LAB.apk"
           curl -fsSL --retry 8 --retry-all-errors "$url" -o "$RUNNER_TEMP/recu.apk"

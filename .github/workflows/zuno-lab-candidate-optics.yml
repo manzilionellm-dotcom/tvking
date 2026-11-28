@@ -5,8 +5,8 @@ on:
     paths: ['.github/workflows/zuno-lab-candidate-optics.yml']
 
 env:
-  BUILD_RUN: '46089281538'
-  BUILD_SHA: 408119fc4d58f51a125a468dfae28bf264decf60
+  BUILD_RUN: '46089851484'
+  BUILD_SHA: 8bc709cb275e0ac97c3d907d2bf8ad0447594584
   BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 permissions:
@@ -53,6 +53,7 @@ jobs:
       - name: Ouvrir l'application, ajouter la liste par l'écran et observer les compteurs
         run: |
           set -euo pipefail
+          export OMP_THREAD_LIMIT=1
           export PYTHONPATH="$PWD/optics-tools/android-app/ci/novatube_tv"
           python3 "$PYTHONPATH/pilot_live_source.py" serve "$RUNNER_TEMP/fixtures" --duration 3000 >"$RUNNER_TEMP/fixture.log" 2>&1 &
           (cd apk && sha256sum -c SHA256SUMS)

@@ -165,7 +165,7 @@ void main() {
         headers: await DeviceSecret.instance.headers(),
       );
       expect(sourceWire.statusCode, 200);
-      final deliveredRev = (jsonDecode(sourceWire.body) as Map)['source_rev'];
+      final deliveredRev = (jsonDecode(sourceWire.body) as Map)['source_rev'] as int;
       expect(deliveredRev, isA<int>());
       final valid = sizes.length == 1;
       int? acceptedId;
