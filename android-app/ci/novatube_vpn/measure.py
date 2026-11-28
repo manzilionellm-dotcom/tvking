@@ -310,6 +310,27 @@ class Bench(Scenario):
         finally:
             self.save()
 
+    def touch_record_control(self, start):
+        if self.profile != "tv":
+            return super().touch_record_control(start)
+        # Sur TV l'icône REC peut disparaître avec la barre. La touche dédiée
+        # reste active dans le lecteur plein écran, pour démarrer et arrêter.
+        name = "tv-remote-start" if start else "tv-remote-stop"
+        self.screenshot(name)
+        self.key("KEYCODE_R", .35)
+        return {"control": "KEYCODE_R", "event": "start" if start else "stop",
+                "screenshot": name + ".png"}
+
+    def step(self, text, **details):
+        if self.profile == "tv":
+            text = {
+                "Touchscreen recording check started in the normal player":
+                    "Android TV remote REC check started in the normal player",
+                "User recorded the moving test pattern and its tone by touch; shared MP4 survived app restart":
+                    "Android TV remote REC produced moving video and tone; shared MP4 survived app restart",
+            }.get(text, text)
+        return super().step(text, **details)
+
     def exercise(self):
         paths = ["live", "movie"] + (["cast"] if self.profile == "phone" else [])
         for path in paths:
@@ -329,6 +350,8 @@ class Bench(Scenario):
             self.tap(self.live_point())
             self.local_pattern_motion()
             self.verify_handset_recording()
+            if self.profile == "tv":
+                self.report["tv_local_recording"] = self.report.pop("handset_local_recording")
         except Exception as exc:
             self.report["errors"].append({"path": "record", "reason": str(exc)})
             self.save()
