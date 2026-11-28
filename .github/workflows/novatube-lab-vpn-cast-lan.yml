@@ -30,7 +30,7 @@ jobs:
       NOVATUBE_VPN_LAN: allow
       NOVATUBE_QA_CAST_LAN: 'on'
       NOVATUBE_QA_CAST_ONLY: 'on'
-      NOVATUBE_QA_LOCAL_PLAYLIST: '1'
+      NOVATUBE_QA_LOCAL_PLAYLIST: '0'
       NOVATUBE_QA_PRELOAD_SOURCE: 'on'
       OMP_THREAD_LIMIT: '1'
     steps:
