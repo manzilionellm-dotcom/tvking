@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import struct
+import statistics
 
 import numpy as np
 from PIL import Image
@@ -88,8 +89,11 @@ def export(private,folder,index,geom):
         for t,e,(p,s) in zip(pts,elapsed,rows):writer.writerow((t,e,*p,*s))
     for j,name in enumerate(("apercu","plein")):
         safe_movie(folder/f"{name}-{index}.mkv",pts,[row[j] for row in rows])
+    gaps=[b-a for a,b in zip(pts,pts[1:])]
     (folder/f"film-{index}.json").write_text(json.dumps({"geometry":geom,"frames":len(pts),"clock":met,
-        "sha256_source_privée":digest(private),"max_gap_ms":round(1000*max((b-a for a,b in zip(pts,pts[1:])),default=0),3)}))
+        "sha256_source_privee":digest(private),"max_gap_ms":round(1000*max(gaps,default=0),3),
+        "median_interval_ms":round(1000*statistics.median(gaps),3) if gaps else None,
+        "mean_fps":len(gaps)/sum(gaps) if gaps and sum(gaps)>0 else None}))
 
 
 def increasing(a,b):
@@ -139,7 +143,10 @@ def score(rows,target,lower,upper,limit=9):
     result["wrong_channel"]=wrong
     if wrong:result["status"]="wrong_channel"
     elif gap:result["status"]="capture_gap"
-    elif "movement_ms" in result:result["status"]="observed" if result["origin_pixels"] else "ui_origin_only"
+    elif "movement_ms" in result:
+        if not result["origin_pixels"]:result["status"]="ui_origin_only"
+        elif "preview_marker_exit_ms" not in result:result["status"]="preview_exit_unresolved"
+        else:result["status"]="observed"
     elif not after or after[-1][0]<upper+limit-.30:result["status"]="end_censored"
     else:result["status"]="timeout"
     return result

@@ -81,10 +81,15 @@ jobs:
           ZUNO_QA_PASS=$(python3 -c 'import secrets;print(secrets.token_urlsafe(42))')
           node android-app/ci/zuno_lab/panel/local-worker.mjs android-app/cloudflare android-app/cloudflare "$RUNNER_TEMP/ready.json" >"$RUNNER_TEMP/workerd.log" 2>&1 & worker=$!
           for check in {1..80}; do if [[ -s "$RUNNER_TEMP/ready.json" ]]; then break; fi; sleep .3; done
-          test -s "$RUNNER_TEMP/ready.json"
-          cp "$RUNNER_TEMP/ready.json" "$out/worker.json"
-          status=0
-          python3 android-app/ci/zuno_lab/panel_device/observe.py "$out" "$PANEL_MODE" || status=$?
+          status=1
+          if [[ -s "$RUNNER_TEMP/ready.json" ]]; then
+            cp "$RUNNER_TEMP/ready.json" "$out/worker.json"
+            status=0
+            python3 android-app/ci/zuno_lab/panel_device/observe.py "$out" "$PANEL_MODE" || status=$?
+          fi
+          if [[ "$status" != 0 ]]; then
+            adb shell am start -n "$BENCH_PACKAGE/com.example.tv_king.MainActivity"
+          fi
           # Si la livraison locale a échoué, l'interface peut encore importer
           # la même liste par URL. La méthode de préparation est conservée.
           if [[ "$status" == 0 ]]; then

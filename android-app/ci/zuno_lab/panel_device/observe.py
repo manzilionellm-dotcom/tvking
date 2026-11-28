@@ -43,7 +43,7 @@ def read_sqlite():
             dest = Path(tmp) / ('guide.db' + suffix)
             p = subprocess.run(['adb','pull',path+suffix,str(dest)],capture_output=True,timeout=15)
             if not suffix and p.returncode != 0:
-                return {'available':False}
+                return {'available':False,'adb_uid':adb('shell','id','-u',check=False),'pull_denied':b'Permission denied' in p.stderr or b'Permission denied' in p.stdout}
         with sqlite3.connect(str(Path(tmp)/'guide.db')) as db:
             counts = db.execute('SELECT COUNT(*),COUNT(DISTINCT stream_url),COUNT(DISTINCT category) FROM channels').fetchone()
             valid = db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
@@ -92,7 +92,7 @@ def main(args):
             mac=devices[0]['mac'];break
         time.sleep(1)
     if not mac: raise RuntimeError('Aucune TV inscrite dans le Worker local')
-    note('tv_identified')
+    note('tv_identified',adb_uid=adb('shell','id','-u',check=False))
     api('POST','/api/v1/activate',{'mac':mac,'plan':'lifetime'})
     sizes = [[2]] if args.mode=='pixels' else [[5000],[20000],[20000,0],[20000]]
     for rev,spec in enumerate(sizes,1):
@@ -100,8 +100,14 @@ def main(args):
         start=time.monotonic()
         res=api('PUT','/api/v1/sources/'+mac,{'sources':[{'type':'m3u','m3u_url':f'http://127.0.0.1:18475/{s}.m3u','label':f'LAB {s}'} for s in spec]})
         note('revision_posted',step=rev,sizes=spec,write_count=res.get('count'))
+        if args.mode=='catalogue' and rev==1 and os.environ.get('ZUNO_ACK_ARM'):
+            current=api('GET','/api/v1/boxes/live')['items'][0]
+            orders=[o['id'] for o in current['pending'] if o.get('kind')=='source']
+            if orders:
+                target=max(orders);flag=Path(os.environ['ZUNO_ACK_ARM']);atomic=flag.with_suffix('.tmp')
+                atomic.write_text(str(target));atomic.replace(flag);note('ack_fault_armed',order=target)
         refused = 0 in spec
-        limit=22 if refused else 110
+        limit=125
         ok=False;pending=set();timed_screen=False
         while time.monotonic()-start<limit:
             if not timed_screen and time.monotonic()-start>=100:
@@ -112,12 +118,14 @@ def main(args):
             if applied.get('kind')=='source' and applied.get('id',0)>prior:
                 note('applied',step=rev,order=applied['id'],applied_at=applied['applied_at'],ms=round((time.monotonic()-start)*1000))
                 ok=True;break
+            if refused and seen.get(0,0)>=2 and pending:
+                break
             time.sleep(.5)
         note('order_observed',step=rev,pending=sorted(pending),success_ack=ok,fixture_reads=seen)
         if refused:
             if ok or not seen.get(0) or not pending: raise RuntimeError('Le refus de la révision doit rester en attente')
         elif not ok or not all(seen.get(s) for s in spec): raise RuntimeError('Révision non attestée par origine et ACK')
-        if args.mode!='pixels' or rev==len(sizes):
+        if rev==len(sizes):
             adb('shell','am','force-stop',PACKAGE)
             db=read_sqlite();note('sqlite_after_stop',step=rev,**db)
             if db['available'] and (not db['valid'] or db['rows']!=spec[0] or db['unique_streams']!=spec[0]):

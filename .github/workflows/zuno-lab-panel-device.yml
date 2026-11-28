@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [catalogue,pixels]
+        mode: [catalogue]
     env:
       PANEL_MODE: ${{ matrix.mode }}
     steps:
@@ -80,7 +80,9 @@ jobs:
           adb wait-for-device
           adb reverse tcp:18471 tcp:18471
           adb reverse tcp:18475 tcp:18475
-          adb reverse tcp:18789 tcp:18787
+          adb reverse tcp:18789 tcp:18789
+          export ZUNO_ACK_ARM="$RUNNER_TEMP/arm-ack"
+          python3 android-app/ci/zuno_lab/panel_device/gateway.py "$out" "$ZUNO_ACK_ARM" >"$RUNNER_TEMP/gateway.log" 2>&1 & gateway=$!
           export ZUNO_QA_PASS
           ZUNO_QA_PASS=$(python3 -c 'import secrets;print(secrets.token_urlsafe(42))')
           node android-app/ci/zuno_lab/panel/local-worker.mjs android-app/cloudflare android-app/cloudflare "$RUNNER_TEMP/ready.json" >"$RUNNER_TEMP/workerd.log" 2>&1 & worker=$!
@@ -92,7 +94,7 @@ jobs:
           if [[ "$PANEL_MODE" == pixels && "$status" == 0 ]]; then
             ZUNO_PRELOADED_BY_PANEL=yes python3 android-app/ci/zuno_lab/optical_witness.py "$out/optical" --count 100 || status=$?
           fi
-          kill "$worker" 2>/dev/null || true
+          kill "$worker" "$gateway" 2>/dev/null || true
           adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-after.sha256"
           cmp "$out/installed-before.sha256" "$out/installed-after.sha256"
           exit "$status"

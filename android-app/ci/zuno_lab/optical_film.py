@@ -96,6 +96,33 @@ def clocked_key(code):
     return b,a+.010
 
 
+def muxed_avc_slice(prefix):
+    """Accepte un échantillon vidéo AVC effectivement écrit dans le mdat ISO BMFF."""
+    offset=0
+    while offset+8<=len(prefix):
+        size,kind=struct.unpack_from('>I4s',prefix,offset)
+        header=16 if size==1 else 8
+        if offset+header>len(prefix):
+            return False
+        if size==1:
+            size=struct.unpack_from('>Q',prefix,offset+8)[0]
+        if kind==b'mdat':
+            pointer=offset+header
+            # ISO BMFF contient des unités NAL AVC précédées d'une longueur de 4 octets.
+            while pointer+5<=len(prefix):
+                data_length=struct.unpack_from('>I',prefix,pointer)[0]
+                if data_length<=0 or pointer+4+data_length>len(prefix):
+                    return False
+                if prefix[pointer+4] & 0x1f in (1,5):
+                    return True
+                pointer+=4+data_length
+            return False
+        if size<header or offset+size>len(prefix):
+            return False
+        offset+=size
+    return False
+
+
 class Recorder:
     """Un encodeur dans le guest ; export asynchrone de chaque segment sur l’hôte."""
     def __init__(self,out,exporter=export_clip):
@@ -109,8 +136,23 @@ class Recorder:
         self.out.mkdir()
         self.worker=threading.Thread(target=self.capture,daemon=True);self.worker.start()
         if not self.ready.wait(12) or self.failure:raise RuntimeError('Enregistreur Android indisponible avant la série')
-        # Le film vérifiera lui-même présence et horloge d'une trame avant l'appui.
-        time.sleep(1)
+        # Un PID ne date aucune image. Attendre qu'une image AVC entière ait effectivement
+        # été écrite avant d'envoyer la première touche. Le dépouillement contrôlera encore
+        # la présence de l'origine et l'alignement Winscope au dernier échantillon précédent.
+        deadline=time.monotonic()+18
+        while time.monotonic()<deadline:
+            try:
+                prefix=run_adb('exec-out','head','-c','262144',self.base+'-001.mp4',timeout=2.5)
+            except subprocess.SubprocessError:
+                prefix=b''
+            if muxed_avc_slice(prefix):
+                dump(self.out/'pre-roll.json',{'encoded_avc_sample_before_first_key':True})
+                return
+            if self.failure:
+                break
+            time.sleep(.25)
+        dump(self.out/'pre-roll.json',{'encoded_avc_sample_before_first_key':False})
+        raise RuntimeError('Le pré-enregistrement ne contient aucune image AVC confirmée')
 
     def capture(self):
         tasks=[]

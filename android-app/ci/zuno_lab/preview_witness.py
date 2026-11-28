@@ -117,6 +117,10 @@ def run(out,count):
             c.update(row_evidence=origin,still_preview_channel=marker[0] or None,
                      preview_geometry=geom,status="origin_ready")
             rec=Recorder(d/"film",exporter=partial(export,geom=geom));rec.start()
+            # Sur 926, le PID de screenrecord était prêt alors que la première
+            # trame arrivait 180 ms après la touche. Amorcer le film, puis
+            # vérifier les trames réelles avant la touche au dépouillement.
+            time.sleep(3.5)
             c.update(sent="uncertain",status="dispatch");save(out,cases)
             low,hi=clocked_key("KEYCODE_DPAD_CENTER")
             c.update(sent=True,key_elapsed_min=low,key_elapsed_max=hi,status="capturing");save(out,cases)
