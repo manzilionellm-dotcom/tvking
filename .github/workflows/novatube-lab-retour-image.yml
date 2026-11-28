@@ -1,0 +1,160 @@
+name: NovaTube LAB Retour – contrôle et livraison du fichier signé aff73d9e
+
+on:
+  push:
+    branches: ['qa/novatube-lab-retour-aff73d9e']
+    paths: ['.github/workflows/novatube-lab-retour-image.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: novatube-lab-retour-controle-image
+  cancel-in-progress: false
+
+env:
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  SOURCE_SHA: aff73d9e6c54f60e4063819844c1601abd6aa7c8
+  NOVATUBE_TV_APP_ID: com.sevenmotion.novatube.tv.lab.retour
+  NOVATUBE_TV_VERSION: '1.0.0'
+
+jobs:
+  image:
+    name: Vérifier l’image animée sur deux chaînes avec l’APK de livraison
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: dc37f3c8ece077fc806b835fa56c965039bae1ca
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: novatube-tv-apk-f89233d54ef3869afeb6cf64d085ffe0b6bfd35b
+          run-id: 46084986533
+          github-token: ${{ github.token }}
+          path: apk
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          accept-android-sdk-licenses: false
+      - name: Filmer et reconnaître les deux mires et leurs compteurs
+        env:
+          ANDROID_SERIAL: emulator-5554
+          BENCH_PACKAGE: com.sevenmotion.novatube.tv.lab.retour
+          OMP_THREAD_LIMIT: '1'
+        run: |
+          set -euo pipefail
+          (cd apk && sha256sum -c SHA256SUMS.txt)
+          echo "1d5bcac0d0a508bef216410f3a62d78ff0367165e040cd700ba71c458f31d8dc  apk/NovaTube-LAB-Retour.apk" | sha256sum -c -
+          work="$GITHUB_WORKSPACE/android-app/ci/novatube_tv"
+          out="$GITHUB_WORKSPACE/preuve-image"
+          mkdir -p "$out"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr
+          image='system-images;android-36;android-tv;x86_64'
+          sdkmanager platform-tools emulator 'build-tools;35.0.0' "$image" </dev/null >/dev/null
+          printf 'no\n' | avdmanager create avd -f -n retour -k "$image" >/dev/null
+          sudo chmod a+rw /dev/kvm
+          python3 "$work/pilot_live_source.py" prepare "$RUNNER_TEMP/mire"
+          python3 "$work/pilot_live_source.py" serve "$RUNNER_TEMP/mire" --duration 1800 > "$out/source.log" 2>&1 &
+          src_pid=$!
+          adb start-server
+          "$ANDROID_HOME/emulator/emulator" -avd retour -port 5554 -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 1536 -cores 2 > "$out/emulator.log" 2>&1 &
+          emu_pid=$!
+          trap 'kill "$src_pid" "$emu_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 100); do
+            if timeout 5 adb shell pm list features 2>/dev/null | grep 'android.software.leanback' >/dev/null && [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == 1 ]]; then break; fi
+            sleep 3
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb shell wm size 1920x1080
+          adb shell svc power stayon true
+          adb shell input keyevent 82
+          adb reverse tcp:18471 tcp:18471
+          adb install --no-streaming "apk/NovaTube-LAB-Retour.apk"
+          installed="$(adb shell pm path "$BENCH_PACKAGE" | tr -d '\r' | sed -n 's/^package://p')"
+          test -n "$installed"
+          verified=0
+          for attempt in 1 2 3; do
+            if timeout 90 adb shell sha256sum "$installed" > "$out/android-sha256.txt"; then
+              device_sha="$(awk 'NR==1 {print $1}' "$out/android-sha256.txt")"
+              if [[ "$device_sha" == 1d5bcac0d0a508bef216410f3a62d78ff0367165e040cd700ba71c458f31d8dc ]]; then verified=1; break; fi
+            fi
+            timeout 15 adb wait-for-device || true
+          done
+          test "$verified" = 1
+          adb reverse tcp:18471 tcp:18471
+          component="$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER "$BENCH_PACKAGE" | tr -d '\r' | tail -1)"
+          [[ "$component" == "$BENCH_PACKAGE/"* ]]
+          adb shell am start -W -n "$component"
+          sleep 15
+          setup=0
+          for attempt in 1 2; do
+            if python3 "$work/novatube_pilot.py" "$out"; then setup=1; break; fi
+            adb shell am force-stop "$BENCH_PACKAGE"
+            adb shell am start -W -n "$component"
+            sleep 7
+          done
+          test "$setup" = 1
+          python3 "$work/clocked_record.py" "$out/clip-1"
+          python3 - "$out/clip-1/clock-results.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          trials = json.loads(Path(sys.argv[1]).read_text())["trials"]
+          if len(trials) != 10 or not all(t.get("valid") for t in trials):
+              raise SystemExit("Image et mouvement attendus après chacune des dix commandes.")
+          print("Dix changements avec image et mouvement vérifiés sur l’APK livré.")
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: preuve-image-lab-retour-${{ github.sha }}
+          path: |
+            preuve-image/android-sha256.txt
+            preuve-image/*.png
+            preuve-image/clip-1/clocked-video.mp4
+            preuve-image/clip-1/clock-results.json
+            preuve-image/clip-1/device-keys.txt
+          if-no-files-found: warn
+
+  publish:
+    name: Publier et retélécharger l’APK LAB pour vérifier ses octets
+    runs-on: ubuntu-latest
+    needs: image
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: novatube-tv-apk-f89233d54ef3869afeb6cf64d085ffe0b6bfd35b
+          run-id: 46084986533
+          github-token: ${{ github.token }}
+          path: apk
+      - name: Préversion dédiée à cet essai
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: novatube-tv-lab-retour-aff73d9e
+          EXPECTED: 1d5bcac0d0a508bef216410f3a62d78ff0367165e040cd700ba71c458f31d8dc
+        working-directory: apk
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS.txt
+          test "$(sha256sum NovaTube-LAB-Retour.apk | awk '{print $1}')" = "$EXPECTED"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" NovaTube-LAB-Retour.apk SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "NovaTube LAB Retour pour Android TV · retour-aff73d9e" \
+              --notes "Source Android : $SOURCE_SHA. Version de récupération issue de l’avant-dernier build. Lecture de mires animées contrôlée sur Android TV. Paquet autonome : $NOVATUBE_TV_APP_ID. SHA-256 : $EXPECTED."
+          fi
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/NovaTube-LAB-Retour.apk"
+          curl --fail --location --retry 8 --retry-all-errors --retry-delay 2 "$url" --output "$RUNNER_TEMP/recu.apk"
+          test "$(sha256sum "$RUNNER_TEMP/recu.apk" | awk '{print $1}')" = "$EXPECTED"
+          digest="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | select(.name=="NovaTube-LAB-Retour.apk") | .digest')"
+          test "$digest" = "sha256:$EXPECTED"
+          echo "[NovaTube-LAB-Retour.apk]($url) — SHA-256 \`$EXPECTED\`" >> "$GITHUB_STEP_SUMMARY"
