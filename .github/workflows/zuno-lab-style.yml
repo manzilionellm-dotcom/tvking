@@ -1,0 +1,52 @@
+name: ZUNO LAB — comparer les quatre écrans Flutter sur la même mire
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths: ['.github/workflows/zuno-lab-style.yml', 'android-app/ci/zuno_lab/style/**']
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 38
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Capturer les vrais widgets en français deux fois sur 119 et une fois sur LAB
+        env:
+          TZ: UTC
+        run: |
+          set -eu
+          scripts="$PWD/android-app/ci/zuno_lab/style"
+          base=a096b2f85de082622ec232fa198069bdefbbccab
+          lab=daba06b196754e4fff9dbfd8a454bd804b752be6
+          for version in temoin1 lab temoin2; do
+            if [ "$version" = lab ]; then rev="$lab"; else rev="$base"; fi
+            work="$RUNNER_TEMP/arbre-$version"
+            git worktree add --detach "$work" "$rev" >/dev/null
+            export STYLE_PRIVATE="$RUNNER_TEMP/style-prive/$version"
+            mkdir -p "$STYLE_PRIVATE"
+            cp "$scripts/render_test.dart" "$work/android-app/test/style_lab_test.dart"
+            (
+              cd "$work/android-app"
+              flutter pub get >/dev/null
+              flutter gen-l10n >/dev/null
+              flutter test --no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789 test/style_lab_test.dart >"$RUNNER_TEMP/style-$version.log" 2>&1
+            ) || true
+          done
+          mkdir style-mesures
+          sudo apt-get install -y -qq python3-pil python3-numpy
+          /usr/bin/python3 "$scripts/mesurer.py" "$RUNNER_TEMP/style-prive" style-mesures/comparaison.json
+      - name: Conserver exclusivement les nombres et empreintes
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: comparaison-style-119-daba
+          path: style-mesures/comparaison.json
+          if-no-files-found: error
