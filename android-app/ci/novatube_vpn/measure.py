@@ -43,16 +43,75 @@ class Bench(Scenario):
         features = self.adb("shell", "pm", "list", "features")
         if ("android.software.leanback" in features) != (profile == "tv"):
             raise ValueError("Le profil du banc ne correspond pas aux capacités Android")
+        local_document = os.environ.get("NOVATUBE_QA_LOCAL_PLAYLIST") == "1"
         self.restart()
         if not self.lab_home(2):
             self.open_import_form()
+            if local_document:
+                try:
+                    self.import_document()
+                    if self.lab_home(150):
+                        self.save()
+                        return
+                    self.report["document_import_error"] = "L'accueil n'est pas encore visible"
+                except RuntimeError as exc:
+                    self.report["document_import_error"] = str(exc)
+                # Le sélecteur Android dépend de l'image système. Le lien du
+                # même document reste une entrée publique de NovaTube.
+                self.screenshot("document-before-url-fallback")
+                self.restart()
+                if self.lab_home(12):
+                    self.save()
+                    return
+                self.open_import_form()
             self.adb("shell", "input", "text", self.origin + "/review.m3u")
             self.key("KEYCODE_ENTER", 3)
             if not self.lab_home(4):
-                self.key("KEYCODE_DPAD_CENTER", 1)
-        if not self.lab_home(40):
+                # L’import a pu démarrer. Éviter d’activer le bouton Annuler.
+                busy = self.find("cancel|annuler|connecting|connexion", timeout=2)
+                if not busy:
+                    self.key("KEYCODE_DPAD_CENTER", 1)
+            self.report["playlist_import"] = "adresse M3U de la mire synthétique"
+        if not self.lab_home(150 if local_document else 40):
             raise RuntimeError("L'accueil ou la playlist synthétique n'a pas chargé")
         self.save()
+
+    def import_document(self):
+        # Le test Cast isole la lecture et la diffusion. Le même M3U de
+        # synthèse passe par le sélecteur Android public de NovaTube ; ses
+        # deux URL média restent celles du serveur accessible via le VPN.
+        playlist = self.out / "media" / "review.m3u"
+        urls = [line for line in playlist.read_text().splitlines() if line and not line.startswith("#")]
+        if urls != [self.origin + "/pattern.ts", self.origin + "/movie/qa/lab/777.mp4"]:
+            raise ValueError("Le document du banc ne contient pas les deux sources synthétiques attendues")
+        # text/plain figure parmi les types acceptés par le sélecteur natif.
+        path = "/sdcard/Download/NovaTubeQA.txt"
+        self.adb("push", str(playlist), path)
+        self.adb("shell", "am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE",
+                 "-d", "file://" + path)
+        self.tap(self.locate("file|fichier", timeout=8, semantics=r"^\s*(file|fichier)\s*$"))
+        # DocumentsUI peut ouvrir « Récents » ou « Téléchargements ».
+        file_label = r"\bNovaTubeQA(?:\.txt)?\b"
+        doc = self.accessibility_point(file_label)
+        if doc is None:
+            menu = self.accessibility_point(r"show roots|open navigation drawer|afficher les racines",
+                                            resource=r":id/toolbar$", region=(0, 0, .18, .35))
+            if menu:
+                self.tap(menu)
+            downloads = self.accessibility_point(r"^\s*(downloads|téléchargements)\s*$")
+            if downloads:
+                self.tap(downloads)
+            doc = self.accessibility_point(file_label)
+        if doc is None:
+            self.screenshot("document-picker")
+            raise RuntimeError("Le sélecteur de documents Android ne montre pas NovaTubeQA.txt")
+        self.tap(doc)
+        if not self.lab_home(5):
+            confirm = self.accessibility_point(r"^\s*(open|ouvrir)\s*$",
+                                               resource=r":id/action_menu_select$")
+            if confirm:
+                self.tap(confirm)
+        self.report["playlist_import"] = "document Android local via le bouton Fichier de NovaTube"
 
     def open_import_form(self):
         # Le formulaire peut arriver après une transition lente. Sur l'accueil,

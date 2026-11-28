@@ -197,7 +197,12 @@ component="$(adb -s "$serial" shell cmd package resolve-activity --brief \
 adb -s "$serial" logcat -c
 adb -s "$serial" shell am start -W -n "$component" > "$out/app-start.txt"
 pilot="$scripts/record_review.py"
-if [[ -n "$profile" ]]; then pilot="$scripts/../novatube_vpn/measure.py"; fi
+if [[ "${NOVATUBE_QA_CAST_ONLY:-off}" == on ]]; then
+  [[ "$profile" == phone && "$cast_transport" == slirp ]]
+  pilot="$scripts/../novatube_vpn/cast_lan_once.py"
+elif [[ -n "$profile" ]]; then
+  pilot="$scripts/../novatube_vpn/measure.py"
+fi
 python3 -u "$pilot" --out "$out" --serial "$serial" --component "$component" \
   --package "$pkg" --expected-version "$version" --expected-digest "$digest"
 if [[ -n "$profile" && "$vpn" == on ]]; then
