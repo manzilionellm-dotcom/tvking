@@ -109,7 +109,13 @@ def prepare(edition):
     if 'val kBoxMinSdk = 24' not in code:
         raise ValueError('minSdk Play absent')
     gradle.write_text(code)
-    shutil.copyfile(APP / 'ci/proguard-rules.pro', APP / 'android/app/proguard-rules.pro')
+    proguard = APP / 'android/app/proguard-rules.pro'
+    shutil.copyfile(APP / 'ci/proguard-rules.pro', proguard)
+    # WorkManager démarre avant Flutter. Room instancie la base par réflexion.
+    # Le build 119 gardait son nom, mais R8 supprimait son constructeur public.
+    with proguard.open('a', encoding='utf-8') as rules:
+        rules.write('\n-keepnames class androidx.work.impl.WorkDatabase\n'
+                    '-keep class androidx.work.impl.WorkDatabase_Impl { public <init>(); }\n')
     res = APP / 'android/app/src/main/res'
     # L'édition auto conserve la même identité ZUNO sur les deux types d'écran.
     for directory, asset in [('drawable', 'zuno_tv_banner.png'),
