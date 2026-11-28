@@ -209,3 +209,15 @@ Régression inter-éditions reproduite sur le SHA livré dans 46099141477 : les 
 ### Comparaison directe des deux lecteurs accessibles
 
 La campagne additionnelle `zuno-lab-duel-lecteurs.yml` préenregistre les ordres ZUNO → Televizo et Televizo → ZUNO. Dans chaque ordre, les deux paquets sont installés sur le même AVD et lisent la même mire, successivement, avec les mêmes touches CHANNEL_DOWN/UP. Par lecteur, 100 touches espacées de 5 s, puis 100 au mouvement ; deux compteurs A sont exigés avant le départ. L’APK ZUNO est le fichier ef566… et Televizo est l’APK officiel df570…18ef. Les pièces distinguent la région matérielle (si la métadonnée est rendue), la sortie Internet et la sortie émulée. Toute absence de commande reste ouverte dans la comparaison. Commande : `gh run list --workflow zuno-lab-duel-lecteurs.yml -R manzilionellm-dotcom/tvking`. Une cellule non localisée peut permettre une comparaison du seul AVD.
+
+## Clôture de la remise interne — contrôle du 28 novembre à 11 h 44 CET
+
+Décision : GO test interne sur le seul APK signé daba (119-lab), NO-GO diffusion large/Play. Aucune fusion ni publication Play demandée par cette clôture. Le reçu de remise et le job 46098199811 sont confirmés ; lien d'installation : https://github.com/manzilionellm-dotcom/tvking/releases/download/zuno-lab-119-daba06b19675-46095717223/ZUNO-LAB.apk .
+
+Contrôle complémentaire des conclusions GitHub Actions :
+- [Relecture REC 46100257413](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46100257413) : job optics success, artefact 15245992588.
+- [Endurance 46098049357](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46098049357) : quatre cellules stable/dégradée direct/tunnel success ; deux cellules 1 Go failure avant exposition (transport ADB). [Reprise 46098537355](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46098537355) : les deux jobs 1 Go direct/tunnel success. Ces conclusions CI ne remplacent pas le dépouillement des compteurs optiques, des incidents et des durées de gel. Aucune extrapolation à une box physique.
+- [Concurrents 46086590083](https://github.com/manzilionellm-dotcom/tvking/actions/runs/46086590083) : Televizo success, TiviMate failure. Aucune hiérarchie régionale fiable ; classement Europe/USA INCERTAIN.
+- Les P95 déjà consignés restent au-dessus de 3 s (zapping et aperçu). Les 30 000 chaînes importées et persistées ne démontrent pas 30 minutes de navigation en Direct. L'ANR antérieure doit être résolue et contre-vérifiée, ainsi que le Cast physique et les essais SHIELD/petite box réels.
+
+Cette clôture est documentaire : aucune modification des octets du candidat, aucun nouveau test Android exécuté ici et aucun résultat brut supplémentaire revendiqué. La qualification de production demeure ouverte.
