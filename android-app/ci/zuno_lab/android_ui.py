@@ -8,7 +8,7 @@ def _adb(*args, timeout, check):
     return subprocess.run(["adb", *args], capture_output=True, timeout=timeout, check=check).stdout
 
 
-def visible_nodes(package):
+def visible_nodes(package, focused=None):
     # Le dump via /dev/tty peut perdre sa fin quand ADB est chargé. Une
     # copie privée sur cet AVD vierge évite de mélanger XML et notification.
     private = "/data/local/tmp/zuno-optics-ui.xml"
@@ -30,6 +30,11 @@ def visible_nodes(package):
         if len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
             continue
         label = " ".join([node.get("content-desc", ""), node.get("text", "")]).lower().strip()
+        if focused is not None and node.get("focused") == "true":
+            focused.append(label)
+            for child in node.iter("node"):
+                if child is not node:
+                    focused.append(" ".join((child.get("content-desc",""),child.get("text",""))).strip().lower())
         items.append((label, (box[0]+box[2])/2, (box[1]+box[3])/2, node.get("class","")))
     return items
 

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from android_ui import visible_nodes
+from hub_remote import dpad_to_server
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -63,10 +64,18 @@ def event(folder, state, **details):
                             "state": state, **details})+"\n")
 
 
-def observe_ui(folder, state, classify=None):
-    ns, ts, im = [], [], None
+def observe_ui(folder, state, classify=None, retry=False):
+    ns, ts, im, focused = [], [], None, []
     try:
-        im = screen()
+        if retry:
+            try:
+                raw=adb("exec-out","screencap","-p",timeout=5)
+                im=Image.open(io.BytesIO(raw)).convert("RGB")
+                event(folder,"input-cross-check",sensor="android-screencap")
+            except (OSError, ValueError, subprocess.SubprocessError):
+                event(folder,"input-cross-check",sensor="console-fallback")
+        if im is None:
+            im = screen()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         event(folder, "screen-unavailable", stage=state, reason=type(exc).__name__)
     if im is not None:
@@ -86,9 +95,9 @@ def observe_ui(folder, state, classify=None):
         size = tuple(map(int, matches[-1]))
     # Le dump de l’émulateur peut attendre une interface idle. Un contrôle
     # OCR déjà reconnu évite tout appel à uiautomator sur cet écran.
-    if im is None or classify is None or classify([], ts, size)[0] == "wait":
+    if retry or im is None or classify is None or classify([], ts, size)[0] == "wait":
         try:
-            ns = visible_nodes(APK_PACKAGE)
+            ns = visible_nodes(APK_PACKAGE, focused)
         except (OSError, subprocess.SubprocessError):
             event(folder, "semantics-unavailable", stage=state)
     # Ne conserver que des mots d'interface connus et une empreinte des pixels.
@@ -96,22 +105,56 @@ def observe_ui(folder, state, classify=None):
           sha256_rgb=hashlib.sha256(im.tobytes()).hexdigest() if im is not None else None,
           semantics=[(sorted(set(re.findall(r"[a-z]+", t)) & ALLOWED), int(x), int(y), c.endswith("EditText"))
                      for t,x,y,c in ns if (set(re.findall(r"[a-z]+", t)) & ALLOWED or c.endswith("EditText"))])
-    return ns, ts, size
+    return ns, ts, size, im, focused
 
 
 def open_fixture(folder):
-    phase = "choose"
+    phase = "after-submit" if os.environ.get("ZUNO_PRELOADED_BY_PANEL") == "yes" else "choose"
     via_sources = False
     backed_out = False
     deadline = time.monotonic() + 180
     actions = {}
     last_action = {}
+    previous = None
+    remote_steps = 0
+    remote_positions = set()
+    hub_focus_attempts = 0
     while time.monotonic() < deadline:
         def classify(ns, ts, size):
             return next_step(ns, ts, size, phase, via_sources, backed_out)
-        ns, ts, size = observe_ui(folder, phase, classify)
-        action, point = classify(ns, ts, size)
+        ns, ts, size, image, focus = observe_ui(folder, phase, classify, retry=previous is not None)
+        # Évaluer l'arbre et les pixels séparément. Un écran initial figé de
+        # la console ne doit pas masquer un formulaire interactif déjà présent.
+        ax_action, ax_point = classify(ns, [], size) if ns else ("wait", None)
+        if ax_action != "wait":
+            action, point = ax_action, ax_point
+        else:
+            action, point = classify(ns, ts, size)
         now = time.monotonic()
+        if action == previous == "server" and image is not None:
+            move, selected = dpad_to_server(ns, ts, image, focus)
+            if move and selected not in remote_positions and remote_steps < 8:
+                remote_positions.add(selected)
+                remote_steps += 1
+                event(folder,"hub-dpad",key=move,focused=selected[0],evidence=selected[1])
+                key("KEYCODE_" + move)
+                time.sleep(.5)
+                continue
+            if move is None and not remote_positions and hub_focus_attempts < 3:
+                # La télécommande peut entrer sur la barre haute ou dans le
+                # bandeau. Ces seules directions ne déclenchent aucune action.
+                direction=("KEYCODE_DPAD_DOWN","KEYCODE_DPAD_UP","KEYCODE_DPAD_UP")[hub_focus_attempts]
+                hub_focus_attempts += 1
+                event(folder,"hub-focus-search",key=direction)
+                key(direction)
+                time.sleep(.5)
+                continue
+            # La touche de direction suivante ne se suppose jamais efficace.
+            if remote_positions:
+                event(folder,"hub-focus-unconfirmed",actions=remote_steps)
+        if previous and action != previous and action != "wait":
+            remote_positions.clear()
+            remote_steps = 0
         if action == "wait" or now - last_action.get(action, 0) < 6:
             time.sleep(.4)
             continue
@@ -119,7 +162,10 @@ def open_fixture(folder):
         if actions[action] > 2 or (action in {"type-url", "submit-button"} and actions[action] > 1):
             event(folder, "navigation-stalled", phase=phase, action=action)
             raise RuntimeError("Le contrôle TV ne change pas d’écran : " + action)
-        event(folder, "ui-action", phase=phase, action=action)
+        event(folder, "ui-action", phase=phase, action=action,
+              sensor="accessibility" if ax_action != "wait" else "pixels",
+              point=[int(v) for v in point] if point else None)
+        previous = action
         last_action[action] = now
         if point is not None:
             tap(*point)
@@ -243,7 +289,7 @@ def run(folder, count):
             if not complete:
                 event(folder,"continuous-film-incomplete")
             if sys.exc_info()[0] is None and (not complete or len(verified_film) != count*2 or
-                    any(row.get("movement_hi_ms") is None for row in verified_film)):
+                    any(row.get("outcome") != "mouvement_observe" for row in verified_film)):
                 raise RuntimeError("La totalité des commandes doit aussi être visible sur le film")
 
 

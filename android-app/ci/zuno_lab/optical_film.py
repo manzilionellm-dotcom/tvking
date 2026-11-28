@@ -183,11 +183,15 @@ def score(out,trials):
         next_lower=trials[i+1].get('key_elapsed_min') if i+1<len(trials) else None
         # Stopper au prochain appui ; la coupure de capture ne redevient jamais un succès.
         end=min(upper+9,next_lower if next_lower is not None else upper+9)
-        ix=bisect.bisect_left(times,upper); hi=bisect.bisect_left(times,end)
-        pre=bisect.bisect_right(times,lower)-1
+        ix=bisect.bisect_left(times,lower); hi=bisect.bisect_left(times,end)
+        pre=ix-1
         r['outcome']='captation_non_couvrante'
         if pre<0 or hi<=ix or ix>=len(frames) or frames[ix][1]!=frames[pre][1]:continue
-        r['clip']=frames[ix][1]; target=t['target'];last=None;old=False;obscured=False
+        r['clip']=frames[ix][1]; target=t['target']
+        if frames[pre][2]!=t.get('from') or frames[pre][2]==target:
+            r['outcome']='chaine_initiale_non_confirmee'
+            continue
+        last=None;old=True;obscured=False
         final='';last_t=times[pre]; gaps=0;largest=0.; returns=0; wrong=unknown=0
         final_moving=False
         for j in range(ix,hi):
@@ -226,7 +230,9 @@ def score(out,trials):
         good=[r for r in group if r['outcome']=='mouvement_observe']
         stat={'phase':phase,'commandes':len(group),'reussies':len(good),
               'sous_3s_mouvement':sum(r['movement_hi_ms']<3000 for r in good),
-              'resurgences_candidates':sum(r.get('old_after_unknown',0) for r in group)}
+              'resurgences_candidates':sum(r.get('old_after_unknown',0) for r in group),
+              'fins_censurees':sum(bool(r.get('end_censored')) for r in group),
+              'issues':{name:sum(r['outcome']==name for r in group) for name in sorted({r['outcome'] for r in group})}}
         for label in ['first','movement']:
             values=sorted(r[label+'_hi_ms'] for r in good)
             if values:
