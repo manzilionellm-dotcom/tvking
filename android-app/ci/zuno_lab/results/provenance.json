@@ -1,0 +1,80 @@
+{
+  "retrieval": "GitHub Actions archive through authenticated connector, and Play Console original signed universal APK via UI; private links/credentials excluded",
+  "repository": "manzilionellm-dotcom/tvking",
+  "play_track": "Production Phones/Tablets/Android TV/Desktop/Android XR",
+  "production_available": {
+    "version": "117",
+    "version_code": 1794559150,
+    "date_ui": "16 nov. 17:07",
+    "rollout_percent": 100
+  },
+  "production_replaced": {
+    "version": "118",
+    "version_code": 1794559151
+  },
+  "production_in_review": {
+    "version": "119",
+    "version_code": 1794559152
+  },
+  "production_console": "https://play.google.com/console/u/0/developers/6790957789570734722/app/4975332597911476405/tracks/4697320223240474591?tab=releases",
+  "official_run": {
+    "id": 45710084378,
+    "job": 139544600030,
+    "workflow_id": 403768966,
+    "path": ".github/workflows/build-zuno-play-editions.yml",
+    "branch": "ccr-b93e1afd-gwirw0",
+    "commit": "a096b2f85de082622ec232fa198069bdefbbccab",
+    "event": "push",
+    "created_utc": "2026-11-25T22:04:46Z",
+    "updated_utc": "2026-11-25T22:22:02Z",
+    "conclusion": "success",
+    "artifact_id": 15068980205
+  },
+  "archive": {
+    "bytes": 99480218,
+    "sha256": "d4418183472cf55639ede74535b0821b9b0c4e5f89db49c543f579b1325d9629"
+  },
+  "aab": {
+    "file": "ZUNO-auto-119.aab",
+    "bytes": 100195488,
+    "sha256": "43fcccd171434d18961a2c27aeed8064ab2f08aeffcf7364f0ae439560fa149d",
+    "certificate_sha256": "5145b8e019f6d5fb96a207f2e73673fd954f799966fd598889211556cbdf9e61",
+    "jar_file_verification": "verified",
+    "independently_hashed_signed_entries": 1286,
+    "jar_warnings": [
+      "self-signed certificate",
+      "no timestamp",
+      "JarInputStream ordering inconsistency: all data entries independently matched per-name signed digests"
+    ],
+    "manifest_sha256_proto": "15d35d18b6caa9a556cc3a69ca70bd9ff26325ac17546de55d61edfd060c8f0f",
+    "manifest_tool": "google/bundletool 1.18.2 dump manifest, exact match with workflow text",
+    "package": "com.sevenmotion.tv.seven_tv",
+    "code": 1794559152,
+    "version": "119",
+    "min_api": 24,
+    "target_api": 36,
+    "pip_activity": "com.example.tv_king.MainActivity",
+    "cast_scope_metadata": "handset-only"
+  },
+  "play_standard_apk_119": {
+    "artifact_id": "4860255232374187179",
+    "bytes": 125920802,
+    "sha256": "96b81d876be292f9155bc2d761e07532af15b4695fc44c829ffe27f20e8909b8",
+    "certificate_sha256": "b4b81292ceb87349c7b6f0c5ae20a52eeebbabf41ca57c481b41d10b91a4f369",
+    "apk_sig_verify": "com.android.tools.build:apksig:8.9.0, v2=true, v3=true",
+    "installed_in_campaign": false
+  },
+  "other_workflows_after_anchor": {
+    "zuno-tv": {
+      "run_count": 7,
+      "all_on_novatube_branches": true
+    },
+    "zuno-mobile-play-aab": {
+      "most_recent_date": "2026-11-10"
+    },
+    "zuno-trial-review": {
+      "most_recent_date": "2026-11-01"
+    }
+  },
+  "notes": "The emulator measurements belong to a separately signed universal conversion of the authenticated 119 AAB. No bit-level identity to Play universal or distribution splits."
+}

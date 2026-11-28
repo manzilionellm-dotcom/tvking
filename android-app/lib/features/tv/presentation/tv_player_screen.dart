@@ -26,6 +26,7 @@ import '../../cast/data/cast_platform.dart';
 //  enchaîner 20 setUrl gelait la box.
 // =========================================================
 import 'dart:async';
+import 'dart:io';
 
 import '../desktop/desktop_cast_controls.dart';
 import '../data/zuno_pip_service.dart';
@@ -138,10 +139,16 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   String _shownEngine = 'hardware';
   String? _engineNote;
   bool _followOn = true;
-  String? _guideTitle;
-  bool _guideFollowed = false;
+  EpgProgram? _guideProgram;
+  bool? _guideFollowed;
+  String? get _guideTitle =>
+      !_zapHolding && _guideProgram?.channelId == _current.id
+          ? _guideProgram?.title
+          : null;
   bool get _canFollow =>
-      _followOn && _guideTitle != null && _guideTitle!.trim().isNotEmpty;
+      _followOn &&
+      _guideFollowed != null &&
+      (_guideTitle?.trim().isNotEmpty ?? false);
   bool get _showStart => _missed?.canRewind == true || _catchup;
   bool _canTimeshift = false;
   DateTime? _livePausedAt;
@@ -190,6 +197,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   // fichier capture EXACTEMENT ce qui est à l'écran. Hors enregistrement, la
   // lecture reste DIRECTE (le relais n'est pas dans le chemin).
   Recording? _activeRecording;
+  bool _startingRecording = false;
   bool get _isRecording => _activeRecording != null;
   String?
   _relayPlayUrl; // URL locale 127.0.0.1 utilisée pendant l'enregistrement
@@ -827,51 +835,78 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   Future<void> _startRecording() async {
-    if (_isRecording) return;
-    // L'adresse qui JOUE (éventuellement une adresse de secours).
-    final String realUrl = _playingUrl;
+    if (_isRecording || _startingRecording) return;
+    _startingRecording = true;
+    final channel = _current;
+    final realUrl = _playingUrl;
+    final relay = LocalStreamRelay.instance;
+    final repo = RecordingRepository.instance;
+    String? localUrl;
+    bool attached = false;
+    bool current() => mounted && channel.id == _current.id && _playingUrl == realUrl;
     try {
-      final String path = await RecordingRepository.instance.createFilePath(
-        channelName: _current.cleanName,
-      );
-
-      // 1) On bascule D'ABORD la lecture sur le relais : le lecteur lâche la
-      //    connexion DIRECTE et le relais ouvre L'UNIQUE connexion vers le
-      //    serveur. On évite ainsi d'avoir 2 connexions en même temps
-      //    (incompatible avec les fournisseurs max_connections=1).
-      final String localUrl = await LocalStreamRelay.instance.playUrlFor(
-        realUrl,
-      );
+      final path = await repo.createFilePath(channelName: channel.cleanName);
+      localUrl = await relay.playUrlFor(realUrl);
+      if (!current()) return;
       _relayPlayUrl = localUrl;
       _controller.setUrl(localUrl);
-
-      // 2) On attache l'écriture fichier à CETTE MÊME session relais (pas de
-      //    nouvelle connexion : le tee recopie juste les octets vers le .ts).
-      final bool ok = await LocalStreamRelay.instance.startRecording(
-        realUrl: realUrl,
-        filePath: path,
-      );
-      if (!ok) {
-        _relayPlayUrl = null;
-        _controller.setUrl(realUrl); // on revient au direct
-        _flash(context.l10n.tvRecordingError);
+      attached = await relay.startRecording(realUrl: realUrl, filePath: path);
+      if (!attached) {
+        if (mounted && current() && _relayPlayUrl == localUrl) {
+          _relayPlayUrl = null;
+          _controller.setUrl(realUrl);
+          _flash(context.l10n.tvRecordingError);
+        }
         return;
       }
-
-      // 3) On enregistre la fiche en base (liste « Enregistrements »).
-      final Recording rec = await RecordingRepository.instance.startRecording(
-        channelId: _current.id,
-        channelName: _current.cleanName,
+      final closed = relay.recordingFinished(realUrl);
+      final rec = await repo.startRecording(
+        channelId: channel.id,
+        channelName: channel.cleanName,
         filePath: path,
-        channelLogoUrl: _current.logoUrl,
+        channelLogoUrl: channel.logoUrl,
         streamUrl: realUrl,
       );
-      if (mounted) {
-        setState(() => _activeRecording = rec);
-        _flash(context.l10n.tvRecordingStarted);
+      if (!mounted || !current() || _relayPlayUrl != localUrl) {
+        await relay.stopRecording(realUrl);
+        await repo.finishRecording(rec);
+        return;
       }
-    } catch (e) {
+      setState(() => _activeRecording = rec);
+      _flash(context.l10n.tvRecordingStarted);
+      // Un arrêt automatique de la source ou du disque clôt aussi la fiche.
+      // Un stop manuel a déjà détaché la fiche avant de fermer le fichier.
+      unawaited(closed.then((completed) async {
+        if (!mounted || !identical(_activeRecording, rec)) return;
+        setState(() => _activeRecording = null);
+        if (_relayPlayUrl == localUrl) {
+          _relayPlayUrl = null;
+          if (current() && _appActive && !_casting && !_zapHolding &&
+              !(_livePausedAt != null && _canTimeshift)) {
+            _controller.setUrl(realUrl);
+          }
+        }
+        await repo.finishRecording(rec);
+        if (mounted && current()) {
+          if (completed) {
+            final size = await File(rec.filePath).length();
+            if (mounted && current()) _flash(context.l10n.tvRecordingSaved(_humanSize(size)));
+          } else {
+            _flash(context.l10n.tvRecordingError);
+          }
+        }
+      }).catchError((Object error) {
+        BlackBox.instance.warn('REC', 'clôture interrompue (${error.runtimeType})');
+      }));
+    } catch (error) {
+      if (attached) await relay.stopRecording(realUrl);
+      if (current() && localUrl != null && _relayPlayUrl == localUrl) {
+        _relayPlayUrl = null;
+        _controller.setUrl(realUrl);
+      }
       if (mounted) _flash(context.l10n.tvRecordingError);
+    } finally {
+      _startingRecording = false;
     }
   }
 
@@ -1237,13 +1272,20 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
     final int gen = ++_missedGen;
     final String id = _current.id;
     final Channel channel = _current;
-    if (mounted) setState(() => _missed = null);
+    setState(() {
+      _missed = null;
+      _guideProgram = null;
+      _guideFollowed = null;
+    });
     unawaited(() async {
       try {
         final EpgProgram? program = await EpgRepository.instance.currentProgram(
           id,
         );
         if (!mounted || gen != _missedGen || _current.id != id) return;
+        // Le bandeau et les commandes utilisent la même lecture du guide.
+        setState(() => _guideProgram = program);
+        TvAmbientDirector.instance.noteEpg(program?.category);
         final String title = program?.title.trim() ?? '';
         bool followed = false;
         try {
@@ -1274,9 +1316,8 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
             );
           }
         } catch (_) {}
-        if (!mounted || gen != _missedGen) return;
+        if (!mounted || gen != _missedGen || _current.id != id) return;
         setState(() {
-          _guideTitle = title.isEmpty ? null : title;
           _guideFollowed = followed;
           _missed = summary;
         });
@@ -1284,8 +1325,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
         if (mounted && gen == _missedGen) {
           setState(() {
             _missed = null;
-            _guideTitle = null;
-            _guideFollowed = false;
+            _guideFollowed = null;
           });
         }
       }
@@ -1491,13 +1531,14 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
   }
 
   Future<void> _toggleFollow() async {
-    final String? title = _guideTitle;
-    if (title == null || title.isEmpty) return;
+    final String? title = _guideTitle?.trim();
+    if (!_canFollow || title == null || title.isEmpty) return;
+    final int gen = _missedGen;
     final bool now = await FollowedLog.instance.togglePin(
       title: title,
       channelId: _current.id,
     );
-    if (!mounted) return;
+    if (!mounted || gen != _missedGen || _zapHolding) return;
     final String code = Localizations.localeOf(context).languageCode;
     setState(() => _guideFollowed = now);
     _flash(
@@ -1731,6 +1772,7 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                             ignoring: !_overlay || _pip.isInPipMode,
                             child: _ControlsBar(
                               channel: _current,
+                              guideTitle: _guideTitle,
                               qualityController: _casting ? null : _controller,
                               index: _index,
                               total: widget.channels.length,
@@ -1747,9 +1789,9 @@ class _TvPlayerScreenState extends State<TvPlayerScreen>
                                   : null,
                               followLabel: followedWord(
                                 Localizations.localeOf(context).languageCode,
-                                _guideFollowed ? 'following' : 'follow',
+                                _guideFollowed == true ? 'following' : 'follow',
                               ),
-                              followOn: _guideFollowed,
+                              followOn: _guideFollowed == true,
                               followIndex: _followBtn,
                               onStart: _showStart
                                   ? () => _activateBtn(_startBtn ?? 3)
@@ -2095,74 +2137,6 @@ class _PinnedVideoState extends State<_PinnedVideo> {
   }
 }
 
-/// Programme « maintenant » sous le nom, dans la barre du lecteur.
-/// Une requête indexée par chaîne : au zap on ne recharge que celle-ci.
-class _LiveEpgLine extends StatefulWidget {
-  const _LiveEpgLine({required this.channelId});
-  final String channelId;
-
-  @override
-  State<_LiveEpgLine> createState() => _LiveEpgLineState();
-}
-
-class _LiveEpgLineState extends State<_LiveEpgLine> {
-  Timer? _wait;
-  EpgProgram? _shown;
-
-  @override
-  void initState() {
-    super.initState();
-    _load(widget.channelId);
-  }
-
-  @override
-  void didUpdateWidget(covariant _LiveEpgLine old) {
-    super.didUpdateWidget(old);
-    if (old.channelId == widget.channelId) return;
-    // Zap rapide : on efface tout de suite le programme de la chaîne
-    // précédente (sinon il s'affiche sous le mauvais nom), et on ne
-    // requête la base qu'une fois le zapping calmé.
-    _wait?.cancel();
-    _shown = null;
-    final String id = widget.channelId;
-    _wait = Timer(const Duration(milliseconds: 200), () => _load(id));
-  }
-
-  void _load(String id) {
-    // Un guide absent ou une base occupée ne doit pas faire tomber
-    // le lecteur : on cache simplement la ligne.
-    EpgRepository.instance.currentProgram(id).then((EpgProgram? p) {
-      if (!mounted || widget.channelId != id) return;
-      setState(() => _shown = p);
-      TvAmbientDirector.instance.noteEpg(p?.category);
-    }, onError: (Object _) {});
-  }
-
-  @override
-  void dispose() {
-    _wait?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final EpgProgram? p = _shown;
-    if (p == null || p.title.trim().isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        '${context.l10n.tvEpgNow}  ·  ${p.title}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TvAppTokens.playbackOf(context).ui(
-          TvDimens.label,
-          color: TvAppTokens.playbackOf(context).accentBright,
-        ),
-      ),
-    );
-  }
-}
-
 /// Panneau de lecture moderne (façon YouTube / Netflix) : dégradé sombre en
 /// bas, infos chaîne (logo + nom + DIRECT + n° de chaîne) puis une rangée de
 /// commandes « verre » animées. À droite (« en bas ») : REC et ❤ favori.
@@ -2171,6 +2145,7 @@ class _LiveEpgLineState extends State<_LiveEpgLine> {
 class _ControlsBar extends StatelessWidget {
   const _ControlsBar({
     required this.channel,
+    required this.guideTitle,
     this.qualityController,
     required this.index,
     required this.total,
@@ -2202,6 +2177,7 @@ class _ControlsBar extends StatelessWidget {
   });
 
   final Channel channel;
+  final String? guideTitle;
   final NativeVideoController? qualityController;
   final int index;
   final int total;
@@ -2463,7 +2439,19 @@ class _ControlsBar extends StatelessWidget {
             ),
           ),
           // Programme en cours, sous le nom : le guide sans quitter l'image.
-          _LiveEpgLine(channelId: channel.id),
+          if (guideTitle?.trim().isNotEmpty ?? false)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${context.l10n.tvEpgNow}  ·  $guideTitle',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TvAppTokens.playbackOf(context).ui(
+                  TvDimens.label,
+                  color: TvAppTokens.playbackOf(context).accentBright,
+                ),
+              ),
+            ),
           const SizedBox(height: 6),
           Row(
             children: <Widget>[

@@ -1,0 +1,45 @@
+name: ZUNO LAB — contre-épreuve du guide et du relais
+on:
+  push:
+    branches: ['lab/zuno-119-qualification-20261128']
+    paths:
+      - '.github/workflows/zuno-lab-guide.yml'
+      - 'android-app/lib/features/tv/presentation/tv_player_screen.dart'
+      - 'android-app/test/features/tv/zuno_tv_variant_focus_test.dart'
+
+permissions:
+  contents: read
+jobs:
+  guide:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Mesurer les requêtes SQLite du témoin et du candidat
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/guide"
+          flutter pub get && flutter gen-l10n
+          screen=lib/features/tv/presentation/tv_player_screen.dart
+          git show "a096b2f85de082622ec232fa198069bdefbbccab:android-app/$screen" > "$screen"
+          options=(--no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789)
+          if flutter test "${options[@]}" --plain-name 'une seule lecture du guide' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/guide/avant.txt" 2>&1; then
+            echo 'Le témoin ne reproduit pas le défaut'; exit 1
+          fi
+          cat "$RUNNER_TEMP/guide/avant.txt"
+          grep -q 'ZUNO_GUIDE_READ_COUNT\|ZUNO_GUIDE_STALE_CONTROL' "$RUNNER_TEMP/guide/avant.txt"
+          git restore -- "$screen"
+          flutter test "${options[@]}" test/features/tv/zuno_tv_variant_focus_test.dart test/features/player/hls_recording_test.dart test/features/player/relay_dead_stream_test.dart | tee "$RUNNER_TEMP/guide/apres.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: zuno-lab-guide
+          path: ${{ runner.temp }}/guide/
