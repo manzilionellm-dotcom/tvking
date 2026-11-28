@@ -34,17 +34,27 @@ jobs:
           path: origine
           sparse-checkout: android-app/ci/novatube_tv
           persist-credentials: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-        with:
-          github-token: ${{ github.token }}
-          run-id: 46089851484
-          name: zuno-lab-8bc709cb275e0ac97c3d907d2bf8ad0447594584
-          path: AppliA
+      - name: Attendre le constructeur du nouveau candidat
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in {1..90}; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/46095014074" > "$RUNNER_TEMP/constructeur.json"
+            if [[ "$(jq -r .status "$RUNNER_TEMP/constructeur.json")" == completed ]]; then break; fi
+            sleep 15
+          done
+          jq -e '.conclusion=="success" and .head_sha=="c4c3b51bcd9a16341a526467e763a5effc235432"' "$RUNNER_TEMP/constructeur.json"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
           run-id: 46091822042
           name: zuno-lab-926377d224daf77b14b775981adfe1590e5d113a
+          path: AppliA
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46095014074
+          name: zuno-lab-c4c3b51bcd9a16341a526467e763a5effc235432
           path: AppliB
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Rejouer la même série 100 + 100 et le même mode de capture
@@ -78,7 +88,7 @@ jobs:
             (cd "Appli$which" && sha256sum -c SHA256SUMS)
             file="Appli$which/ZUNO-LAB.apk"
             expected=$(sha256sum "$file" | cut -d' ' -f1)
-            if [[ "$which" == A ]]; then test "$expected" = 9609b3ccb8bcd7d5ca568cc031f6adac1d277c46fb307100159118968cbea782; else test "$expected" = 24f0e56b3fcc09a788acb367c97ef482c6e011a4ff507462d0a9e865506e75d9; fi
+            if [[ "$which" == A ]]; then test "$expected" = 24f0e56b3fcc09a788acb367c97ef482c6e011a4ff507462d0a9e865506e75d9; fi
             adb install "$file"
             path=$(adb shell pm path "$BENCH_PACKAGE" | tr -d '\r' | sed 's/^package://')
             adb shell sha256sum "$path" | awk '{print $1}' > "$trial/installed-before.sha256"

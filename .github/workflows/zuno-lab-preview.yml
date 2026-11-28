@@ -5,8 +5,8 @@ on:
     paths: ['.github/workflows/zuno-lab-preview.yml', 'android-app/ci/zuno_lab/preview_*.py']
 
 env:
-  BUILD_RUN: '46091822042'
-  BUILD_SHA: 926377d224daf77b14b775981adfe1590e5d113a
+  BUILD_RUN: '46095014074'
+  BUILD_SHA: c4c3b51bcd9a16341a526467e763a5effc235432
   BENCH_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 permissions:

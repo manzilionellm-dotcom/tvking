@@ -21,8 +21,8 @@ jobs:
         path: [direct,tunnel]
     env:
       LINK: ${{ matrix.path }}
-      BUILD_RUN: '46091822042'
-      BUILD_SHA: 926377d224daf77b14b775981adfe1590e5d113a
+      BUILD_RUN: '46095014074'
+      BUILD_SHA: c4c3b51bcd9a16341a526467e763a5effc235432
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -73,6 +73,9 @@ jobs:
           python3 android-app/ci/zuno_lab/outage_pixels/origin.py "$out/reseau" "$arm" "$LINK" >"$RUNNER_TEMP/bridge.log" 2>&1 &
           (cd apk && sha256sum -c SHA256SUMS)
           source android-app/ci/zuno_lab/boot_lab.sh 'system-images;android-36;android-tv;x86_64' "$out"
+          if [[ "$LINK" == direct ]]; then
+            adb shell settings put global global_http_proxy_exclusion_list '10.0.2.2,localhost,127.0.0.1'
+          fi
           # Une fenêtre de bienvenue du lanceur peut intercepter HOME sur un AVD
           # neuf. Le parcours vidéo possède ses propres preuves et n'impose pas
           # la réussite d'une campagne HOME distincte avant le premier appui.

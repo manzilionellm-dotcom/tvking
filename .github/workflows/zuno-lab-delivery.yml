@@ -9,9 +9,9 @@ permissions:
   actions: read
 
 env:
-  BUILD_RUN: '46091822042'
-  BUILD_SHA: 926377d224daf77b14b775981adfe1590e5d113a
-  RIGHTS_RUN: '46091822040'
+  BUILD_RUN: '46095014074'
+  BUILD_SHA: c4c3b51bcd9a16341a526467e763a5effc235432
+  RIGHTS_RUN: '46095014079'
   LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 jobs:
@@ -119,8 +119,44 @@ jobs:
           name: zuno-lab-${{ matrix.kind }}-preuves
           path: qa/
 
+  journal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          cache: false
+          pub-cache: false
+      - name: Reproduire le détail erroné sur 926 puis vérifier la version d’APK demandée
+        working-directory: android-app
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/journal"
+          flutter pub get
+          flutter gen-l10n
+          for path in lib/core/blackbox/black_box.dart lib/features/tv/presentation/tv_black_box_screen.dart; do
+            git show "926377d224daf77b14b775981adfe1590e5d113a:android-app/$path" > "$path"
+          done
+          if flutter test --no-pub --concurrency=1 --reporter expanded test/core/blackbox/black_box_session_widget_test.dart > "$RUNNER_TEMP/journal/temoin.log" 2>&1; then
+            echo 'Le défaut du témoin n’est pas reproduit'; exit 1
+          fi
+          grep -F 'ZUNO_SORTIE_NON_CORRELEE' "$RUNNER_TEMP/journal/temoin.log"
+          for path in lib/core/blackbox/black_box.dart lib/features/tv/presentation/tv_black_box_screen.dart; do
+            git show "$BUILD_SHA:android-app/$path" > "$path"
+          done
+          flutter test --no-pub --concurrency=1 --reporter expanded test/core/blackbox/ | tee "$RUNNER_TEMP/journal/candidat.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: comparaison-journal-926-c4
+          path: ${{ runner.temp }}/journal/
   deliver:
-    needs: launch
+    needs: [launch,journal]
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     permissions:
@@ -140,21 +176,38 @@ jobs:
           run-id: ${{ env.BUILD_RUN }}
           name: zuno-lab-${{ env.BUILD_SHA }}
           path: apk
-      - name: Créer une nouvelle préversion LAB et relire son fichier
-        working-directory: apk
+      - name: Rattacher la préversion au reçu et relire son APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          sha256sum -c SHA256SUMS
+          test "$GITHUB_REPOSITORY" = manzilionellm-dotcom/tvking
+          test "$GITHUB_REF" = refs/heads/lab/zuno-119-qualification-20261128
+          repo="$GITHUB_REPOSITORY"
           tag="zuno-lab-119-${BUILD_SHA:0:12}-$BUILD_RUN"
-          expected=$(awk '{print $1}' SHA256SUMS)
-          if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$tag" ZUNO-LAB.apk SHA256SUMS signature.txt --target "$BUILD_SHA" --prerelease --latest=false \
-              -R "$GITHUB_REPOSITORY" --title "ZUNO LAB 119 — essai téléphone et TV" \
-              --notes "Essai interne uniquement. Paquet $LAB_PACKAGE. Base ZUNO 119. Clé de test propre à la compilation $BUILD_RUN. Les listes personnelles sont disponibles. Le panel de cette édition vise la boucle locale du banc."
+          (cd apk && sha256sum -c SHA256SUMS)
+          digest=$(sha256sum apk/ZUNO-LAB.apk | cut -d' ' -f1)
+          for kind in tv phone; do
+            gh run download "$GITHUB_RUN_ID" -R "$repo" -n "zuno-lab-$kind-preuves" -D "$kind"
+            test "$(cat "$kind/installed.before")" = "$digest"
+            cmp "$kind/installed.before" "$kind/installed.after"
+          done
+          if ! gh api "repos/$repo/git/ref/tags/$tag" > tag.json 2>/dev/null; then
+            gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > tag.json
           fi
-          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/ZUNO-LAB.apk"
-          curl -fsSL --retry 8 --retry-all-errors "$url" -o "$RUNNER_TEMP/recu.apk"
-          echo "$expected  $RUNNER_TEMP/recu.apk" | sha256sum -c -
-          echo "[APK vérifié]($url) — $expected" >> "$GITHUB_STEP_SUMMARY"
+          tag_sha=$(jq -r '.object.sha' tag.json)
+          gh api "repos/$repo/compare/$BUILD_SHA...$tag_sha" | jq -e '.status=="ahead" or .status=="identical"'
+          if ! gh release view "$tag" -R "$repo" >/dev/null 2>&1; then
+            gh release create "$tag" --verify-tag --prerelease --latest=false -R "$repo" --title "ZUNO LAB 119 — diagnostic de session corrigé" --notes "Canal LAB. Source exacte de l’APK $BUILD_SHA, constructeur $BUILD_RUN, paquet $LAB_PACKAGE. Clé de test propre à ce constructeur. Panel local, ajout de listes personnelles. Cette préversion est indépendante de la diffusion Play."
+          fi
+          gh api "repos/$repo/releases/tags/$tag" > publication.json
+          jq -e --arg name "$tag" '.tag_name==$name and .prerelease and (.draft|not)' publication.json
+          for asset in ZUNO-LAB.apk SHA256SUMS signature.txt; do
+            if ! jq -e --arg name "$asset" 'any(.assets[];.name==$name)' publication.json >/dev/null; then
+              gh release upload "$tag" -R "$repo" "apk/$asset"
+            fi
+          done
+          url="https://github.com/$repo/releases/download/$tag/ZUNO-LAB.apk"
+          curl --fail --silent --show-error --location --retry 6 --retry-all-errors "$url" -o "$RUNNER_TEMP/relu.apk"
+          echo "$digest  $RUNNER_TEMP/relu.apk" | sha256sum -c -
+          echo "[APK signé ouvert sur TV et téléphone]($url) — $digest" >> "$GITHUB_STEP_SUMMARY"

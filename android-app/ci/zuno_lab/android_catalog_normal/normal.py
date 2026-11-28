@@ -8,7 +8,9 @@ sys.path.insert(0,str(Path('android-app/ci/zuno_lab').resolve()))
 from panel_device import observe as panel
 from optical_witness import screen,words
 from android_ui import visible_nodes
-from zuno_ui_path import normalized,control
+from zuno_ui_path import normalized,control,next_step
+from visible_launch import screen_evidence
+from optical_witness import tap
 out=Path(sys.argv[1]);movie=Path('android-app/ci/zuno_lab/android_catalog_fixture/mire.ts').read_bytes()
 pkg='com.sevenmotion.tv.seven_tv.lab'
 srcs={}
@@ -48,13 +50,14 @@ adb=panel.adb;api=panel.api
 def labelshot():
  focus=[];ns=visible_nodes(pkg,focused=focus);im=screen()
  ts=words(im);labels={normalized(x[0]) for x in ns+ts}
+ action,point=next_step(ns,ts,im.size,'after-submit',False,False)
  # N'écrire que ces mots génériques ou identifiants de fixture synthétiques.
  display=sorted(x for x in labels if x in {'live','direct','movies','films','server','serveur','settings','reglages','mire a','mire b','favorites','favoris'} or re.fullmatch(r'(cat|lab) \d+',x))
  for phrase in ('mire a','mire b','live','direct','cat 001','lab 00003'):
   if phrase not in display and control(ns,ts,im.size,(phrase,)) is not None:display.append(phrase)
  focused=sorted({normalized(x) for x in focus if normalized(x) in display})
  note('screen',known=display,focus=focused,sha256_rgb=hashlib.sha256(im.tobytes()).hexdigest(),size=im.size)
- return display,focused
+ return display,focused,action,point
 def key(n):
  at=time.monotonic();adb('shell','input','keyevent',str(n));note('remote_key',code=n,adb_s=time.monotonic()-at)
 def pid():return adb('shell','pidof',pkg,check=False).strip()
@@ -85,15 +88,33 @@ try:
  counts=panel.read_sqlite();note('sqlite',counts=counts)
  if counts.get('available') and (counts.get('rows')!=30000 or counts.get('categories')!=120):raise RuntimeError('lignes non conformes après ACK')
  origin_pid=pid();note('before_keys',pid=origin_pid)
- labels,focused=labelshot()
- if not any(x in labels for x in ('mire a','mire b')) and not any(x.startswith('cat ') for x in labels):
-  if not any(x in labels for x in ('live','direct')):raise RuntimeError('accueil Direct non reconnu')
-  # Rangée horizontale du hub. La butée gauche correspond à Direct.
-  for _ in range(6):key(21);time.sleep(.14)
-  key(23);time.sleep(1)
- labels,focused=labelshot()
- if not any(x in labels for x in ('mire a','mire b')) and not any(x.startswith(('cat ','lab ')) for x in labels):
-  raise RuntimeError('Direct non reconnu')
+ first=time.monotonic();last_launch=0;last_hub=None;tick=0
+ while time.monotonic()-first<130:
+  labels,focused,action,point=labelshot();tick+=1
+  activity=adb('shell','dumpsys','activity','activities',check=False)
+  tops=[ln for ln in activity.splitlines() if 'topResumedActivity' in ln or 'mResumedActivity' in ln]
+  foreground=any(pkg+'/' in x for x in tops)
+  note('scene',attempt=tick,action=action,app_foreground=foreground,pid=pid())
+  if tick==1 or tick%4==0:screen_evidence(out,'app-'+str(tick))
+  if action=='channel-a' or any(x in labels for x in ('mire a','mire b')) or any(x.startswith(('cat ','lab ')) for x in labels):break
+  if action in ('english','notifications') and point:
+   tap(*point);note('setup_tap',purpose=action)
+  elif action in ('return-to-hub','return-from-settings') and tick<=3:key(4)
+  elif action=='live' or any(x in labels for x in ('live','direct')):
+   if last_hub is None:
+    for _ in range(5):key(21);time.sleep(.16)
+    key(23);note('open_live_dpad')
+   elif time.monotonic()-last_hub>8 and point:
+    tap(*point);note('open_live_tap_fallback')
+   last_hub=time.monotonic() if last_hub is None else last_hub
+  elif not foreground and time.monotonic()-last_launch>20:
+   adb('shell','am','start','-n',pkg+'/com.example.tv_king.MainActivity')
+   note('restored_foreground');last_launch=time.monotonic()
+  elif foreground and tick in (3,6):
+   key(20);note('focus_only_unknown_display')
+  if pid()!=origin_pid:raise RuntimeError('processus initial perdu avant entrée dans Direct')
+  time.sleep(1.5)
+ else:raise RuntimeError('Direct non reconnu dans la fenêtre de 130 secondes')
  for n in [22,20,23,166,167,4]*4:
   key(n);time.sleep(.8)
   if not pid() or pid()!=origin_pid:raise RuntimeError('processus disparu ou remplacé')

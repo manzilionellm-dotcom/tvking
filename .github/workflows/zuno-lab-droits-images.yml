@@ -19,8 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {version: apres, status: frozen, run: '46091822042', sha: 926377d224daf77b14b775981adfe1590e5d113a}
-          - {version: apres, status: banned, run: '46091822042', sha: 926377d224daf77b14b775981adfe1590e5d113a}
+          - {version: apres, status: frozen, run: '46095014074', sha: c4c3b51bcd9a16341a526467e763a5effc235432}
+          - {version: apres, status: banned, run: '46095014074', sha: c4c3b51bcd9a16341a526467e763a5effc235432}
     env:
       PANEL_STATUS: ${{ matrix.status }}
       BUILD_RUN: ${{ matrix.run }}
