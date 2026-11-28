@@ -108,7 +108,7 @@ def observe_ui(folder, state, classify=None, retry=False):
     return ns, ts, size, im, focused
 
 
-def open_fixture(folder):
+def open_fixture(folder, stop_at_grid=False):
     phase = "after-submit" if os.environ.get("ZUNO_PRELOADED_BY_PANEL") == "yes" else "choose"
     via_sources = False
     backed_out = False
@@ -167,6 +167,9 @@ def open_fixture(folder):
               point=[int(v) for v in point] if point else None)
         previous = action
         last_action[action] = now
+        if action == "channel-a" and stop_at_grid:
+            event(folder,"two-channel-grid-detected")
+            return
         if point is not None:
             tap(*point)
         if action == "channel-a":

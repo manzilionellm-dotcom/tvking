@@ -86,7 +86,7 @@ def run_adb(*args,timeout=10):
 
 
 def clocked_key(code):
-    if code not in ('KEYCODE_CHANNEL_DOWN','KEYCODE_CHANNEL_UP'):raise ValueError('Touche non prévue')
+    if code not in ('KEYCODE_CHANNEL_DOWN','KEYCODE_CHANNEL_UP','KEYCODE_DPAD_CENTER'):raise ValueError('Touche non prévue')
     # Les deux lectures sont dans le même processus shell que la touche.
     cmd='read b rest < /proc/uptime; input keyevent '+code+' || exit 1; read a rest < /proc/uptime; echo "$b $a"'
     raw=run_adb('shell',cmd,timeout=25).decode().strip()
@@ -98,7 +98,8 @@ def clocked_key(code):
 
 class Recorder:
     """Un encodeur dans le guest ; export asynchrone de chaque segment sur l’hôte."""
-    def __init__(self,out):
+    def __init__(self,out,exporter=export_clip):
+        self.exporter=exporter
         self.out=out
         self.base='/data/local/tmp/zuno-diag-film-'+secrets.token_hex(6)
         self.stop=threading.Event();self.ready=threading.Event()
@@ -148,7 +149,7 @@ class Recorder:
             private=Path(d)/'prive.mp4'
             try:
                 run_adb('pull',remote,str(private),timeout=65)
-                export_clip(private,self.out,i)
+                self.exporter(private,self.out,i)
             finally:
                 run_adb('shell','rm','-f',remote)
 
