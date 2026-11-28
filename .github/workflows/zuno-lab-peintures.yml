@@ -1,0 +1,52 @@
+name: ZUNO LAB — mesurer les peintures du titre pendant la préparation du décodeur
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths: ['.github/workflows/zuno-lab-peintures.yml', 'android-app/ci/zuno_lab/compter_peintures/**']
+permissions:
+  contents: read
+jobs:
+  animation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {libelle: temoin, variante: actuel, sha: a096b2f85de082622ec232fa198069bdefbbccab}
+          - {libelle: livrable, variante: actuel, sha: daba06b196754e4fff9dbfd8a454bd804b752be6}
+          - {libelle: experience, variante: anneau-isole, sha: daba06b196754e4fff9dbfd8a454bd804b752be6}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+      - name: Compter les appels RenderObject.paint au titre et à l’anneau sur 120 pas de 16 ms
+        env:
+          REV: ${{ matrix.sha }}
+          VAR: ${{ matrix.variante }}
+        run: |
+          set -euo pipefail
+          scripts="$PWD/android-app/ci/zuno_lab/compter_peintures"
+          work="$RUNNER_TEMP/arbre"
+          git worktree add --detach "$work" "$REV"
+          python3 "$scripts/preparer.py" "$work/android-app" "$VAR"
+          cd "$work/android-app"
+          flutter pub get
+          flutter gen-l10n
+          status=0
+          flutter test --no-pub --concurrency=1 --reporter expanded --dart-define=PLAY_BUILD=true --dart-define=ZUNO_FREE_PLAYER=true --dart-define=ZUNO_EDITION=auto --dart-define=BACKEND_URL=http://127.0.0.1:18789 --plain-name 'compter les peintures du titre' test/features/tv/zuno_tv_variant_focus_test.dart > "$RUNNER_TEMP/essai.log" 2>&1 || status=$?
+          mkdir -p "$GITHUB_WORKSPACE/resultats-peinture"
+          grep -E '^ZUNO_PEINTURES pas=[0-9]+ titre=[0-9]+ anneau=[0-9]+$' "$RUNNER_TEMP/essai.log" > "$GITHUB_WORKSPACE/resultats-peinture/appels.txt" || true
+          echo "revision=$REV variante=$VAR test_exit=$status" > "$GITHUB_WORKSPACE/resultats-peinture/identite.txt"
+          if ! test -s "$GITHUB_WORKSPACE/resultats-peinture/appels.txt"; then grep -E 'Error:|Expected:|Actual:|No element|Some tests failed' "$RUNNER_TEMP/essai.log" | tail -15; exit 1; fi
+          exit "$status"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: peintures-${{ matrix.libelle }}
+          path: resultats-peinture/
