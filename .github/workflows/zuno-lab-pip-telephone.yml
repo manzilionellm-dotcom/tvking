@@ -83,7 +83,7 @@ jobs:
           test -s "$RUNNER_TEMP/ready.json"
           cp "$RUNNER_TEMP/ready.json" "$out/worker.json"
           status=0
-          python3 android-app/ci/zuno_lab/panel_device/observe.py "$out" pixels
+          ZUNO_KEEP_ACTIVE_FIXTURE=yes python3 android-app/ci/zuno_lab/panel_device/observe.py "$out" pixels
           python3 android-app/ci/zuno_lab/phone_pip/observe.py "$out/pip" || status=$?
           kill "$worker" 2>/dev/null || true
           adb shell sha256sum "$installed" | awk '{print $1}' > "$out/installed-after.sha256"

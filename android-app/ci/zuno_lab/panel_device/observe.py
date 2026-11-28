@@ -125,7 +125,9 @@ def main(args):
         if refused:
             if ok or not seen.get(0) or not pending: raise RuntimeError('Le refus de la révision doit rester en attente')
         elif not ok or not all(seen.get(s) for s in spec): raise RuntimeError('Révision non attestée par origine et ACK')
-        if rev==len(sizes):
+        if rev==len(sizes) and args.mode=='pixels' and os.environ.get('ZUNO_KEEP_ACTIVE_FIXTURE')=='yes':
+            note('keep_existing_activity',step=rev)
+        elif rev==len(sizes):
             adb('shell','am','force-stop',PACKAGE)
             db=read_sqlite();note('sqlite_after_stop',step=rev,**db)
             if db['available'] and (not db['valid'] or db['rows']!=spec[0] or db['unique_streams']!=spec[0]):

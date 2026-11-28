@@ -13,6 +13,7 @@ from hub_remote import live_row_visible
 from zuno_ui_path import control
 from mobile_marker import find_marker
 from PIL import Image
+from android_ui import visible_nodes
 import io
 
 
@@ -128,18 +129,35 @@ def run(out):
                 previous=None
         return False
     telemetry('avant_navigation')
-    limit=time.monotonic()+100; entered=False;last_hub=0
+    limit=time.monotonic()+120; entered=False;last_hub=0; waited=False
     while time.monotonic()<limit:
         s=state()
         if not s['foreground']:
             adb('shell','am','start','-n',APK_PACKAGE+'/com.example.tv_king.MainActivity');time.sleep(1);continue
+        # Le paquet peut être « resumed » derrière le dialogue Android d'ANR.
+        # Confirmer l'ANR ET son bouton système avant la seule demande d'attente.
+        wm=adb('shell','dumpsys','window','windows')
+        focused=[l.lower() for l in wm.splitlines() if 'mCurrentFocus' in l or 'mFocusedWindow' in l]
+        anr=any(('not responding' in l or 'application error' in l or 'anr' in l) and (APK_PACKAGE in l or 'zuno' in l) for l in focused)
+        ev=adb('logcat','-b','events','-d','-t','400')
+        count=sum('am_anr' in l and APK_PACKAGE in l for l in ev.splitlines())
+        if anr or count:
+            record('signal_android_anr',nombre_evenements=count,dialogue_au_premier_plan=anr)
+        if anr and not waited:
+            try:nodes=visible_nodes('android')
+            except (OSError,subprocess.SubprocessError):nodes=[]
+            btn=next(((x,y) for label,x,y,_ in nodes if label.strip().casefold() in ('wait','attendre')),None)
+            if btn:
+                tap(*btn);record('attendre_apres_anr_confirme');waited=True;time.sleep(1);continue
         where,point=grid_or_hub(out)
         if where=='grille':
             tap(*point);record('toucher_ligne_mire_A',point=point);entered=True;break
         if where=='hub' and time.monotonic()-last_hub>10:
             tap(*point);record('toucher_direct',point=point);last_hub=time.monotonic()
         time.sleep(.7)
-    if not entered:raise RuntimeError('Grille A/B non identifiée')
+    if not entered:
+        telemetry('grille_non_confirmee')
+        raise RuntimeError('Grille A/B non identifiée')
     if not moving('avant_HOME',15,'plein'):
         where,point=grid_or_hub(out)
         if where=='grille':
