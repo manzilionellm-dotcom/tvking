@@ -39,11 +39,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for i in {1..90}; do
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/46095014074" > "$RUNNER_TEMP/constructeur.json"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/46095717223" > "$RUNNER_TEMP/constructeur.json"
             if [[ "$(jq -r .status "$RUNNER_TEMP/constructeur.json")" == completed ]]; then break; fi
             sleep 15
           done
-          jq -e '.conclusion=="success" and .head_sha=="c4c3b51bcd9a16341a526467e763a5effc235432"' "$RUNNER_TEMP/constructeur.json"
+          jq -e '.conclusion=="success" and .head_sha=="daba06b196754e4fff9dbfd8a454bd804b752be6"' "$RUNNER_TEMP/constructeur.json"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
@@ -53,8 +53,8 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
-          run-id: 46095014074
-          name: zuno-lab-c4c3b51bcd9a16341a526467e763a5effc235432
+          run-id: 46095717223
+          name: zuno-lab-daba06b196754e4fff9dbfd8a454bd804b752be6
           path: AppliB
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Rejouer la même série 100 + 100 et le même mode de capture

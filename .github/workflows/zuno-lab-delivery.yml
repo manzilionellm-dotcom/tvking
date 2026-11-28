@@ -9,9 +9,9 @@ permissions:
   actions: read
 
 env:
-  BUILD_RUN: '46095014074'
-  BUILD_SHA: c4c3b51bcd9a16341a526467e763a5effc235432
-  RIGHTS_RUN: '46095014079'
+  BUILD_RUN: '46095717223'
+  BUILD_SHA: daba06b196754e4fff9dbfd8a454bd804b752be6
+  RIGHTS_RUN: '46095717245'
   LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 jobs:
@@ -153,7 +153,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: comparaison-journal-926-c4
+          name: comparaison-journal-926-daba
           path: ${{ runner.temp }}/journal/
   deliver:
     needs: [launch,journal]
