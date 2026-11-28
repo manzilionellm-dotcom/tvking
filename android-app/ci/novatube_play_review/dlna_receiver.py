@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import signal
 import subprocess
@@ -174,6 +175,8 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     receiver = Receiver(args.out, args.serial)
 
+    lab_live = os.environ.get('NOVATUBE_REVIEW_PACKAGE') == 'com.sevenmotion.novatube.tv.lab.retour.rec'
+
     class Handler(SimpleHTTPRequestHandler):
         extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
                           '.ts': 'video/mp2t', '.m3u': 'audio/x-mpegurl'}
@@ -205,7 +208,9 @@ def main():
                             receiver.event('relay_upstream_bytes', connection_bytes=sent,
                                            total_bytes=receiver.relay_bytes_sent)
                             last_report = sent
-                    delay = started + sent / rate - time.monotonic()
+                    # Le petit tampon initial représente le bord disponible d'une chaîne en direct.
+                    # Après ces trois secondes, les nouveaux octets sont strictement cadencés.
+                    delay = started + sent / rate - (3 if lab_live else 0) - time.monotonic()
                     if delay > 0:
                         time.sleep(delay)
             except (BrokenPipeError, ConnectionResetError):
@@ -219,6 +224,16 @@ def main():
             self.wfile.write(data)
 
         def do_GET(self):
+            if lab_live and urlsplit(self.path).path == '/pattern.ts':
+                # Un TS linéaire IPTV ignore le seek. Annoncer la longueur d'un fichier
+                # que le serveur ne sait pas seek conduit Media3 à en chercher la fin.
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp2t')
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                with (args.media / 'pattern.ts').open('rb') as media:
+                    self.copyfile(media, self.wfile)
+                return
             if self.path == '/device.xml':
                 self.reply(('<?xml version="1.0"?><root xmlns="urn:schemas-upnp-org:device-1-0">'
                     '<specVersion><major>1</major><minor>0</minor></specVersion><device>'

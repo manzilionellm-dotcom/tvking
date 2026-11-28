@@ -23,7 +23,7 @@ import unicodedata
 from urllib.request import urlopen
 import xml.etree.ElementTree as ET
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 PLAY_PACKAGE = 'com.sevenmotion.novatube.tv'
 LAB_PACKAGE = 'com.sevenmotion.novatube.tv.lab.retour.rec'
@@ -31,6 +31,22 @@ LAB_PACKAGE = 'com.sevenmotion.novatube.tv.lab.retour.rec'
 
 def normalise(value):
     return ''.join(c for c in unicodedata.normalize('NFKD', value).lower() if c.isalnum())
+
+
+def displayed_pattern(image):
+    """Recognise the six colour bars of the generated FFmpeg testsrc2 pattern."""
+    thumb = image.convert('RGB').resize((96, 54))
+    bars = [(1, 0, 0), (0, 1, 0), (1, 1, 0), (0, 0, 1), (1, 0, 1), (0, 1, 1)]
+    matches = 0
+    for x, expected in enumerate(bars):
+        hits = 0
+        for y in range(17, 35):
+            rgb = thumb.getpixel((8 + x * 16, y))
+            peak = max(rgb)
+            if peak > 70 and tuple(c > peak * .65 for c in rgb) == expected:
+                hits += 1
+        matches += hits >= 8
+    return thumb.crop((10, 8, 86, 43)), matches
 
 
 class Scenario:
@@ -154,7 +170,7 @@ class Scenario:
         self.adb('shell', 'input', 'keyevent', value)
         time.sleep(delay)
 
-    def accessibility_point(self, expression):
+    def accessibility_point(self, expression, resource=None, package=None, region=None):
         self.require_public_screen()
         try:
             self.adb('shell', 'uiautomator', 'dump', '--compressed', '/sdcard/novatube-ui.xml', timeout=12)
@@ -163,11 +179,19 @@ class Scenario:
             (self.out / 'current-ui.xml').write_text(xml)
             for node in ET.fromstring(xml).iter('node'):
                 label = ' '.join([node.attrib.get('text', ''), node.attrib.get('content-desc', '')])
-                if not re.search(expression, label, re.IGNORECASE):
+                if package and node.attrib.get('package') != package:
+                    continue
+                if not (re.search(expression, label, re.IGNORECASE)
+                        or (resource and re.search(resource, node.attrib.get('resource-id', '')))):
+                    continue
+                if node.attrib.get('visible-to-user') == 'false':
                     continue
                 coords = [int(n) for n in re.findall(r'\d+', node.attrib.get('bounds', ''))]
                 if len(coords) == 4 and coords[2] > coords[0] and coords[3] > coords[1]:
-                    return ((coords[0] + coords[2]) // 2, (coords[1] + coords[3]) // 2)
+                    x, y = (coords[0] + coords[2]) // 2, (coords[1] + coords[3]) // 2
+                    if region and not (region[0] <= x/self.width <= region[2] and region[1] <= y/self.height <= region[3]):
+                        continue
+                    return x, y
         except (subprocess.TimeoutExpired, subprocess.CalledProcessError, ET.ParseError):
             return None
         return None
@@ -180,18 +204,41 @@ class Scenario:
         text = self.adb('shell', 'dumpsys', 'activity', 'services', self.package)
         (self.out / f'{name}-services.txt').write_text(text)
         block = re.search(r'ServiceRecord[^\n]*PlaybackForegroundService[\s\S]*?(?=\n\s*\* ServiceRecord|\Z)', text)
-        active = block is not None and 'isForeground=true' in block.group(0)
+        active = block is not None and re.search(r'\bisForeground=true\b', block.group(0)) is not None
         if active:
-            assert re.search(r'foregroundServiceType=(?:0x0*2|2)\b', block.group(0)), 'Type mediaPlayback du service non confirmé'
+            # API 34 écrit types=00000002. Certaines versions écrivent
+            # foregroundServiceType=0x2 ou =2 dans ce même ServiceRecord.
+            media_type = re.search(r'\b(?:types=0*2|foregroundServiceType=(?:0x)?0*2)\b', block.group(0))
+            assert media_type, 'Type mediaPlayback du service non confirmé'
         return active, text
 
     def allow_notifications(self):
         # L'autorisation est donnée dans le dialogue système réellement visible.
-        point = self.accessibility_point(r'^\s*Allow\s*$|^\s*Autoriser\s*$')
+        point = self.accessibility_point(r'^\s*Allow\s*$|^\s*Autoriser\s*$', resource=r':id/permission_allow_button$')
         if point:
             self.adb('shell', 'input', 'tap', str(point[0]), str(point[1]))
             self.step('Notification permission accepted using visible Android dialog')
             time.sleep(1)
+
+    def local_pattern_motion(self):
+        deadline = time.monotonic() + 45
+        previous = None
+        while time.monotonic() < deadline:
+            path = self.screenshot('04-local-playback')
+            with Image.open(path) as image:
+                frame, bars = displayed_pattern(image)
+            if bars >= 5:
+                if previous is None:
+                    (self.out / '04-local-playback-first.png').write_bytes(path.read_bytes())
+                else:
+                    movement = sum(max(pixel) > 30 for pixel in ImageChops.difference(previous, frame).getdata())
+                    if movement >= frame.width * frame.height * .008:
+                        self.report['local_playback_motion'] = {'recognized_bars': bars, 'changing_pixels': movement,
+                            'analyzed_pixels': frame.width * frame.height}
+                        return
+                previous = frame
+            time.sleep(0.65)
+        raise RuntimeError('La mire en mouvement n’est pas apparue sur le téléphone avant le Cast')
 
     def run(self):
         self.require_public_screen()
@@ -269,8 +316,11 @@ class Scenario:
         if not self.cast_point(3):
             self.key('KEYCODE_DPAD_CENTER', 3)
         assert self.cast_point(12), 'Lecteur tactile ou bouton Cast absent'
-        time.sleep(6)
-        self.screenshot('04-local-playback')
+        if self.package == LAB_PACKAGE:
+            self.local_pattern_motion()
+        else:
+            time.sleep(6)
+            self.screenshot('04-local-playback')
         self.step('Synthetic video visibly opened in the normal full-screen player')
         before, _ = self.service('before-cast')
         assert not before, 'Le service était déjà actif avant le geste Cast'
@@ -332,7 +382,13 @@ class Scenario:
         (self.out / 'media-notification.txt').write_text(match.group(0) if match else 'Notification record not located\n')
         assert match and ('1002' in match.group(0) or 'playback_channel' in match.group(0)), 'Notification du service introuvable'
         visible_words = {word for word, _, _ in self.words('08-media-notification-visible')}
-        assert 'mire' in visible_words and ('streaming' in visible_words or 'diffusion' in visible_words), 'Notification du relais non visible à l’écran'
+        if self.package == LAB_PACKAGE:
+            title = self.accessibility_point(r'mire locale novatube', package='com.android.systemui')
+            self.report['notification_title_in_systemui'] = title is not None
+            assert title or ('mire' in visible_words and 'locale' in visible_words), 'Titre du relais absent du volet Android'
+            self.screenshot('08-media-notification-visible')
+        else:
+            assert 'mire' in visible_words and ('streaming' in visible_words or 'diffusion' in visible_words), 'Notification du relais non visible à l’écran'
         self.step('Android media foreground notification displayed')
         time.sleep(4)
         self.key('KEYCODE_BACK', 1)
@@ -362,6 +418,8 @@ class Scenario:
         region = (0, 0.5, 1, 1)
         for attempt in range(3):
             point = self.find(expression, bounds=region, timeout=0)
+            if point is None:
+                point = self.accessibility_point(r'^\s*(?:' + expression + r')\s*$', region=region, package=self.package)
             if point:
                 name = '10-tap-record' if start else '11-tap-stop-recording'
                 self.screenshot(name)
@@ -461,6 +519,15 @@ class Scenario:
                                        stderr=subprocess.DEVNULL, text=True, timeout=30)
         words = {normalise(word) for word in text.split()}
         visible = 'mire' in words and bool({'streaming', 'diffusion'} & words)
+        if self.package == LAB_PACKAGE:
+            # Le volet peut replier la ligne de description sur un téléphone en paysage.
+            # La capture de référence a indépendamment confirmé le titre dans SystemUI.
+            with Image.open(self.out / '08-media-notification-visible.png') as expected, Image.open(path) as actual:
+                diff = ImageChops.difference(expected.convert('RGB').resize((160, 90)),
+                                             actual.convert('RGB').resize((160, 90)))
+                mae = sum(ImageStat.Stat(diff).mean) / 3
+            self.report['notification_reference_mean_pixel_error'] = round(mae, 3)
+            visible = mae < 12 and ('mire' in words or self.report.get('notification_title_in_systemui') is True)
         self.report['recorded_notification_check'] = {
             'file': path.name, 'timestamp_seconds': round(timestamp, 3), 'visible': visible}
         if not visible:
