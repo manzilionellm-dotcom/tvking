@@ -3,6 +3,8 @@
 import argparse
 import json
 import os
+import subprocess
+import time
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -75,6 +77,47 @@ def verify_session(out, receiver_dir, trial, interfaces, before):
 
 
 class SingleCast(Bench):
+    def preload_with_vpn_off(self, component, profile, vpn_origin):
+        server = "http://10.0.2.2:18999"
+        playlist = (self.out / "media" / "review.m3u").read_text()
+        media = [line for line in playlist.splitlines() if line and not line.startswith("#")]
+        if media != [vpn_origin + "/pattern.ts", vpn_origin + "/movie/qa/lab/777.mp4"]:
+            raise ValueError("Le M3U de préparation doit conserver les deux URL média accessibles par VPN")
+
+        def switch(action):
+            subprocess.run(["bash", str(Path(__file__).with_name("tunnel.sh")), action, self.serial,
+                            self.package, str(self.out / "vpn")], check=True, timeout=75)
+
+        switch("down")
+        try:
+            for _ in range(20):
+                if "192.0.2.2/30" not in self.adb("shell", "ip", "-o", "-4", "addr", "show"):
+                    break
+                time.sleep(.5)
+            else:
+                raise RuntimeError("Le VPN Android reste actif avant l’import local")
+            # La préparation utilise le formulaire normal d’import par URL.
+            # Le serveur du banc, la passerelle et les URL média restent en place.
+            os.environ["NOVATUBE_QA_LOCAL_PLAYLIST"] = "0"
+            super().setup(component, profile, server, 1)
+            for category, title in (("movie", "orion"), ("live", "mire")):
+                self.restart()
+                if not self.lab_home(30):
+                    raise RuntimeError("Accueil absent après préparation du catalogue")
+                self.open_tab(category)
+                if self.locate(title, timeout=18, semantics=title) is None:
+                    raise RuntimeError(f"Titre {title} absent du catalogue {category} avant activation du VPN")
+                self.screenshot(f"prepared-catalogue-{category}")
+            self.report.update(playlist_preparation_url=server + "/review.m3u",
+                               prepared_catalogues=["Orion", "Mire locale"], preparation_vpn="off")
+        finally:
+            switch("up")
+        self.origin = vpn_origin
+        self.report.update(fixture=vpn_origin, measurement_vpn="on",
+                           vpn_ready_monotonic_ns=time.monotonic_ns())
+        self.save()
+        # trial(cold) redémarre NovaTube avant la lecture et la sélection du récepteur.
+
     def casting(self, trial):
         addresses = self.adb("shell", "ip", "-o", "-4", "addr", "show")
         (self.out / "cast-android-v4.txt").write_text(addresses)
@@ -85,8 +128,21 @@ class SingleCast(Bench):
             raise RuntimeError("Une interface de tunnel IPv4 est présente lors de l'essai VPN désactivé")
         # La lecture locale et l'import ont déjà eu lieu au début de cette fenêtre.
         before = vpn_counts(self.out) if enabled else None
-        super().casting(trial)
-        self.report["cast_transport_proof"] = verify_session(self.out, self.receiver_dir, trial, interfaces, before)
+        completed = False
+        try:
+            super().casting(trial)
+            completed = True
+        finally:
+            if "receiver_first_frame_monotonic_ns" in trial:
+                # Conserver les faits acquis même si le retour accueil ou Stop échoue ensuite.
+                try:
+                    self.report["cast_transport_proof"] = verify_session(
+                        self.out, self.receiver_dir, trial, interfaces, before
+                    )
+                except Exception as exc:
+                    self.report["cast_transport_error"] = str(exc)
+                    if completed:
+                        raise
 
 
 
@@ -108,7 +164,10 @@ def main():
     bench = SingleCast(args.out, args.serial, expected_version=args.expected_version,
                        package=args.package, expected_digest=args.expected_digest)
     try:
-        bench.setup(args.component, profile, origin, 1)
+        if vpn == "on" and os.environ.get("NOVATUBE_QA_PRELOAD_SOURCE") == "on":
+            bench.preload_with_vpn_off(args.component, profile, origin)
+        else:
+            bench.setup(args.component, profile, origin, 1)
         bench.report["vpn_mode"] = vpn
         bench.trial("cast", 0, "cold")
         bench.report["validated"] = True
