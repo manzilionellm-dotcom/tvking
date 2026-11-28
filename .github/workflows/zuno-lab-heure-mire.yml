@@ -1,0 +1,32 @@
+name: ZUNO LAB — aligner les compteurs aux octets des segments de la mire
+on:
+  push:
+    branches: [lab/zuno-119-qualification-20261128]
+    paths: ['.github/workflows/zuno-lab-heure-mire.yml','android-app/ci/zuno_lab/endurance/verifier_bord.py']
+permissions:
+  contents: read
+jobs:
+  calibrer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 43b00811fb03ef4b7ec482c53a46269008dd214a
+          path: original
+          sparse-checkout: android-app/ci/novatube_tv
+          persist-credentials: false
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python3 android-app/ci/zuno_lab/endurance/verifier_bord.py android-app/ci/zuno_lab/endurance/fixture.py original/android-app/ci/novatube_tv resultat/alignement.json --match ee482752055b5284963a93400dab60b7915320f42b1a5cc00d747c7e8d139c42 5472e362e8a76997b8b07ce47abde9de3a3c96acd5068321b938b9ee58d07297
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: alignement-compteurs-mire
+          path: resultat/alignement.json
+          if-no-files-found: error
+          retention-days: 14
