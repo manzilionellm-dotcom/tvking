@@ -9,8 +9,9 @@ permissions:
   actions: read
 
 env:
-  BUILD_RUN: '46089851484'
-  BUILD_SHA: 8bc709cb275e0ac97c3d907d2bf8ad0447594584
+  BUILD_RUN: '46090971677'
+  BUILD_SHA: ad1a99cdf1a53ec9df68db548281e91e5c842d98
+  RIGHTS_RUN: '46090971676'
   LAB_PACKAGE: com.sevenmotion.tv.seven_tv.lab
 
 jobs:
@@ -126,6 +127,13 @@ jobs:
       contents: write
       actions: read
     steps:
+      - name: Contrôler les trois transitions de droits pour cette révision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RIGHTS_RUN" > "$RUNNER_TEMP/rights.json"
+          jq -e --arg sha "$BUILD_SHA" '.head_sha==$sha and .path==".github/workflows/zuno-lab-guide.yml" and .conclusion=="success"' "$RUNNER_TEMP/rights.json"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           github-token: ${{ github.token }}
