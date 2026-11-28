@@ -47,7 +47,7 @@ class Receiver:
         with self.lock:
             self.events += 1
             record = {'utc': datetime.now(timezone.utc).isoformat(),
-                      'event': kind, **data}
+                      'event': kind, 'monotonic_ns': time.monotonic_ns(), **data}
             with (self.out / 'receiver-events.jsonl').open('a') as handle:
                 handle.write(json.dumps(record) + '\n')
             print(json.dumps(record), flush=True)
@@ -175,7 +175,8 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     receiver = Receiver(args.out, args.serial)
 
-    lab_live = os.environ.get('NOVATUBE_REVIEW_PACKAGE') == 'com.sevenmotion.novatube.tv.lab.retour.rec'
+    lab_live = (os.environ.get('NOVATUBE_REVIEW_PACKAGE') == 'com.sevenmotion.novatube.tv.lab.retour.rec'
+                or bool(os.environ.get('NOVATUBE_PERF_PROFILE')))
 
     class Handler(SimpleHTTPRequestHandler):
         extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
@@ -290,6 +291,12 @@ def main():
                 receiver.event('receiver_error', error=str(error))
                 self.reply(str(error).encode(), 500, 'text/plain')
 
+    # Le serveur de contrôle reste local. La deuxième écoute n'existe que
+    # dans le runner avec le tunnel monté et ne sert que les mires générées.
+    vpn_server = None
+    if os.environ.get('NOVATUBE_QA_VPN') == 'on':
+        vpn_server = ThreadingHTTPServer(('192.0.2.1', 18999), Handler)
+        threading.Thread(target=vpn_server.serve_forever, daemon=True).start()
     server = ThreadingHTTPServer(('127.0.0.1', 18999), Handler)
     try:
         receiver.event('receiver_ready', name=NAME, transport='DLNA', media='synthetic test pattern only')
@@ -297,6 +304,9 @@ def main():
     finally:
         receiver.stop()
         server.server_close()
+        if vpn_server is not None:
+            vpn_server.shutdown()
+            vpn_server.server_close()
 
 
 if __name__ == '__main__':

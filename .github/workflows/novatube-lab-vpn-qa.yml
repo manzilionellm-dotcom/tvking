@@ -1,0 +1,136 @@
+name: NovaTube LAB VPN · lecture, Cinéma et Cast
+on:
+  push:
+    branches: ['qa/novatube-lab-vpn-rapidite']
+    paths:
+      - 'android-app/ci/novatube_vpn/**'
+      - 'android-app/ci/novatube_play_review/**'
+      - '.github/workflows/novatube-lab-vpn-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  APP_COMMIT: 9b3d6c31d1e45cb310d563ea52e125a478ee35c4
+  BUILD_RUN: '46098954485'
+  BASE_APK: https://github.com/manzilionellm-dotcom/tvking/releases/download/novatube-lab-rec-cast-4e49695d/NovaTube-LAB-Retour-REC.apk
+  BASE_DIGEST: a198e2cd91cf23b046b13718557b43f5936ddbe74177c9d696ed0823054db646
+
+jobs:
+  measure:
+    name: ${{ matrix.edition }} · ${{ matrix.profile }} · VPN ${{ matrix.vpn }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.edition == 'reference' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { edition: reference, profile: phone, vpn: 'on' }
+          - { edition: reference, profile: tv, vpn: 'on' }
+          - { edition: candidate, profile: phone, vpn: 'on' }
+          - { edition: candidate, profile: tv, vpn: 'on' }
+          - { edition: candidate, profile: phone, vpn: 'off' }
+          - { edition: candidate, profile: tv, vpn: 'off' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Charger le fichier signé et vérifier son identité
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EDITION: ${{ matrix.edition }}
+        run: |
+          set -euo pipefail
+          mkdir -p apk
+          if [[ "$EDITION" == reference ]]; then
+            curl -fsSL --retry 3 "$BASE_APK" -o apk/NovaTube-LAB-Retour-REC.apk
+            echo "$BASE_DIGEST  apk/NovaTube-LAB-Retour-REC.apk" | sha256sum -c -
+            name=NovaTube-LAB-Retour-REC.apk
+            version=1795827527
+            package=com.sevenmotion.novatube.tv.lab.retour.rec
+            commit=4e49695d37e903e32ddcbeb2d31a8341f5fe657e
+          else
+            for attempt in $(seq 1 90); do
+              result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN")"
+              jq -e --arg sha "$APP_COMMIT" '.head_sha==$sha' <<< "$result" >/dev/null
+              state="$(jq -r .status <<< "$result")"
+              [[ "$state" == completed ]] && break
+              sleep 15
+            done
+            jq -e '.conclusion=="success"' <<< "$result" >/dev/null
+            gh run download "$BUILD_RUN" --name "novatube-tv-apk-$APP_COMMIT" --dir apk
+            (cd apk && sha256sum -c SHA256SUMS.txt)
+            name=NovaTube-LAB-VPN.apk
+            package=com.sevenmotion.novatube.tv.lab.retour.rec.vpn
+            version="$(sed -n "s/^package: .*versionCode='\([0-9]*\)'.*/\1/p" apk/badging.txt)"
+            [[ "$version" =~ ^[0-9]+$ ]]
+            commit="$APP_COMMIT"
+          fi
+          {
+            echo "APK_PATH=apk/$name"
+            echo "NOVATUBE_REVIEW_VERSION_CODE=$version"
+            echo "NOVATUBE_REVIEW_PACKAGE=$package"
+            echo "NOVATUBE_BUILD_COMMIT=$commit"
+            echo "NOVATUBE_REVIEW_APK_SHA256=$(sha256sum "apk/$name" | cut -d' ' -f1)"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - name: Mesurer le parcours visible et contrôler le média
+        env:
+          NOVATUBE_PERF_PROFILE: ${{ matrix.profile }}
+          NOVATUBE_QA_VPN: ${{ matrix.vpn }}
+          NOVATUBE_VPN_LAN: ${{ matrix.profile == 'phone' && 'allow' || 'deny' }}
+          NOVATUBE_PERF_REPEATS: '3'
+          OMP_THREAD_LIMIT: '1'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libpulse0 python3-pil tesseract-ocr ripgrep
+          sudo chmod a+rw /dev/kvm
+          bash android-app/ci/novatube_play_review/run_emulator.sh "$APK_PATH" preuve
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: preuve-${{ matrix.edition }}-${{ matrix.profile }}-vpn-${{ matrix.vpn }}
+          path: |
+            preuve/*.json
+            preuve/*.jsonl
+            preuve/*.png
+            preuve/*.txt
+            preuve/local-recording/proof.json
+            preuve/vpn/tunnel.json
+            preuve/vpn/gateway.log
+          retention-days: 14
+  publish:
+    name: Publier et vérifier le téléchargement du LAB
+    needs: measure
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Publier les octets effectivement testés
+        run: |
+          set -euo pipefail
+          gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name "novatube-tv-apk-$APP_COMMIT" --dir apk
+          cd apk
+          sha256sum -c SHA256SUMS.txt
+          tag="novatube-lab-vpn-${APP_COMMIT:0:8}"
+          name=NovaTube-LAB-VPN.apk
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" "$name" SHA256SUMS.txt --target "$APP_COMMIT" --repo "$GITHUB_REPOSITORY" \
+              --prerelease --latest=false --title 'NovaTube LAB VPN 1.0.2' \
+              --notes "Direct, Cinéma et Cast contrôlés sur émulateurs avec un média synthétique. Source de l’APK : $APP_COMMIT. Tests : $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          fi
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$tag/$name"
+          curl -fsSL --retry 6 --retry-all-errors "$url" -o "$RUNNER_TEMP/publie.apk"
+          cmp "$name" "$RUNNER_TEMP/publie.apk"
+          echo "[$name]($url)" >> "$GITHUB_STEP_SUMMARY"
