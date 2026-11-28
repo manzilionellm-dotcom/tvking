@@ -12,12 +12,12 @@ jobs:
     timeout-minutes: 12
     env:
       GH_TOKEN: ${{ github.token }}
-      LAB_BUILD: '46091822042'
-      LAB_SOURCE: 926377d224daf77b14b775981adfe1590e5d113a
-      LAB_CHECK: '46091865468'
-      LAB_RIGHTS: '46091822040'
-      LAB_TAG: zuno-lab-119-926377d224da-46091822042
-      LAB_DIGEST: 24f0e56b3fcc09a788acb367c97ef482c6e011a4ff507462d0a9e865506e75d9
+      LAB_BUILD: '46095717223'
+      LAB_SOURCE: daba06b196754e4fff9dbfd8a454bd804b752be6
+      LAB_CHECK: '46095766247'
+      LAB_RIGHTS: '46095717245'
+      LAB_TAG: zuno-lab-119-daba06b19675-46095717223
+      LAB_DIGEST: ef566b3405666f6692feae771652537f6f1ee7bca760244f92bf2594a5ba51ab
     steps:
       - name: Attester les constructeurs, droits, appareils et SHA indépendamment
         run: |
@@ -29,7 +29,7 @@ jobs:
           done
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LAB_CHECK" | jq -e '.path==".github/workflows/zuno-lab-delivery.yml" and .head_branch=="lab/zuno-119-qualification-20261128"'
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LAB_CHECK/jobs" > jobs.json
-          jq -e '[.jobs[]|select(.name=="exact" or (.name|startswith("launch (")))] | (length==3 and all(.conclusion=="success"))' jobs.json
+          jq -e '[.jobs[]|select(.name=="exact" or .name=="journal" or (.name|startswith("launch (")))] | (length==4 and all(.conclusion=="success"))' jobs.json
           for kind in tv phone; do
             gh run download "$LAB_CHECK" -R "$GITHUB_REPOSITORY" -n "zuno-lab-$kind-preuves" -D "$kind"
             test "$(cat "$kind/installed.before")" = "$LAB_DIGEST"
@@ -43,6 +43,7 @@ jobs:
           set -euo pipefail
           repo="$GITHUB_REPOSITORY"
           # Ce tag suit le reçu de qualification. La source des octets figure dans le nom et le reçu.
+          echo "Vérification du tag dédié à la préversion"
           if ! gh api "repos/$repo/git/ref/tags/$LAB_TAG" > tag.json 2>/dev/null; then
             gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$LAB_TAG" -f sha="$GITHUB_SHA" > tag.json
           fi
@@ -50,6 +51,7 @@ jobs:
           tag_sha=$(jq -r '.object.sha' tag.json)
           gh api "repos/$repo/compare/$LAB_SOURCE...$tag_sha" | jq -e '.status=="ahead" or .status=="identical"'
           if ! gh release view "$LAB_TAG" -R "$repo" >/dev/null 2>&1; then
+            echo "Création de la préversion sur le tag contrôlé"
             gh release create "$LAB_TAG" --verify-tag --prerelease --latest=false -R "$repo" --title "ZUNO LAB 119 — essai téléphone et TV" --notes "Préversion d’essai uniquement. Source de l’APK $LAB_SOURCE, constructeur $LAB_BUILD, paquet com.sevenmotion.tv.seven_tv.lab. Clé LAB propre à cette compilation. Le panel intégré utilise la boucle locale du banc. Installation personnelle des listes disponible."
           fi
           gh api "repos/$repo/releases/tags/$LAB_TAG" > release.json
